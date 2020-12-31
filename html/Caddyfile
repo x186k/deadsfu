@@ -1,0 +1,14 @@
+x186k.duckdns.org:8000
+
+
+tls {
+    dns duckdns ${DUCKDNS}
+}
+
+reverse_proxy /pub localhost:8080
+reverse_proxy /sub* localhost:8080
+
+file_server
+
+
+
