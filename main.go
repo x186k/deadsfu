@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 
 	//"net/http/httputil"
 	"os"
@@ -70,6 +73,8 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("debug", true, "enable debug output")
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
+var dialRxURL = flag.String("dial-rx", "", "do not take http WHIP for ingress, dial for ingress")
+var port = flag.Int("port", 8000, "default port to accept HTTPS on")
 
 var info = log.New(os.Stderr, "I ", log.Lmicroseconds|log.LUTC)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
@@ -103,8 +108,14 @@ func main() {
 	if !*nohtml {
 		mux.HandleFunc("/", slashHandler)
 	}
-	mux.HandleFunc(pubPath, pubHandler)
 	mux.HandleFunc(subPath, subHandler)
+
+	if *dialRxURL == "" {
+		mux.HandleFunc(pubPath, pubHandler)
+	} else {
+		err = dialUpstream(*dialRxURL)
+		checkPanic(err)
+	}
 
 	dotoken := os.Getenv("DIGITALOCEAN_ACCESS_TOKEN")
 	if dotoken == "" {
@@ -145,22 +156,18 @@ func main() {
 		Resolvers:          []string{},
 	}
 
-	log.Println(1)
 	// We do NOT do port 80 redirection, as
 	tlsConfig, err := certmagic.TLS([]string{"foo.sfu1.com"})
 	checkPanic(err)
 	/// XXX ro work with OBS studio for now
 	tlsConfig.MinVersion = 0
-	log.Println(1)
 
-	ln, err := tls.Listen("tcp", ":8000", tlsConfig)
+	ln, err := tls.Listen("tcp", ":"+strconv.Itoa(*port), tlsConfig)
 	checkPanic(err)
-	log.Println(1)
 
 	log.Println("WHIP input listener at:", ln.Addr().String(), pubPath)
 	log.Println("WHIP output listener at:", ln.Addr().String(), subPath)
 
-	log.Println(1)
 	err = http.Serve(ln, mux)
 	panic(err)
 
@@ -190,11 +197,13 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	raw, err := ioutil.ReadAll(req.Body)
+	offer, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		teeErrorStderrHttp(w, err)
 		return
 	}
+
+	logSdpReport("pub: received offer: ", string(offer))
 
 	// Create a new RTCPeerConnection
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
@@ -234,6 +243,8 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 				panic(readErr)
 			}
 
+			fmt.Print("p")
+
 			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
 			if _, err = localTrack.Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 				panic(err)
@@ -242,7 +253,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	})
 
 	// Set the remote SessionDescription
-	desc := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(raw)}
+	desc := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}
 	err = peerConnection.SetRemoteDescription(desc)
 	if err != nil {
 		panic(err)
@@ -305,6 +316,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	emptyOrAnswer := string(raw)
 
 	if len(emptyOrAnswer) == 0 { // empty
+		log.Println("empty body")
 		// part one of two part transaction
 
 		// Create a new PeerConnection
@@ -363,20 +375,25 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		o := *peerConnection.LocalDescription()
 
+		
+		logSdpReport("sub: sending offer: ", string(o.SDP))
+
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(o.SDP))
 
 		return
 	} else {
 		// part two of two part transaction
-		log.Println("sub: 2nd request with answer")
-		log.Println("sub: whip provided sdp starts with v=0", strings.HasPrefix(emptyOrAnswer, "v="))
 
+		logSdpReport("sub: 2nd POST, answer: ", string(emptyOrAnswer))
+		
+		
 		subMapMutex.Lock()
 		peerConnection := subMap[txid]
 		subMapMutex.Unlock()
 
-		log.Println(emptyOrAnswer)
+	
+
 		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrAnswer}
 
 		err = peerConnection.SetRemoteDescription(sdesc)
@@ -388,4 +405,139 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		log.Println("setremote done")
 	}
+}
+
+func logSdpReport(prefix string,sdp string) {
+	good := strings.HasPrefix(sdp, "v=")
+	nlines := len(strings.Split(strings.Replace(sdp, "\r\n", "\n", -1), "\n"))
+	log.Printf("%s: %v, and is %d lines long", prefix,good, nlines)
+	if !good || nlines <10 {
+		log.Println(sdp)
+		log.Println()
+	}
+}
+
+func randomHex(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func dialUpstream(url string) error {
+
+	txid, err := randomHex(10)
+	checkPanic(err)
+	url = url + "/txid=" + txid
+
+	log.Println("dialUpstream url:", url)
+
+	n := atomic.AddUint32(&pubStartCount, 1)
+	if n > 1 {
+		return errors.New("cannot accept 2nd ingress connection, please restart for new session")
+	}
+
+	// for pub ingest, we want to take offer, generate answer: double post
+	empty := strings.NewReader("")
+	resp, err := http.Post(url, "application/sdp", empty)
+	checkPanic(err)
+	defer resp.Body.Close()
+	offer, err := ioutil.ReadAll(resp.Body)
+
+	logSdpReport("dial: received offer: ", string(offer))
+
+
+	// Create a new RTCPeerConnection
+	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
+	if err != nil {
+		panic(err)
+	}
+
+	// Allow us to receive 1 video track
+	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
+		panic(err)
+	}
+
+	// Set a handler for when a new remote track starts, this just distributes all our packets
+	// to connected peers
+	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+		// This can be less wasteful by processing incoming RTCP events, then we would emit a NACK/PLI when a viewer requests it
+		go func() {
+			ticker := time.NewTicker(rtcpPLIInterval)
+			for range ticker.C {
+				if rtcpSendErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}); rtcpSendErr != nil {
+					fmt.Println(rtcpSendErr)
+				}
+			}
+		}()
+
+		// Create a local track, all our SFU clients will be fed via this track
+		localTrack, err = webrtc.NewTrackLocalStaticRTP(remoteTrack.Codec().RTPCodecCapability, "video", "pion")
+		if err != nil {
+			panic(err)
+		}
+
+		rtpBuf := make([]byte, 1400)
+		for {
+			i, _, readErr := remoteTrack.Read(rtpBuf)
+			if readErr != nil {
+				panic(readErr)
+			}
+
+			fmt.Print("d")
+
+			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
+			if _, err = localTrack.Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				panic(err)
+			}
+		}
+	})
+
+	// Set the remote SessionDescription
+	desc := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}
+	err = peerConnection.SetRemoteDescription(desc)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create answer
+	answer, err := peerConnection.CreateAnswer(nil)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create channel that is blocked until ICE Gathering is complete
+	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+
+	// Sets the LocalDescription, and starts our UDP listeners
+	err = peerConnection.SetLocalDescription(answer)
+	if err != nil {
+		panic(err)
+	}
+
+	// Block until ICE Gathering is complete, disabling trickle ICE
+	// we do this because we only can exchange one signaling message
+	// in a production application you should exchange ICE Candidates via OnICECandidate
+	<-gatherComplete
+
+	// Get the LocalDescription and take it to base64 so we can paste in browser
+	answerDesc := *peerConnection.LocalDescription()
+
+	logSdpReport("dial: sending answer: ", string(answerDesc.SDP))
+
+
+	ansreader := strings.NewReader(answerDesc.SDP)
+	resp2, err := http.Post(url, "application/sdp", ansreader)
+	checkPanic(err)
+	defer resp2.Body.Close()
+	secondResponse, err := ioutil.ReadAll(resp.Body)
+	checkPanic(err)
+
+	if len(secondResponse) > 0 {
+		elog.Println("got unexpected data back from 2nd fetch to upstream:", string(secondResponse))
+		//we will ignore this
+	}
+	return nil
 }
