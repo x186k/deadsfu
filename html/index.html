@@ -119,10 +119,10 @@
 
                 var t0 = performance.now()
                 document.getElementById('video1').srcObject = stream
-                //console.log("delay of " + (performance.now() - t0) + "ms")
+                //console.debug("delay of " + (performance.now() - t0) + "ms")
                 let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-                pc.oniceconnectionstatechange = e => console.log(pc.iceConnectionState)
-                //pc.onicecandidate = event => { console.log('ignore ice candidate') }
+                pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
+                //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
 
                 pc.addStream(stream)
@@ -130,16 +130,21 @@
                 await pc.setLocalDescription(desc)
 
 
-                console.log('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
-                let resp = await fetch(puburl, { method: 'POST', body: desc.sdp })
+                console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
+                let fetchopt =
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp', },
+                    body: desc.sdp
+                }
+                let resp = await fetch(puburl, fetchopt)
                 let resptext = await resp.text()
                 if (resp.status != 202) {
                     console.error('sfu http error', resp.status, resptext)
                     pc.close()
                     return
                 }
-                console.log('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
-                console.log(resptext)
+                console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
 
 
@@ -156,8 +161,14 @@
 
             try {
                 const url = suburl + '/txid=' + longRandomString()
-                let resp = await fetch(url, { method: 'POST', body: '' })
-                let resptext = await resp.text()
+                const fetchopt1 =
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp', },
+                    body: ''
+                }
+                const resp = await fetch(url, fetchopt1)
+                const resptext = await resp.text()
                 if (resp.status != 202) {
                     console.error('sfu http error', resp.status, resptext)
                     pc.close()
@@ -166,8 +177,8 @@
 
 
                 let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-                pc.oniceconnectionstatechange = e => console.log(pc.iceConnectionState)
-                //pc.onicecandidate = event => { console.log('ignore ice candidate') }
+                pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
+                //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
                 // pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: posttext }))
 
                 pc.addTransceiver('audio', { 'direction': 'recvonly' })
@@ -180,17 +191,23 @@
                     el.controls = true
                 }
 
-                console.log('got N line offer:', resptext.split(/\r\n|\r|\n/).length)
+                console.debug('got N line offer:', resptext.split(/\r\n|\r|\n/).length)
 
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: resptext }))
                 let init = await pc.createAnswer()
                 await pc.setLocalDescription(init)
 
-                console.log(pc.localDescription)
-                console.log('will post N line answer:', pc.localDescription.sdp.split(/\r\n|\r|\n/).length)
-                await fetch(url, { method: 'POST', body: pc.localDescription.sdp })
 
-                console.log('sent answer')
+                console.debug('will post N line answer:', pc.localDescription.sdp.split(/\r\n|\r|\n/).length)
+                const fetchopt2 =
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp', },
+                    body: pc.localDescription.sdp
+                }
+                fetch(url, fetchopt2 )
+
+                console.debug('sent answer')
 
             } catch (error) {
                 console.error('receive error', error)
@@ -218,14 +235,12 @@
             evt.currentTarget.parentElement.className += " is-active"
         }
         let rxmode = sessionStorage.getItem('receivemode')
-        console.log(rxmode)
+        
         if (typeof rxmode === 'undefined' || rxmode === null) {
             // the variable is not defined or null
             document.getElementById('txmode').click()
-            console.log(4)
         } else {
             document.getElementById('rxmode').click()
-            console.log(3)
         }
     </script>
 </body>
