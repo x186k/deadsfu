@@ -9,6 +9,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+
+	//"net/http/httputil"
 	"os"
 	"path"
 	"strings"
@@ -17,7 +19,9 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/libdns/duckdns"
+	//"github.com/digitalocean/godo"
+	"github.com/libdns/cloudflare"
+
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
@@ -102,10 +106,11 @@ func main() {
 	mux.HandleFunc(pubPath, pubHandler)
 	mux.HandleFunc(subPath, subHandler)
 
-	
-
-	ducktoken := os.Getenv("DUCKDNS")
-
+	dotoken := os.Getenv("DIGITALOCEAN_ACCESS_TOKEN")
+	if dotoken == "" {
+		fmt.Printf("DIGITALOCEAN_ACCESS_TOKEN not set\n")
+		return
+	}
 
 	//certmagic.DefaultACME.Email = ""
 
@@ -113,30 +118,49 @@ func main() {
 	//err = HTTPS([]string{"x186k.duckdns.org"}, mux, ducktoken) // https automagic
 	//panic(err)
 
+	//client := godo.NewFromToken(dotoken)
+
+	// if true {
+	//     client.OnRequestCompleted(func(req *http.Request, resp *http.Response) {
+	//         data, _ := httputil.DumpRequestOut(req, true)
+	//         fmt.Printf("Req: %s\n", data)
+
+	//         data, _ = httputil.DumpResponse(resp, true)
+	//         fmt.Printf("Resp: %s\n\n", data)
+	//     })
+	// }
+
 	certmagic.DefaultACME.Agreed = true
-	
+	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
+
+	xxx := os.Getenv("CLOUDFLARE_TOKEN")
+	//xx:=digitalocean.Provider{APIToken: dotoken,
+	//	Client: digitalocean.Client{XClient:  client}}
+	yy := cloudflare.Provider{APIToken: xxx}
+
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-		DNSProvider:        &duckdns.Provider{APIToken: ducktoken},
+		DNSProvider:        &yy,
 		TTL:                0,
 		PropagationTimeout: 0,
 		Resolvers:          []string{},
 	}
 
-
-	// We do NOT do port 80 redirection, as 
-	tlsConfig, err := certmagic.TLS([]string{"x186k.duckdns.org"})
+	log.Println(1)
+	// We do NOT do port 80 redirection, as
+	tlsConfig, err := certmagic.TLS([]string{"foo.sfu1.com"})
 	checkPanic(err)
 	/// XXX ro work with OBS studio for now
-	tlsConfig.MinVersion = 0  
+	tlsConfig.MinVersion = 0
+	log.Println(1)
 
-
-
-	ln,err:=tls.Listen("tcp", ":8000", tlsConfig)
+	ln, err := tls.Listen("tcp", ":8000", tlsConfig)
 	checkPanic(err)
+	log.Println(1)
 
 	log.Println("WHIP input listener at:", ln.Addr().String(), pubPath)
 	log.Println("WHIP output listener at:", ln.Addr().String(), subPath)
 
+	log.Println(1)
 	err = http.Serve(ln, mux)
 	panic(err)
 
