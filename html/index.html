@@ -115,7 +115,7 @@
 
 
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true })
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false })
 
                 var t0 = performance.now()
                 document.getElementById('video1').srcObject = stream
