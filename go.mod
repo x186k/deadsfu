@@ -7,7 +7,6 @@ require (
 	github.com/klauspost/cpuid v1.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libdns/cloudflare v0.0.0-20200528144945-97886e7873b1
-	github.com/libdns/duckdns v0.0.0-20201229185916-cd405ff644b9
 	github.com/miekg/dns v1.1.35 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/pion/rtcp v1.2.6
