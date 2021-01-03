@@ -42,11 +42,13 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var (
+	ingestPresent bool
 	pubStartCount uint32
 	// going to need more of these
-	localTrack  *webrtc.TrackLocalStaticRTP
-	subMap      map[string]*webrtc.PeerConnection = make(map[string]*webrtc.PeerConnection)
-	subMapMutex sync.Mutex
+	subMap       map[string]*webrtc.PeerConnection = make(map[string]*webrtc.PeerConnection)
+	subMapMutex  sync.Mutex
+	outputTracks map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
+	//outputTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
 )
 
 func checkPanic(err error) {
@@ -205,14 +207,15 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		teeErrorStderrHttp(w, errors.New("cannot accept 2nd ingress connection, restart for new session"))
 		return
 	}
-
+	// inside here will panic if something prevents success
+	// this is by design/ cam
 	answer := createIngestPeerConnection(string(offer))
 
-
 	w.WriteHeader(http.StatusAccepted)
-	_, _ = w.Write([]byte(answer))
-	//Do NOT use http.error to return SDPs
-	//http.Error(w, answer.SDP, http.StatusAccepted) //202 https://tools.ietf.org/html/draft-murillo-whip-00
+	_, err = w.Write([]byte(answer))
+	checkPanic(err) // cam/if this write fails, then fail hard!
+
+	//NOTE, Do NOT ever use http.error to return SDPs
 }
 
 // sfu egress setup
@@ -221,8 +224,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("subHandler request", httpreq.URL.String())
 
-	if localTrack == nil {
-		teeErrorStderrHttp(w, fmt.Errorf("no publisher"))
+	if !ingestPresent {
+		teeErrorStderrHttp(w, fmt.Errorf("no publisher, please connect publisher first"))
 		return
 	}
 
@@ -240,9 +243,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		teeErrorStderrHttp(w, err)
 		return
 	}
-	emptyOrAnswer := string(raw)
+	emptyOrRecvOnlyAnswer := string(raw)
 
-	if len(emptyOrAnswer) == 0 { // empty
+	if len(emptyOrRecvOnlyAnswer) == 0 { // empty
 		log.Println("empty body")
 		// part one of two part transaction
 
@@ -253,7 +256,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		}
 
 		// AddTrack should be called before CreateOffer
-		rtpSender, err := peerConnection.AddTrack(localTrack)
+		rtpSender, err := peerConnection.AddTrack(outputTracks["x"])
 		if err != nil {
 			panic(err)
 		}
@@ -311,13 +314,13 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	} else {
 		// part two of two part transaction
 
-		logSdpReport("sub: 2nd POST, answer: ", string(emptyOrAnswer))
+		logSdpReport("sub: 2nd POST, answer: ", string(emptyOrRecvOnlyAnswer))
 
 		subMapMutex.Lock()
 		peerConnection := subMap[txid]
 		subMapMutex.Unlock()
 
-		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrAnswer}
+		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrRecvOnlyAnswer}
 
 		err = peerConnection.SetRemoteDescription(sdesc)
 		checkPanic(err)
@@ -370,6 +373,8 @@ func dialUpstream(url string) error {
 	if atomic.AddUint32(&pubStartCount, 1) > 1 {
 		return errors.New("cannot accept 2nd ingress connection, please restart for new session")
 	}
+	// inside here will panic if something prevents success
+	// this is by design/ cam
 	answer := createIngestPeerConnection(offer)
 
 	logSdpReport("dial: sending answer: ", answer)
@@ -388,6 +393,17 @@ func dialUpstream(url string) error {
 	return nil
 }
 
+/*
+	IMPORTANT
+	read this like your life depends upon it.
+	########################
+	any error that prevents peerconnection setup this line MUST MUST MUST panic()
+	why?
+	1. pubStartCount is now set
+	2. sublishers will be connected because pubStartCount>0
+	3. if ingest cannot proceed, we must Panic to live upto the
+	4. single-shot, fail-fast manifesto I envision
+*/
 // error design:
 // this does not return an error
 // if an error occurs, we panic
@@ -401,9 +417,31 @@ func createIngestPeerConnection(offer string) (answer string) {
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
 
-	// Allow us to receive 1 video track
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-	checkPanic(err)
+	//  removed broadcast style track setup
+	// oh oh oh, can add directions to this sendonly...
+	// 	was 'broadcast' way:
+	// XXX
+	// the sfu appears ro work okay without this, using addtrack()
+	//peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+
+	// Create Track that we send video back to browser on
+	//just initializes a struct!
+	outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video_q", "pion_q")
+	if err != nil {
+		panic(err)
+	}
+
+	// replaces pc.AddTransceiverFromKind() from broadcast example
+	// important concurrency note:
+	// other subscribers can't read this until:
+	// ingestPresent is true, which is set later in this function
+	// other publishers can't get here, cause this function
+	// is protected by atomic.inc32(&x)
+	// so this map write IS safe. there. I told you. I broke it down.
+	outputTracks["x"] = outputTrack
+	if _, err = peerConnection.AddTrack(outputTracks["x"]); err != nil {
+		panic(err)
+	}
 
 	// Set a handler for when a new remote track starts, this just distributes all our packets
 	// to connected peers
@@ -419,9 +457,9 @@ func createIngestPeerConnection(offer string) (answer string) {
 			}
 		}()
 
-		// Create a local track, all our SFU clients will be fed via this track
-		localTrack, err = webrtc.NewTrackLocalStaticRTP(remoteTrack.Codec().RTPCodecCapability, "video", "pion")
-		checkPanic(err)
+		// old 'broadcast' approach
+		// l ocalTrack, err = webrtc.NewTrackLocalStaticRTP(remoteTrack.Codec().RTPCodecCapability, "video", "pion")
+		// checkPanic(err)
 
 		rtpBuf := make([]byte, 1400)
 		for {
@@ -431,7 +469,7 @@ func createIngestPeerConnection(offer string) (answer string) {
 			fmt.Print("d")
 
 			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-			if _, err = localTrack.Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			if _, err = outputTracks["x"].Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 				panic(err)
 			}
 		}
@@ -446,7 +484,6 @@ func createIngestPeerConnection(offer string) (answer string) {
 	sessdesc, err := peerConnection.CreateAnswer(nil)
 	checkPanic(err)
 
-
 	// Create channel that is blocked until ICE Gathering is complete
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 
@@ -458,6 +495,11 @@ func createIngestPeerConnection(offer string) (answer string) {
 	// we do this because we only can exchange one signaling message
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
+
+	// XXX
+	// someday we should check pion for webrtc/connected status to set this bool
+	//
+	ingestPresent = true
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	return peerConnection.LocalDescription().SDP
