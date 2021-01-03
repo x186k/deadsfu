@@ -127,28 +127,28 @@
                 let simulcast = true
                 if (simulcast) {
                     pc.addTransceiver(stream.getVideoTracks()[0], {
-                        direction: "sendonly",
+                        direction: 'sendonly',
                         streams: [stream],
                         sendEncodings: [
                             // for firefox order matters... first high resolution, then scaled resolutions...
                             {
-                                rid: "f"
+                                rid: 'f'
                             },
                             {
-                                rid: "h",
+                                rid: 'h',
                                 scaleResolutionDownBy: 2.0
                             },
                             {
-                                rid: "q",
+                                rid: 'q',
                                 scaleResolutionDownBy: 4.0
                             },
                         ],
                     });
-                    pc.addTransceiver("video")
-                    pc.addTransceiver("video")
-                    pc.addTransceiver("video")
+                    pc.addTransceiver('video', {'direction': 'sendonly'})
+                    pc.addTransceiver('video', {'direction': 'sendonly'})
+                    pc.addTransceiver('video', {'direction': 'sendonly'})
                 } else {
-                    pc.addStream(stream)
+                    pc.addTransceiver('video', {'direction': 'sendonly'})
                 }
 
                 let desc = await pc.createOffer()
