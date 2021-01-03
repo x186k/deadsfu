@@ -124,8 +124,33 @@
                 pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
                 //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
+                let simulcast = true
+                if (simulcast) {
+                    pc.addTransceiver(stream.getVideoTracks()[0], {
+                        direction: "sendonly",
+                        streams: [stream],
+                        sendEncodings: [
+                            // for firefox order matters... first high resolution, then scaled resolutions...
+                            {
+                                rid: "f"
+                            },
+                            {
+                                rid: "h",
+                                scaleResolutionDownBy: 2.0
+                            },
+                            {
+                                rid: "q",
+                                scaleResolutionDownBy: 4.0
+                            },
+                        ],
+                    });
+                    pc.addTransceiver("video")
+                    pc.addTransceiver("video")
+                    pc.addTransceiver("video")
+                } else {
+                    pc.addStream(stream)
+                }
 
-                pc.addStream(stream)
                 let desc = await pc.createOffer()
                 await pc.setLocalDescription(desc)
 
@@ -205,7 +230,7 @@
                     headers: { 'Content-Type': 'application/sdp', },
                     body: pc.localDescription.sdp
                 }
-                fetch(url, fetchopt2 )
+                fetch(url, fetchopt2)
 
                 console.debug('sent answer')
 
@@ -235,7 +260,7 @@
             evt.currentTarget.parentElement.className += " is-active"
         }
         let rxmode = sessionStorage.getItem('receivemode')
-        
+
         if (typeof rxmode === 'undefined' || rxmode === null) {
             // the variable is not defined or null
             document.getElementById('txmode').click()
