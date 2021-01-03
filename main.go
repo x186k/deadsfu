@@ -305,7 +305,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		o := *peerConnection.LocalDescription()
 
-		logSdpReport("sub: sending offer: ", string(o.SDP))
+		err = logSdpReport("pion/subscribe", o)
+		checkPanic(err)
 
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(o.SDP))
@@ -314,13 +315,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	} else {
 		// part two of two part transaction
 
-		logSdpReport("sub: 2nd POST, answer: ", string(emptyOrRecvOnlyAnswer))
+		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrRecvOnlyAnswer}
+
+		err = logSdpReport("subscriber", sdesc)
+		checkPanic(err)
 
 		subMapMutex.Lock()
 		peerConnection := subMap[txid]
 		subMapMutex.Unlock()
-
-		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrRecvOnlyAnswer}
 
 		err = peerConnection.SetRemoteDescription(sdesc)
 		checkPanic(err)
@@ -333,14 +335,17 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	}
 }
 
-func logSdpReport(prefix string, sdp string) {
-	good := strings.HasPrefix(sdp, "v=")
-	nlines := len(strings.Split(strings.Replace(sdp, "\r\n", "\n", -1), "\n"))
-	log.Printf("%s: %v, and is %d lines long", prefix, good, nlines)
-	if !good || nlines < 10 {
-		log.Println(sdp)
-		log.Println()
+func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
+	good := strings.HasPrefix(rtcsd.SDP, "v=")
+	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
+	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
+
+	sd, err := rtcsd.Unmarshal()
+	if err != nil {
+		return err
 	}
+	log.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
+	return nil
 }
 
 func randomHex(n int) (string, error) {
@@ -368,16 +373,12 @@ func dialUpstream(url string) error {
 	checkPanic(err) //cam
 	offer := string(offerraw)
 
-	logSdpReport("dial: received offer: ", offer)
-
 	if atomic.AddUint32(&pubStartCount, 1) > 1 {
 		return errors.New("cannot accept 2nd ingress connection, please restart for new session")
 	}
 	// inside here will panic if something prevents success
 	// this is by design/ cam
 	answer := createIngestPeerConnection(offer)
-
-	logSdpReport("dial: sending answer: ", answer)
 
 	ansreader := strings.NewReader(answer)
 	resp2, err := http.Post(url, "application/sdp", ansreader)
@@ -411,7 +412,7 @@ func dialUpstream(url string) error {
 //
 func createIngestPeerConnection(offer string) (answer string) {
 
-	logSdpReport("pub: received offer: ", string(offer))
+	log.Println("createIngestPeerConnection")
 
 	// Create a new RTCPeerConnection
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
@@ -477,7 +478,11 @@ func createIngestPeerConnection(offer string) (answer string) {
 
 	// Set the remote SessionDescription
 	desc := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}
+
 	err = peerConnection.SetRemoteDescription(desc)
+	checkPanic(err)
+
+	err = logSdpReport("publisher", desc)
 	checkPanic(err)
 
 	// Create answer
@@ -502,5 +507,10 @@ func createIngestPeerConnection(offer string) (answer string) {
 	ingestPresent = true
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
-	return peerConnection.LocalDescription().SDP
+	rtcsd := peerConnection.LocalDescription()
+
+	err = logSdpReport("pion/publisher", *rtcsd)
+	checkPanic(err)
+
+	return rtcsd.SDP
 }
