@@ -4,78 +4,95 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>x186k WebRTC Send Receive WHIP Tool</title>
+    <title>x186k broadcast/watch page</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css">
     <script defer src="https://use.fontawesome.com/releases/v5.14.0/js/all.js"></script>
-    <style>
-        .tabcontent {
-            display: none;
-            animation: fadeEffect 1s;
-            /* Fading effect takes 1 second */
-        }
-
-        /* Go from zero to full opacity */
-        @keyframes fadeEffect {
-            from {
-                opacity: 0;
-            }
-
-            to {
-                opacity: 1;
-            }
-        }
-    </style>
 </head>
 
 <body>
+    <nav class="navbar" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="https://x186k.org">
+                x186k.org
+            </a>
+
+            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false"
+                data-target="navbarBasicExample">
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+
+        <div id="navbarBasicExample" class="navbar-menu">
+            <div class="navbar-start">
+                <a class="navbar-item">
+                    Home
+                </a>
+
+                <a class="navbar-item">
+                    Documentation
+                </a>
+
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">
+                        More
+                    </a>
+
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item">
+                            About
+                        </a>
+                        <a class="navbar-item">
+                            Jobs
+                        </a>
+                        <a class="navbar-item">
+                            Contact
+                        </a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item">
+                            Report an issue
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="buttons">
+                        <a class="button is-primary">
+                            <strong>Sign up</strong>
+                        </a>
+                        <a class="button is-light">
+                            Log in
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
     <section class="section">
         <div class="container">
             <div class="columns">
                 <div class="column is-half">
-                    <p class="subtitle">
-                        <strong>rtc99.org Send / Receive test page</strong>!
-                    </p>
-                    <div class="tabs is-centered is-toggle is-toggle-rounded is-fullwidth">
-                        <ul>
-                            <li name="tablinks">
-                                <a onclick="" id="txmode">
-                                    <span>Transmit</span>
-                                    <span class="icon is-small"><i class="fas fa-sign-out-alt"
-                                            aria-hidden="true"></i></span>
-                                </a>
-                            </li>
-                            <li name="tablinks">
-                                <a onclick="" id="rxmode">
-                                    <span>Receive</span>
-                                    <span class="icon is-small"><i class="fas fa-sign-in-alt"
-                                            aria-hidden="true"></i></span>
-                                </a>
-                            </li>
-                        </ul>
-                        <!--/tabs is-centered-->
-                    </div>
-                    <div>
-                        <div class="tabcontent" id="tab1">
-                            <div class="buttons is-centered p-4">
-                                <button class="button is-link" onclick="transmit()" ">Start Transmission</button>
-                            </div>
-                        </div>
-                        <div class=" tabcontent" id="tab2">
-                                    <div class="buttons is-centered p-4">
-                                        <button class="button is-link" onclick="receive()" ">Start Receive</button>
-                            </div>
-                        </div>
+                    <div class="field is-grouped is-centered p-4">
+                        <p class="control">
+                            <button class="button is-link" onclick="transmit()">Start Transmission</button>
+                        </p>
+                        <p class="control">
+                            <button class=" button is-link" onclick="receive()">Start Receive</button>
+                        </p>
                     </div>
                 </div>
                 <div class=" column">
-                                            <figure class="image is-16by9">
-                                                <video id="video1" autoplay class="has-ratio" width="1280" height="720"
-                                                    frameborder="0" allowfullscreen>
-                                                </video>
-                                            </figure>
-                                    </div>
-                            </div>
-                        </div>
+                    <figure class="image is-16by9">
+                        <video id="video1" autoplay class="has-ratio" width="1280" height="720" frameborder="0"
+                            allowfullscreen>
+                        </video>
+                    </figure>
+                </div>
+            </div>
+        </div>
     </section>
 
 
@@ -88,15 +105,6 @@
     </section>
     <script>
         //@ts-check
-
-        {
-            var el = document.getElementById("txmode");
-            el.addEventListener("click", function () { openTab(event, 'tab1') }, false);
-            el.addEventListener("click", function () { sessionStorage.removeItem('receivemode') }, false);
-            var el = document.getElementById("rxmode");
-            el.addEventListener("click", function () { openTab(event, 'tab2') }, false);
-            el.addEventListener("click", function () { sessionStorage.setItem('receivemode', 'yes') }, false);
-        }
 
         let suburl = location.origin + '/sub'        // output from sfu
         let puburl = location.origin + '/pub'          // input to sfu
@@ -151,7 +159,7 @@
                     // pc.addTransceiver('video', {'direction': 'sendonly'})
                     // pc.addTransceiver('video', {'direction': 'sendonly'})
                 } else {
-                    pc.addTransceiver(stream.getVideoTracks()[0], {'direction': 'sendonly'})
+                    pc.addTransceiver(stream.getVideoTracks()[0], { 'direction': 'sendonly' })
                 }
 
                 let desc = await pc.createOffer()
@@ -209,11 +217,11 @@
                 //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
                 // pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: posttext }))
 
-                console.debug('n senders in getsenders()',pc.getSenders())
+                console.debug('n senders in getsenders()', pc.getSenders())
                 pc.addTransceiver('audio', { 'direction': 'recvonly' })
                 pc.addTransceiver('video', { 'direction': 'recvonly' })
-                console.debug('n senders in getsenders()',pc.getSenders())
-                
+                console.debug('n senders in getsenders()', pc.getSenders())
+
                 pc.ontrack = function (event) {
                     var el = document.getElementById('video1')
                     el.srcObject = event.streams[0]
@@ -264,14 +272,7 @@
             document.getElementById(tabTitle).style.display = "block"
             evt.currentTarget.parentElement.className += " is-active"
         }
-        let rxmode = sessionStorage.getItem('receivemode')
 
-        if (typeof rxmode === 'undefined' || rxmode === null) {
-            // the variable is not defined or null
-            document.getElementById('txmode').click()
-        } else {
-            document.getElementById('rxmode').click()
-        }
     </script>
 </body>
 
