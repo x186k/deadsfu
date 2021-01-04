@@ -206,8 +206,10 @@
                 //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
                 // pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: posttext }))
 
+                console.debug('n senders in getsenders()',pc.getSenders())
                 pc.addTransceiver('audio', { 'direction': 'recvonly' })
                 pc.addTransceiver('video', { 'direction': 'recvonly' })
+                console.debug('n senders in getsenders()',pc.getSenders())
 
                 pc.ontrack = function (event) {
                     var el = document.getElementById('video1')
