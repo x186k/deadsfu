@@ -430,6 +430,14 @@ func createIngestPeerConnection(offer string) (answer string) {
 
 	log.Println("createIngestPeerConnection")
 
+	// Set the remote SessionDescription
+	rtcsd := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}
+	err := logSdpReport("publisher", rtcsd)
+	checkPanic(err)
+
+//	ofrsd, err := rtcsd.Unmarshal()
+//	checkPanic(err)
+
 	// Create a new RTCPeerConnection
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
