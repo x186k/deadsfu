@@ -258,11 +258,19 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			panic(err)
 		}
 
+
+		// pion can receiver either
+		//single m=video with simulcast, which is 3x ssrcs
+		// or three m=video non-simulcast, old style mediadesc
+		
+		// so we are going to offer my downstream all of my input
+		// tracks
+
 		// AddTrack should be called before CreateOffer
-		rtpSender, err := peerConnection.AddTrack(outputTracks["x"])
-		if err != nil {
-			panic(err)
-		}
+		for k, v := range outputTracks {
+			log.Println("add track to subscriber's offer, name:", k)
+			rtpSender, err := peerConnection.AddTrack(v)
+			checkPanic(err)
 
 		// Read incoming RTCP packets
 		// Before these packets are retuned they are processed by interceptors. For things
@@ -275,6 +283,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 				}
 			}
 		}()
+		}
 
 		// Create an offer for the other PeerConnection
 		offer, err := peerConnection.CreateOffer(nil)
