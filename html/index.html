@@ -144,11 +144,14 @@
                             },
                         ],
                     });
-                    pc.addTransceiver('video', {'direction': 'sendonly'})
-                    pc.addTransceiver('video', {'direction': 'sendonly'})
-                    pc.addTransceiver('video', {'direction': 'sendonly'})
+                    //the original added three tx's here for the return streams
+                    // for the sample
+                    // they did not nave sendonly, but could have I believe
+                    // pc.addTransceiver('video', {'direction': 'sendonly'})
+                    // pc.addTransceiver('video', {'direction': 'sendonly'})
+                    // pc.addTransceiver('video', {'direction': 'sendonly'})
                 } else {
-                    pc.addTransceiver('video', {'direction': 'sendonly'})
+                    pc.addTransceiver(stream.getVideoTracks()[0], {'direction': 'sendonly'})
                 }
 
                 let desc = await pc.createOffer()
@@ -210,7 +213,7 @@
                 pc.addTransceiver('audio', { 'direction': 'recvonly' })
                 pc.addTransceiver('video', { 'direction': 'recvonly' })
                 console.debug('n senders in getsenders()',pc.getSenders())
-
+                
                 pc.ontrack = function (event) {
                     var el = document.getElementById('video1')
                     el.srcObject = event.streams[0]
