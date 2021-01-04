@@ -329,7 +329,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrRecvOnlyAnswer}
 
-		err = logSdpReport("subscriber", sdesc)
+		err = logSdpReport("subscriber-recd-answer", sdesc)
 		checkPanic(err)
 
 		subMapMutex.Lock()
