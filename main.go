@@ -258,11 +258,10 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			panic(err)
 		}
 
-
 		// pion can receiver either
 		//single m=video with simulcast, which is 3x ssrcs
 		// or three m=video non-simulcast, old style mediadesc
-		
+
 		// so we are going to offer my downstream all of my input
 		// tracks
 
@@ -272,17 +271,17 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			rtpSender, err := peerConnection.AddTrack(v)
 			checkPanic(err)
 
-		// Read incoming RTCP packets
-		// Before these packets are retuned they are processed by interceptors. For things
-		// like NACK this needs to be called.
-		go func() {
-			rtcpBuf := make([]byte, 1500)
-			for {
-				if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-					return
+			// Read incoming RTCP packets
+			// Before these packets are retuned they are processed by interceptors. For things
+			// like NACK this needs to be called.
+			go func() {
+				rtcpBuf := make([]byte, 1500)
+				for {
+					if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+						return
+					}
 				}
-			}
-		}()
+			}()
 		}
 
 		// Create an offer for the other PeerConnection
@@ -435,78 +434,55 @@ func createIngestPeerConnection(offer string) (answer string) {
 	err := logSdpReport("publisher", rtcsd)
 	checkPanic(err)
 
-//	ofrsd, err := rtcsd.Unmarshal()
-//	checkPanic(err)
+	//	ofrsd, err := rtcsd.Unmarshal()
+	//	checkPanic(err)
 
 	// Create a new RTCPeerConnection
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
 
-	//  removed broadcast style track setup
-	// oh oh oh, can add directions to this sendonly...
-	// 	was 'broadcast' way:
-	// XXX
-	// the sfu appears ro work okay without this, using addtrack()
-	//peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+	
+	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		fmt.Println("Track has started rid:", track.RID())
 
-	// Create Track that we send video back to browser on
-	//just initializes a struct!
-	outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video_q", "pion_q")
-	if err != nil {
-		panic(err)
-	}
+		return
 
-	// replaces pc.AddTransceiverFromKind() from broadcast example
-	// important concurrency note:
-	// other subscribers can't read this until:
-	// ingestPresent is true, which is set later in this function
-	// other publishers can't get here, cause this function
-	// is protected by atomic.inc32(&x)
-	// so this map write IS safe. there. I told you. I broke it down.
-	outputTracks["x"] = outputTrack
-	if _, err = peerConnection.AddTrack(outputTracks["x"]); err != nil {
-		panic(err)
-	}
-
-	// Set a handler for when a new remote track starts, this just distributes all our packets
-	// to connected peers
-	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
-		// This can be less wasteful by processing incoming RTCP events, then we would emit a NACK/PLI when a viewer requests it
+		// Start reading from all the streams and sending them to the related output track
+		rid := track.RID()
 		go func() {
-			ticker := time.NewTicker(rtcpPLIInterval)
+			ticker := time.NewTicker(3 * time.Second)
 			for range ticker.C {
-				if rtcpSendErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}); rtcpSendErr != nil {
-					println(rtcpSendErr) //cam
+				fmt.Printf("Sending pli for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
+				if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}); writeErr != nil {
+					fmt.Println(writeErr)
+				}
+				// Send a remb message with a very high bandwidth to trigger chrome to send also the high bitrate stream
+				fmt.Printf("Sending remb for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
+				if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
+					fmt.Println(writeErr)
 				}
 			}
 		}()
-
-		// old 'broadcast' approach
-		// l ocalTrack, err = webrtc.NewTrackLocalStaticRTP(remoteTrack.Codec().RTPCodecCapability, "video", "pion")
-		// checkPanic(err)
-
-		rtpBuf := make([]byte, 1400)
 		for {
-			i, _, err := remoteTrack.Read(rtpBuf)
-			checkPanic(err)
-
-			fmt.Print("d")
-
-			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-			if _, err = outputTracks["x"].Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				panic(err)
+			// Read RTP packets being sent to Pion
+			//fmt.Println(99,rid)
+			_ = rid
+			packet, _, readErr := track.ReadRTP()
+			if readErr != nil {
+				panic(readErr)
 			}
+			_ = packet
+
+			// if writeErr := outputTracks[rid].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
+			// 	panic(writeErr)
+			// }
 		}
 	})
+	//--
 
-	// Set the remote SessionDescription
-	desc := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}
 
-	err = peerConnection.SetRemoteDescription(desc)
-	checkPanic(err)
 
-	err = logSdpReport("publisher", desc)
+	err = peerConnection.SetRemoteDescription(rtcsd)
 	checkPanic(err)
 
 	// Create answer
@@ -531,10 +507,10 @@ func createIngestPeerConnection(offer string) (answer string) {
 	ingestPresent = true
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
-	rtcsd := peerConnection.LocalDescription()
+	ansrtcsd := peerConnection.LocalDescription()
 
-	err = logSdpReport("pion/publisher", *rtcsd)
+	err = logSdpReport("pion-publisher", *ansrtcsd)
 	checkPanic(err)
 
-	return rtcsd.SDP
+	return ansrtcsd.SDP
 }

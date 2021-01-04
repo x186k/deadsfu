@@ -1,0 +1,78 @@
+
+
+
+//  removed broadcast style track setup
+	// oh oh oh, can add directions to this sendonly...
+	// 	was 'broadcast' way:
+	// XXX
+	// the sfu appears ro work okay without this, using addtrack()
+	//peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+
+	// Create Track that we send video back to browser on
+	//just initializes a struct!
+	// outputTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video_q", "pion_q")
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// The pc.AddTrack() call replaces pc.AddTransceiverFromKind() from broadcast example
+	// important concurrency note regarding the map assignment
+	// other subscribers can't read this until:
+	// ingestPresent is true, which is set later in this function
+	// other publishers can't get here, cause this function
+	// is protected by atomic.inc32(&x)
+	// so this map write IS safe. there. I told you. I broke it down.
+
+	//trackname := "main"
+	// if ii > 0 && len(rids) > 0 {
+	// 	trackname = rids[ii-1]
+	// }
+	// log.Println("using track name:", trackname)
+
+	//outputTracks[trackname] = outputTrack
+	// if _, err = peerConnection.AddTrack(outputTrack); err != nil {
+	// // 	panic(err)
+	// // }
+	// xinit := webrtc.RtpTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}
+	// // AddTransceiverFromTrack only looks at the direction, not the SendEncodings field
+	// if _, err = peerConnection.AddTransceiverFromTrack(outputTrack, xinit); err != nil {
+	// 	panic(err)
+	// }
+	//}
+
+	//++ from simulcast
+	// Set a handler for when a new remote track starts
+
+	
+	//https://tools.ietf.org/html/draft-ietf-mmusic-rid-15#section-4
+	// a=rid:<rid-id> <direction> [pt=<fmt-list>;]<restriction>=<value>...
+	// 	a=rid:f send
+	// a=rid:h send
+	// a=rid:q send
+	// a=simulcast:send f;h;q
+
+	//	rids := make([]string, 0)
+
+	// for ii, md := range ofrsd.MediaDescriptions {
+	// 	fmt.Println(" mediadesc %d", ii)
+	// 	//spew.Dump(md)
+	// 	if val, ok := md.Attribute("simulcast"); ok {
+	// 		log.Println("has simulcast, val = ", val)
+
+	// 		for _, at := range md.Attributes {
+	// 			if at.Key == "rid" {
+	// 				log.Println(" key/rid value=", at.Value)
+	// 				ridx := strings.Split(at.Value, " ")
+	// 				if len(ridx) > 2 {
+	// 					panic("rid sdp line too complex")
+	// 				}
+	// 				if ridx[1] != "send" {
+	// 					panic("rid sdp line not send")
+	// 				}
+	// 				rids = append(rids, ridx[0])
+	// 			}
+	// 		}
+	// 		continue
+	// 	}
+
+	log.Println("adding mediadesc")

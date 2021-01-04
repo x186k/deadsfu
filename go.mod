@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/caddyserver/certmagic v0.12.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/klauspost/cpuid v1.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libdns/cloudflare v0.0.0-20200528144945-97886e7873b1
