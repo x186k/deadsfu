@@ -7,7 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
+	_ "io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	//"github.com/davecgh/go-spew/spew"
+
 	//"github.com/digitalocean/godo"
 	"github.com/libdns/cloudflare"
 
@@ -31,6 +33,7 @@ import (
 
 const (
 	rtcpPLIInterval = time.Second * 3
+	debugsdp        = true
 )
 
 var peerConnectionConfig = webrtc.Configuration{
