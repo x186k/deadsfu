@@ -352,6 +352,10 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
 	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
+	if debugsdp {
+		_ = ioutil.WriteFile("/tmp/"+wherefrom, []byte(rtcsd.SDP), 0777)
+	}
+
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
 		return err
