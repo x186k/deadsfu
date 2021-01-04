@@ -305,7 +305,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		o := *peerConnection.LocalDescription()
 
-		err = logSdpReport("pion/subscribe", o)
+		err = logSdpReport("pion-subscribe", o)
 		checkPanic(err)
 
 		w.WriteHeader(http.StatusAccepted)
