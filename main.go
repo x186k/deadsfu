@@ -439,6 +439,22 @@ func createIngestPeerConnection(offer string) (answer string) {
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
 
+	// Read incoming RTCP packets
+	// Before these packets are retuned they are processed by interceptors. For things
+	// like NACK this needs to be called.
+	processRTCP := func(rtpSender *webrtc.RTPSender) {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+				return
+			}
+		}
+	}
+	log.Println("num senders", len(peerConnection.GetSenders()))
+	for _, rtpSender := range peerConnection.GetSenders() {
+		go processRTCP(rtpSender)
+	}
+
 	
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		fmt.Println("Track has started rid:", track.RID())
