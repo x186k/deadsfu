@@ -123,12 +123,6 @@ func main() {
 		checkPanic(err)
 	}
 
-	dotoken := os.Getenv("DIGITALOCEAN_ACCESS_TOKEN")
-	if dotoken == "" {
-		fmt.Printf("DIGITALOCEAN_ACCESS_TOKEN not set\n")
-		return
-	}
-
 	//certmagic.DefaultACME.Email = ""
 
 	//I find this function from certmagic more opaque than I like
@@ -150,10 +144,14 @@ func main() {
 	certmagic.DefaultACME.Agreed = true
 	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
 
-	xxx := os.Getenv("CLOUDFLARE_TOKEN")
+	cftoken := os.Getenv("CLOUDFLARE_TOKEN")
+	if cftoken == "" {
+		fmt.Printf("CLOUDFLARE_TOKEN not set\n")
+		return
+	}
 	//xx:=digitalocean.Provider{APIToken: dotoken,
 	//	Client: digitalocean.Client{XClient:  client}}
-	yy := cloudflare.Provider{APIToken: xxx}
+	yy := cloudflare.Provider{APIToken: cftoken}
 
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
 		DNSProvider:        &yy,
