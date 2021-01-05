@@ -88,7 +88,7 @@
                 pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
                 //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
-                let simulcast = true
+                let simulcast = false
                 if (simulcast) {
                     pc.addTransceiver(stream.getVideoTracks()[0], {
                         //cam sendrecv will not fix rids Ontrack bug
