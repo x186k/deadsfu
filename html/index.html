@@ -12,63 +12,21 @@
 <body>
     <nav class="navbar" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
-            <a class="navbar-item" href="https://x186k.org">
-                x186k.org
-            </a>
 
-            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false"
-                data-target="navbarBasicExample">
-                <span aria-hidden="true"></span>
-                <span aria-hidden="true"></span>
-                <span aria-hidden="true"></span>
-            </a>
-        </div>
-
-        <div id="navbarBasicExample" class="navbar-menu">
-            <div class="navbar-start">
-                <a class="navbar-item">
-                    Home
-                </a>
-
-                <a class="navbar-item">
-                    Documentation
-                </a>
-
-                <div class="navbar-item has-dropdown is-hoverable">
-                    <a class="navbar-link">
-                        More
-                    </a>
-
-                    <div class="navbar-dropdown">
-                        <a class="navbar-item">
-                            About
-                        </a>
-                        <a class="navbar-item">
-                            Jobs
-                        </a>
-                        <a class="navbar-item">
-                            Contact
-                        </a>
-                        <hr class="navbar-divider">
-                        <a class="navbar-item">
-                            Report an issue
-                        </a>
-                    </div>
+            <div class="navbar-item">
+                <div class="buttons">
+                  <a class="button is-primary">
+                    <strong>Sign up</strong>
+                  </a>
+                  <a class="button is-light">
+                    Log in
+                  </a>
                 </div>
-            </div>
+              </div>
 
-            <div class="navbar-end">
-                <div class="navbar-item">
-                    <div class="buttons">
-                        <a class="button is-primary">
-                            <strong>Sign up</strong>
-                        </a>
-                        <a class="button is-light">
-                            Log in
-                        </a>
-                    </div>
-                </div>
-            </div>
+
+
+
         </div>
     </nav>
     <section class="section">
@@ -86,8 +44,8 @@
                 </div>
                 <div class=" column">
                     <figure class="image is-16by9">
-                        <video id="video1" autoplay class="has-ratio" width="1280" height="720" frameborder="0"
-                            allowfullscreen>
+                        <video id="video1" autoplay muted class="has-ratio" width="1280" height="720" frameborder="0"
+                            poster="https://x186k.org/x186k.png" allowfullscreen>
                         </video>
                     </figure>
                 </div>
@@ -98,9 +56,7 @@
 
     <section class="section">
         <div class="container">
-            <div class="is-centered">
-                <p class="content">WHIP URL: <span name="rxurl" </p>
-            </div>
+
         </div>
     </section>
     <script>
@@ -135,6 +91,7 @@
                 let simulcast = true
                 if (simulcast) {
                     pc.addTransceiver(stream.getVideoTracks()[0], {
+                        //cam sendrecv will not fix rids Ontrack bug
                         direction: 'sendonly',
                         streams: [stream],
                         sendEncodings: [
@@ -155,7 +112,10 @@
                     //the original added three tx's here for the return streams
                     // for the sample
                     // they did not nave sendonly, but could have I believe
-                    // pc.addTransceiver('video', {'direction': 'sendonly'})
+                    // leaving this transciver in, even though
+                    // it is not needed fixes the 
+                    // OnTrack callback issue
+                    pc.addTransceiver('video', {'direction': 'sendonly'})
                     // pc.addTransceiver('video', {'direction': 'sendonly'})
                     // pc.addTransceiver('video', {'direction': 'sendonly'})
                 } else {
@@ -251,11 +211,6 @@
                 console.error('receive error', error)
             }
         }
-
-
-        //let rxwhipurl = window.location.origin + '/rxwhip'
-
-        // document.getElementById("originurl").textContent = rxwhipurl
 
 
         function openTab(evt, tabTitle) {
