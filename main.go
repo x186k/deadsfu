@@ -45,6 +45,7 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var (
+	videoMimeType string
 	rtcapi        *webrtc.API
 	ingestPresent bool
 	pubStartCount uint32
@@ -289,26 +290,28 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		//single m=video with simulcast, which is 3x ssrcs
 		// or three m=video non-simulcast, old style mediadesc
 
-		// so we are going to offer my downstream all of my input
-		// tracks
+		subscriberIsBrowser := true
 
-		// AddTrack should be called before CreateOffer
-		for k, v := range outputTracks {
-			log.Println("add track to subscriber's offer, name:", k)
-			rtpSender, err := peerConnection.AddTrack(v)
+		if subscriberIsBrowser {
+			// we just give browsers a single track, but their own unique track
+			log.Println("addtrack for browser subscriber")
+
+			vidtrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
 			checkPanic(err)
 
-			// Read incoming RTCP packets
-			// Before these packets are returned they are processed by interceptors. For things
-			// like NACK this needs to be called.
-			go func() {
-				rtcpBuf := make([]byte, 1500)
-				for {
-					if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-						return
-					}
-				}
-			}()
+			rtpSender, err := peerConnection.AddTrack(vidtrack)
+			checkPanic(err)
+			go rtcpReadLoop(rtpSender)
+
+		} else {
+			// another x186ksfu instance
+			// we forward all tracks down
+			for k, v := range outputTracks {
+				log.Println("addtrack for sfu subscriber:", k)
+				rtpSender, err := peerConnection.AddTrack(v)
+				checkPanic(err)
+				go rtcpReadLoop(rtpSender)
+			}
 		}
 
 		// Create an offer for the other PeerConnection
@@ -497,6 +500,18 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 		}
 		log.Println("OnTrack trackname:", trackname)
 		log.Println("OnTrack codec:", track.Codec().MimeType)
+
+
+		// save the video mime type, and check that all video tracks are the same type
+		if strings.HasPrefix(track.Codec().MimeType, "video") {
+			if videoMimeType == "" {
+				videoMimeType = track.Codec().MimeType
+			} else {
+				if track.Codec().MimeType != videoMimeType {
+					panic("cannot support multiple mime types")
+				}
+			}
+		}
 
 		localtrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
 		checkPanic(err)
