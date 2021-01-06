@@ -98,7 +98,10 @@ func initPion() {
 	// 	panic(err)
 	// }
 
-	err:=RegisterH264Codecs(&m)
+	// err := RegisterH264Codecs(&m)
+	// checkPanic(err)
+
+	err := m.RegisterDefaultCodecs()
 	checkPanic(err)
 
 	// Create the API object with the MediaEngine
