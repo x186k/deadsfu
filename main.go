@@ -33,8 +33,7 @@ import (
 )
 
 const (
-	rtcpPLIInterval = time.Second * 3
-	debugsdp        = true
+	debugsdp = true
 )
 
 var peerConnectionConfig = webrtc.Configuration{
