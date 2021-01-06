@@ -331,12 +331,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		subMap[txid] = peerConnection
 		subMapMutex.Unlock()
 		// delete the map entry in one minute. should be plenty of time
-		go func() {
-			time.Sleep(time.Minute)
-			subMapMutex.Lock()
-			delete(subMap, txid)
-			subMapMutex.Unlock()
-		}()
 
 		o := *peerConnection.LocalDescription()
 
@@ -361,10 +355,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		err = peerConnection.SetRemoteDescription(sdesc)
 		checkPanic(err)
-
-		subMapMutex.Lock()
-		delete(subMap, txid) //no error if missing
-		subMapMutex.Unlock()
 
 		log.Println("setremote done")
 	}
@@ -499,6 +489,7 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 			trackname = track.RID()
 		}
 		log.Println("OnTrack trackname:", trackname)
+		log.Println("OnTrack codec:", track.Codec().MimeType)
 
 		localtrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
 		checkPanic(err)
