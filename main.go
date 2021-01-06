@@ -44,17 +44,29 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
+var myMetrics struct {
+    rtpWriteError	uint64
+}
+
+
 var (
 	videoMimeType string
 	rtcapi        *webrtc.API
 	ingestPresent bool
 	pubStartCount uint32
 	// going to need more of these
-	subMap       map[string]*webrtc.PeerConnection = make(map[string]*webrtc.PeerConnection)
+	subMap       map[string]*Subscriber = make(map[string]*Subscriber)
 	subMapMutex  sync.Mutex
 	outputTracks map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
 	//outputTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
 )
+
+type Subscriber struct {
+	simuTrackName string                      // which simulcast track is being watched
+	simuTrack     *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
+
+	conn *webrtc.PeerConnection
+}
 
 func checkPanic(err error) {
 	if err != nil {
@@ -292,12 +304,17 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		subscriberIsBrowser := true
 
+		sub := &Subscriber{conn: peerConnection}
+
 		if subscriberIsBrowser {
 			// we just give browsers a single track, but their own unique track
 			log.Println("addtrack for browser subscriber")
 
 			vidtrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
 			checkPanic(err)
+
+			sub.simuTrackName = "q"
+			sub.simuTrack = vidtrack
 
 			rtpSender, err := peerConnection.AddTrack(vidtrack)
 			checkPanic(err)
@@ -334,7 +351,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		<-gatherComplete
 
 		subMapMutex.Lock()
-		subMap[txid] = peerConnection
+		subMap[txid] = sub
 		subMapMutex.Unlock()
 		// delete the map entry in one minute. should be plenty of time
 
@@ -356,7 +373,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		checkPanic(err)
 
 		subMapMutex.Lock()
-		peerConnection := subMap[txid]
+		peerConnection := subMap[txid].conn
 		subMapMutex.Unlock()
 
 		err = peerConnection.SetRemoteDescription(sdesc)
@@ -501,7 +518,6 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 		log.Println("OnTrack trackname:", trackname)
 		log.Println("OnTrack codec:", track.Codec().MimeType)
 
-
 		// save the video mime type, and check that all video tracks are the same type
 		if strings.HasPrefix(track.Codec().MimeType, "video") {
 			if videoMimeType == "" {
@@ -543,16 +559,22 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 			}
 			_ = packet
 
-			if trackname == "q" {
-				subMapMutex.Lock()
-				for _, v := range subMap {
-					//panic("x")
-					t := v.GetSenders()[0].Track()
-					tl := t.(*webrtc.TrackLocalStaticRTP)
-					_ = tl.WriteRTP(packet)
-				}
+			subMapMutex.Lock()
+			// for each subscriber
+			for _, sub := range subMap {
 				subMapMutex.Unlock()
+				// is this subscriber watching this ingest incoming track???
+				if sub.simuTrackName != "" && sub.simuTrackName == trackname && sub.simuTrack != nil {
+					// if yes, forward packet
+					err = sub.simuTrack.WriteRTP(packet)
+					if err != nil {
+						myMetrics.rtpWriteError++
+					}
+				}
+				subMapMutex.Lock()
 			}
+			subMapMutex.Unlock()
+
 			if writeErr := outputTracks[trackname].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
 				panic(writeErr)
 			}
