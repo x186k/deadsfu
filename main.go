@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	_ "io"
 	"io/ioutil"
 	"log"
@@ -270,7 +271,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			checkPanic(err)
 
 			// Read incoming RTCP packets
-			// Before these packets are retuned they are processed by interceptors. For things
+			// Before these packets are returned they are processed by interceptors. For things
 			// like NACK this needs to be called.
 			go func() {
 				rtcpBuf := make([]byte, 1500)
@@ -423,14 +424,11 @@ func dialUpstream(url string) error {
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngestPeerConnection(offer string) (answer string) {
+func createIngestPeerConnection(offersdp string) (answer string) {
 
 	log.Println("createIngestPeerConnection")
 
 	// Set the remote SessionDescription
-	rtcsd := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}
-	err := logSdpReport("publisher", rtcsd)
-	checkPanic(err)
 
 	//	ofrsd, err := rtcsd.Unmarshal()
 	//	checkPanic(err)
@@ -439,6 +437,11 @@ func createIngestPeerConnection(offer string) (answer string) {
 	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
 
+	// XXX 1 5 20 cam
+	// not sure reading rtcp helps, since we should not have any
+	// senders on the ingest.
+	// leave for now
+	//
 	// Read incoming RTCP packets
 	// Before these packets are retuned they are processed by interceptors. For things
 	// like NACK this needs to be called.
@@ -455,14 +458,27 @@ func createIngestPeerConnection(offer string) (answer string) {
 		go processRTCP(rtpSender)
 	}
 
-	
+	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
+	err = logSdpReport("publisher", offer)
+	checkPanic(err)
+
+	err = peerConnection.SetRemoteDescription(offer)
+	checkPanic(err)
+
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		fmt.Println("Track has started rid:", track.RID())
 
-		return
+		log.Println("OnTrack ID():", track.ID())
+		log.Println("OnTrack RID():", track.RID())
+		trackname := track.ID()
+		if track.RID() != "" {
+			trackname = track.RID()
+		}
+		log.Println("OnTrack trackname:", trackname)
 
-		// Start reading from all the streams and sending them to the related output track
-		rid := track.RID()
+		localtrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
+		checkPanic(err)
+		outputTracks[trackname] = localtrack
+
 		go func() {
 			ticker := time.NewTicker(3 * time.Second)
 			for range ticker.C {
@@ -477,27 +493,26 @@ func createIngestPeerConnection(offer string) (answer string) {
 				}
 			}
 		}()
+
+		//this is the main rtp read/write loop
+		// one per track (OnTrack above)
 		for {
 			// Read RTP packets being sent to Pion
 			//fmt.Println(99,rid)
-			_ = rid
 			packet, _, readErr := track.ReadRTP()
 			if readErr != nil {
 				panic(readErr)
 			}
 			_ = packet
 
-			// if writeErr := outputTracks[rid].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
-			// 	panic(writeErr)
-			// }
+			if writeErr := outputTracks[trackname].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
+				panic(writeErr)
+			}
 		}
 	})
-	//--
-
-
-
-	err = peerConnection.SetRemoteDescription(rtcsd)
-	checkPanic(err)
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("Connection State has changed %s \n", connectionState.String())
+	})
 
 	// Create answer
 	sessdesc, err := peerConnection.CreateAnswer(nil)

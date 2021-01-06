@@ -177,10 +177,7 @@
                 //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
                 // pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: posttext }))
 
-                console.debug('n senders in getsenders()', pc.getSenders())
-                pc.addTransceiver('audio', { 'direction': 'recvonly' })
-                pc.addTransceiver('video', { 'direction': 'recvonly' })
-                console.debug('n senders in getsenders()', pc.getSenders())
+                
 
                 pc.ontrack = function (event) {
                     var el = document.getElementById('video1')
@@ -192,6 +189,10 @@
                 console.debug('got N line offer:', resptext.split(/\r\n|\r|\n/).length)
 
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: resptext }))
+                console.debug('n senders in getsenders()', pc.getSenders())
+                pc.addTransceiver('audio', { 'direction': 'recvonly' })
+                pc.addTransceiver('video', { 'direction': 'recvonly' })
+                console.debug('n senders in getsenders()', pc.getSenders())
                 let init = await pc.createAnswer()
                 await pc.setLocalDescription(init)
 
