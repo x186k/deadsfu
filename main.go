@@ -45,6 +45,7 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var (
+	rtcapi        *webrtc.API
 	ingestPresent bool
 	pubStartCount uint32
 	// going to need more of these
@@ -84,6 +85,31 @@ var port = flag.Int("port", 8000, "default port to accept HTTPS on")
 
 var info = log.New(os.Stderr, "I ", log.Lmicroseconds|log.LUTC)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
+
+func initPion() {
+	m := webrtc.MediaEngine{}
+
+	// Setup the codecs you want to use.
+	// We'll use a VP8 and Opus but you can also define your own
+	// if err := m.RegisterCodec(webrtc.RTPCodecParameters{
+	// 	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/vp8", ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
+	// 	PayloadType:        96,
+	// }, webrtc.RTPCodecTypeVideo); err != nil {
+	// 	panic(err)
+	// }
+
+	err:=RegisterH264Codecs(&m)
+	checkPanic(err)
+
+	// Create the API object with the MediaEngine
+	rtcapi = webrtc.NewAPI(webrtc.WithMediaEngine(&m))
+	//rtcApi = webrtc.NewAPI()
+
+}
+func init() {
+
+	initPion()
+}
 
 func main() {
 	var err error
@@ -251,7 +277,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		// part one of two part transaction
 
 		// Create a new PeerConnection
-		peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
+		peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
 		if err != nil {
 			panic(err)
 		}
@@ -433,7 +459,7 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	//	checkPanic(err)
 
 	// Create a new RTCPeerConnection
-	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
+	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
 
 	// XXX 1 5 20 cam
