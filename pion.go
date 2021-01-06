@@ -8,7 +8,7 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func  RegisterDefaultCodecs(m *webrtc.MediaEngine) error {
+func  RegisterH264Codecs(m *webrtc.MediaEngine) error {
 	// Default Pion Audio Codecs
 	for _, codec := range []webrtc.RTPCodecParameters{
 		{
