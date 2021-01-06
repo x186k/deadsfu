@@ -530,6 +530,16 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 			}
 			_ = packet
 
+			if trackname == "q" {
+				subMapMutex.Lock()
+				for _, v := range subMap {
+					//panic("x")
+					t := v.GetSenders()[0].Track()
+					tl := t.(*webrtc.TrackLocalStaticRTP)
+					_ = tl.WriteRTP(packet)
+				}
+				subMapMutex.Unlock()
+			}
 			if writeErr := outputTracks[trackname].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
 				panic(writeErr)
 			}
