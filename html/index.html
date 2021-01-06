@@ -163,8 +163,10 @@
                     headers: { 'Content-Type': 'application/sdp', },
                     body: ''
                 }
+                console.debug('before fetch1')
                 const resp = await fetch(url, fetchopt1)
                 const resptext = await resp.text()
+                console.debug('fetch1 http status code',resp.status)
                 if (resp.status != 202) {
                     console.error('sfu http error', resp.status, resptext)
                     pc.close()
@@ -204,9 +206,9 @@
                     headers: { 'Content-Type': 'application/sdp', },
                     body: pc.localDescription.sdp
                 }
-                fetch(url, fetchopt2)
-
-                console.debug('sent answer')
+                console.debug('before fetch2')
+                const resp2 = await fetch(url, fetchopt2)
+                console.debug('fetch2 http status code',resp2.status)
 
             } catch (error) {
                 console.error('receive error', error)
