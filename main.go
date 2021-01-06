@@ -426,6 +426,15 @@ func dialUpstream(url string) error {
 	return nil
 }
 
+func rtcpReadLoop(rtpSender *webrtc.RTPSender) {
+	rtcpBuf := make([]byte, 1500)
+	for {
+		if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+			return
+		}
+	}
+}
+
 /*
 	IMPORTANT
 	read this like your life depends upon it.
@@ -463,18 +472,13 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	// Read incoming RTCP packets
 	// Before these packets are retuned they are processed by interceptors. For things
 	// like NACK this needs to be called.
-	processRTCP := func(rtpSender *webrtc.RTPSender) {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
-		}
-	}
-	log.Println("num senders", len(peerConnection.GetSenders()))
-	for _, rtpSender := range peerConnection.GetSenders() {
-		go processRTCP(rtpSender)
-	}
+
+	// we dont have, wont have any senders for the ingest.
+	// it is just a receiver
+	// log.Println("num senders", len(peerConnection.GetSenders()))
+	// for _, rtpSender := range peerConnection.GetSenders() {
+	// 	go rtcpReadLoop(rtpSender)
+	// }
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
 	err = logSdpReport("publisher", offer)
