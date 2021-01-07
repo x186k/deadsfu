@@ -15,14 +15,14 @@
 
             <div class="navbar-item">
                 <div class="buttons">
-                  <a class="button is-primary">
-                    <strong>Sign up</strong>
-                  </a>
-                  <a class="button is-light">
-                    Log in
-                  </a>
+                    <a class="button is-primary">
+                        <strong>Sign up</strong>
+                    </a>
+                    <a class="button is-light">
+                        Log in
+                    </a>
                 </div>
-              </div>
+            </div>
 
 
 
@@ -115,7 +115,7 @@
                     // leaving this transciver in, even though
                     // it is not needed fixes the 
                     // OnTrack callback issue
-                    pc.addTransceiver('video', {'direction': 'sendonly'})
+                    pc.addTransceiver('video', { 'direction': 'sendonly' })
                     // pc.addTransceiver('video', {'direction': 'sendonly'})
                     // pc.addTransceiver('video', {'direction': 'sendonly'})
                 } else {
@@ -156,7 +156,7 @@
 
 
             try {
-                const url = suburl + '/txid=' + longRandomString()
+                const url = suburl + '?txid=' + longRandomString()
                 const fetchopt1 =
                 {
                     method: 'POST',
@@ -166,10 +166,10 @@
                 console.debug('before fetch1')
                 const resp = await fetch(url, fetchopt1)
                 const resptext = await resp.text()
-                console.debug('fetch1 http status code',resp.status)
+                console.debug('fetch1 http status code', resp.status)
                 if (resp.status != 202) {
                     console.error('sfu http error', resp.status, resptext)
-                    pc.close()
+                    try { pc.close() } catch (error) { }
                     return
                 }
 
@@ -179,7 +179,7 @@
                 //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
                 // pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: posttext }))
 
-                
+
 
                 pc.ontrack = function (event) {
                     var el = document.getElementById('video1')
@@ -208,7 +208,7 @@
                 }
                 console.debug('before fetch2')
                 const resp2 = await fetch(url, fetchopt2)
-                console.debug('fetch2 http status code',resp2.status)
+                console.debug('fetch2 http status code', resp2.status)
 
             } catch (error) {
                 console.error('receive error', error)

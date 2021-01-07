@@ -16,7 +16,6 @@ import (
 
 	//"net/http/httputil"
 	"os"
-	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,9 +44,8 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var myMetrics struct {
-    rtpWriteError	uint64
+	rtpWriteError uint64
 }
-
 
 var (
 	videoMimeType string
@@ -64,8 +62,7 @@ var (
 type Subscriber struct {
 	simuTrackName string                      // which simulcast track is being watched
 	simuTrack     *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
-
-	conn *webrtc.PeerConnection
+	conn          *webrtc.PeerConnection
 }
 
 func checkPanic(err error) {
@@ -151,7 +148,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	pubPath := "/pub"
-	subPath := "/sub/" // 2nd slash important
+	//subPath := "/sub/" // pre-query string version
+	subPath := "/sub" // 2nd slash important
 
 	if !*nohtml {
 		mux.HandleFunc("/", slashHandler)
@@ -237,6 +235,11 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 
 	log.Println("pubHandler request:", req.URL.String())
 
+	if req.Method != "POST" {
+		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
+		return
+	}
+
 	offer, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		// cam
@@ -267,18 +270,35 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("subHandler request", httpreq.URL.String())
 
+	if httpreq.Method != "POST" {
+		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
+		return
+	}
+
 	if !ingestPresent {
 		teeErrorStderrHttp(w, fmt.Errorf("no publisher, please connect publisher first"))
 		return
 	}
 
-	lastelement := path.Base(httpreq.URL.Path)
-	if !strings.HasPrefix(lastelement, "txid=") || len(lastelement) < 15 {
-		//can handle, do not panic
-		teeErrorStderrHttp(w, fmt.Errorf("last element of sfuout url must start with txid= and be 15 chars or more"))
+	txid := ""
+
+	if txidarray, ok := httpreq.URL.Query()["txid"]; ok {
+		if len(txidarray) < 1 {
+			teeErrorStderrHttp(w, fmt.Errorf("txid empty"))
+			return
+		}
+		txid = txidarray[0]
+	} else {
+		teeErrorStderrHttp(w, fmt.Errorf("txid query param missing"))
 		return
 	}
-	txid := lastelement[5:]
+
+	if len(txid) < 15 {
+		teeErrorStderrHttp(w, fmt.Errorf("txid value must be 15 chars or more"))
+		return
+	}
+
+	log.Println("txid is", txid)
 
 	// empty or answer
 	raw, err := ioutil.ReadAll(httpreq.Body)
@@ -290,6 +310,18 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	if len(emptyOrRecvOnlyAnswer) == 0 { // empty
 		log.Println("empty body")
+
+		subMapMutex.Lock()
+		_, found := subMap[txid]
+		sub := &Subscriber{}
+		subMap[txid] = sub
+		subMapMutex.Unlock()
+
+		if found {
+			teeErrorStderrHttp(w, fmt.Errorf("cannot submit empty body twice"))
+			return
+		}
+
 		// part one of two part transaction
 
 		// Create a new PeerConnection
@@ -303,8 +335,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		// or three m=video non-simulcast, old style mediadesc
 
 		subscriberIsBrowser := true
-
-		sub := &Subscriber{conn: peerConnection}
 
 		if subscriberIsBrowser {
 			// we just give browsers a single track, but their own unique track
@@ -350,9 +380,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		// in a production application you should exchange ICE Candidates via OnICECandidate
 		<-gatherComplete
 
-		subMapMutex.Lock()
-		subMap[txid] = sub
-		subMapMutex.Unlock()
+		sub.conn = peerConnection
 		// delete the map entry in one minute. should be plenty of time
 
 		o := *peerConnection.LocalDescription()
@@ -412,7 +440,7 @@ func dialUpstream(url string) error {
 
 	txid, err := randomHex(10)
 	checkPanic(err)
-	url = url + "/txid=" + txid
+	url = url + "?txid=" + txid
 
 	log.Println("dialUpstream url:", url)
 
