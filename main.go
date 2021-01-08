@@ -28,6 +28,7 @@ import (
 	"github.com/libdns/cloudflare"
 
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -44,14 +45,16 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var myMetrics struct {
-	rtpWriteError uint64
+	writeRTPError uint64
 }
 
 var (
-	videoMimeType string
-	rtcapi        *webrtc.API
-	ingestPresent bool
-	pubStartCount uint32
+	availableRIDSet      map[string]bool = make(map[string]bool)
+	availableRIDSetMutex sync.Mutex
+	videoMimeType        string
+	rtcapi               *webrtc.API
+	ingestPresent        bool
+	pubStartCount        uint32
 	// going to need more of these
 	subMap       map[string]*Subscriber = make(map[string]*Subscriber)
 	subMapMutex  sync.Mutex
@@ -59,10 +62,16 @@ var (
 	//outputTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
 )
 
+//XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
-	simuTrackName string                      // which simulcast track is being watched
-	simuTrack     *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
-	conn          *webrtc.PeerConnection
+	step            int                         // true indicates got
+	simuTrack       *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
+	conn            *webrtc.PeerConnection      // peerconnection
+	currentRID      string                      // simulcast level for playback
+	requestedRID    string
+	timestampOffset uint32
+	seqnoOffset     uint16
+	lastSent        *rtp.Packet
 }
 
 func checkPanic(err error) {
@@ -108,11 +117,14 @@ func initPion() {
 	// 	panic(err)
 	// }
 
-	// err := RegisterH264Codecs(&m)
-	// checkPanic(err)
-
-	err := m.RegisterDefaultCodecs()
-	checkPanic(err)
+	h264 := false
+	if h264 {
+		err := RegisterH264Codecs(&m)
+		checkPanic(err)
+	} else {
+		err := m.RegisterDefaultCodecs()
+		checkPanic(err)
+	}
 
 	// Create the API object with the MediaEngine
 	rtcapi = webrtc.NewAPI(webrtc.WithMediaEngine(&m))
@@ -209,8 +221,8 @@ func main() {
 	ln, err := tls.Listen("tcp", ":"+strconv.Itoa(*port), tlsConfig)
 	checkPanic(err)
 
-	log.Println("WHIP input listener at:", ln.Addr().String(), pubPath)
-	log.Println("WHIP output listener at:", ln.Addr().String(), subPath)
+	log.Println("WHIP input listener at:  ", "https://"+ln.Addr().String()+pubPath)
+	log.Println("WHIP output listener at:", "https://"+ln.Addr().String()+subPath)
 
 	err = http.Serve(ln, mux)
 	panic(err)
@@ -270,26 +282,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("subHandler request", httpreq.URL.String())
 
-	if httpreq.Method != "POST" {
-		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
-		return
-	}
-
 	if !ingestPresent {
 		teeErrorStderrHttp(w, fmt.Errorf("no publisher, please connect publisher first"))
 		return
 	}
 
-	txid := ""
-
-	if txidarray, ok := httpreq.URL.Query()["txid"]; ok {
-		if len(txidarray) < 1 {
-			teeErrorStderrHttp(w, fmt.Errorf("txid empty"))
-			return
-		}
-		txid = txidarray[0]
-	} else {
-		teeErrorStderrHttp(w, fmt.Errorf("txid query param missing"))
+	txid := httpreq.URL.Query().Get("txid")
+	if txid == "" {
+		teeErrorStderrHttp(w, fmt.Errorf("txid missing"))
 		return
 	}
 
@@ -308,27 +308,51 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	}
 	emptyOrRecvOnlyAnswer := string(raw)
 
-	if len(emptyOrRecvOnlyAnswer) == 0 { // empty
-		log.Println("empty body")
-
-		subMapMutex.Lock()
-		_, found := subMap[txid]
-		sub := &Subscriber{}
+	subMapMutex.Lock()
+	sub, ok := subMap[txid]
+	if !ok {
+		sub = &Subscriber{}
 		subMap[txid] = sub
-		subMapMutex.Unlock()
+	}
+	subMapMutex.Unlock()
 
-		if found {
-			teeErrorStderrHttp(w, fmt.Errorf("cannot submit empty body twice"))
+	rid := httpreq.URL.Query().Get("rid")
+	step := httpreq.URL.Query().Get("step")
+
+	if rid != "" {
+		availableRIDSetMutex.Lock()
+		_, ok := availableRIDSet[rid]
+		availableRIDSetMutex.Unlock()
+		if ok {
+			sub.requestedRID = rid
+			w.WriteHeader(http.StatusAccepted)
 			return
 		}
+		teeErrorStderrHttp(w, fmt.Errorf("rid is not available"))
+		return
+	} else if step == "1" { // asking for offer
+		if httpreq.Method != "POST" {
+			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed for ?step="))
+			return
+		}
+
+		if sub.step != 0 {
+			teeErrorStderrHttp(w, fmt.Errorf("cannot repeat step=1"))
+			return
+		}
+		sub.step = 1
 
 		// part one of two part transaction
 
 		// Create a new PeerConnection
+		log.Println("created PC")
 		peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
 		if err != nil {
 			panic(err)
 		}
+		peerConnection.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
+			log.Println(pcs)
+		})
 
 		// pion can receiver either
 		//single m=video with simulcast, which is 3x ssrcs
@@ -343,7 +367,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			vidtrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
 			checkPanic(err)
 
-			sub.simuTrackName = "q"
 			sub.simuTrack = vidtrack
 
 			rtpSender, err := peerConnection.AddTrack(vidtrack)
@@ -378,7 +401,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		// Block until ICE Gathering is complete, disabling trickle ICE
 		// we do this because we only can exchange one signaling message
 		// in a production application you should exchange ICE Candidates via OnICECandidate
+		log.Println("pre gatherComplete read")
 		<-gatherComplete
+		log.Println("post gatherComplete read")
 
 		sub.conn = peerConnection
 		// delete the map entry in one minute. should be plenty of time
@@ -392,7 +417,17 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		_, _ = w.Write([]byte(o.SDP))
 
 		return
-	} else {
+	} else if step == "2" {
+		if httpreq.Method != "POST" {
+			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed for ?step="))
+			return
+		}
+
+		if sub.step != 1 {
+			teeErrorStderrHttp(w, fmt.Errorf("step=2 must follow step=1"))
+			return
+		}
+		sub.step = 2
 		// part two of two part transaction
 
 		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrRecvOnlyAnswer}
@@ -408,6 +443,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		checkPanic(err)
 
 		log.Println("setremote done")
+	} else {
+		teeErrorStderrHttp(w, fmt.Errorf("step=1 or step=2 or rid=<rid> must be supplied"))
+		return
 	}
 }
 
@@ -539,19 +577,23 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 
 		log.Println("OnTrack ID():", track.ID())
 		log.Println("OnTrack RID():", track.RID())
-		trackname := track.ID()
+		trackname := "main"
 		if track.RID() != "" {
 			trackname = track.RID()
+			availableRIDSetMutex.Lock()
+			availableRIDSet[track.RID()] = true
+			availableRIDSetMutex.Unlock()
 		}
 		log.Println("OnTrack trackname:", trackname)
-		log.Println("OnTrack codec:", track.Codec().MimeType)
+		mimetype := track.Codec().MimeType
+		log.Println("OnTrack codec:", mimetype)
 
 		// save the video mime type, and check that all video tracks are the same type
-		if strings.HasPrefix(track.Codec().MimeType, "video") {
+		if strings.HasPrefix(mimetype, "video") {
 			if videoMimeType == "" {
-				videoMimeType = track.Codec().MimeType
+				videoMimeType = mimetype
 			} else {
-				if track.Codec().MimeType != videoMimeType {
+				if mimetype != videoMimeType {
 					panic("cannot support multiple mime types")
 				}
 			}
@@ -564,12 +606,12 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 		go func() {
 			ticker := time.NewTicker(3 * time.Second)
 			for range ticker.C {
-				fmt.Printf("Sending pli for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
+				//fmt.Printf("Sending pli for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
 				if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}); writeErr != nil {
 					fmt.Println(writeErr)
 				}
 				// Send a remb message with a very high bandwidth to trigger chrome to send also the high bitrate stream
-				fmt.Printf("Sending remb for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
+				//fmt.Printf("Sending remb for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
 				if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
 					fmt.Println(writeErr)
 				}
@@ -585,18 +627,48 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 			if readErr != nil {
 				panic(readErr)
 			}
-			_ = packet
 
 			subMapMutex.Lock()
 			// for each subscriber
 			for _, sub := range subMap {
 				subMapMutex.Unlock()
-				// is this subscriber watching this ingest incoming track???
-				if sub.simuTrackName != "" && sub.simuTrackName == trackname && sub.simuTrack != nil {
+
+				if sub.requestedRID == track.RID() {
+					iskey := keyFrameHelper(packet.Payload, mimetype)
+					if iskey {
+
+						// 12 7 20 chrome seems more sensative to timestamp than seqnp
+
+						sub.seqnoOffset = packet.SequenceNumber - sub.lastSent.SequenceNumber - 1
+						// one could argue that X should be the inter-frame-TS-delta
+						// but if you use the inter-frame-TS-delta, you will make the timestamp change early
+						// which might mess with gstreamer type decoders
+						// if you use X=0, then the new frame probably starts on the same timestamp as the cut
+						// frame. But the math&housekeeping is easier! :)
+						x := uint32(2970)
+						sub.timestampOffset = packet.Timestamp - sub.lastSent.Timestamp - x
+
+						sub.currentRID = sub.requestedRID
+						sub.requestedRID = ""
+					}
+				}
+
+				ridMatch := sub.currentRID == track.RID()
+				useDefaultRid := sub.currentRID == "" && track.RID() == "q"
+
+				if ridMatch || useDefaultRid {
 					// if yes, forward packet
+
+					//XXXXXXXX fixme
+					packet.SSRC = 0xdeadbeef
+					packet.SequenceNumber -= sub.seqnoOffset
+					packet.Timestamp -= sub.timestampOffset
+
+					sub.lastSent = packet
+
 					err = sub.simuTrack.WriteRTP(packet)
 					if err != nil {
-						myMetrics.rtpWriteError++
+						myMetrics.writeRTPError++
 					}
 				}
 				subMapMutex.Lock()
@@ -640,4 +712,21 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	checkPanic(err)
 
 	return ansrtcsd.SDP
+}
+
+func keyFrameHelper(payload []byte, mimetype string) bool {
+	switch mimetype {
+
+	case "video/VP8":
+		vp8 := &VP8Helper{}
+		err := vp8.Unmarshal(payload)
+		if err != nil {
+			elog.Println(err) //cam, malformed rtp is not fatal
+		}
+		return vp8.IsKeyFrame
+
+	case "video/H264":
+		return isH264Keyframe(payload)
+	}
+	panic("unhandled keyframe mimetype " + mimetype)
 }
