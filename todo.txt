@@ -1,0 +1,13 @@
+
+
+
+fix 3 second delay before start of video
+
+
+
+fix 2970 constant for video time
+
+make h264 mode a flag [currently locked]
+
+remove availableRIDSetMutex
+add time & periodic purge of Subscriber
