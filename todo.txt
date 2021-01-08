@@ -5,6 +5,10 @@ fix 3 second delay before start of video
 
 
 
+
+fix subscriberIsBrowser code
+
+remove outputTracks?
 fix 2970 constant for video time
 
 make h264 mode a flag [currently locked]
