@@ -156,7 +156,8 @@
 
 
             try {
-                const url = suburl + '?txid=' + longRandomString()
+                const txid = longRandomString()
+                const url = suburl + '?step=1&txid=' + txid
                 const fetchopt1 =
                 {
                     method: 'POST',
@@ -200,6 +201,8 @@
 
 
                 console.debug('will post N line answer:', pc.localDescription.sdp.split(/\r\n|\r|\n/).length)
+
+                const url2 = suburl + '?step=2&txid=' + txid
                 const fetchopt2 =
                 {
                     method: 'POST',
@@ -207,28 +210,12 @@
                     body: pc.localDescription.sdp
                 }
                 console.debug('before fetch2')
-                const resp2 = await fetch(url, fetchopt2)
+                const resp2 = await fetch(url2, fetchopt2)
                 console.debug('fetch2 http status code', resp2.status)
 
             } catch (error) {
                 console.error('receive error', error)
             }
-        }
-
-
-        function openTab(evt, tabTitle) {
-            var i, tabcontent, tablinks
-            tabcontent = document.getElementsByClassName("tabcontent")
-            for (i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none"
-            }
-            tablinks = document.getElementsByName("tablinks")
-
-            for (i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" is-active", "")
-            }
-            document.getElementById(tabTitle).style.display = "block"
-            evt.currentTarget.parentElement.className += " is-active"
         }
 
     </script>
