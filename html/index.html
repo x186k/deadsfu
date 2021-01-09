@@ -200,8 +200,8 @@
 
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: resptext }))
                 console.debug('n senders in getsenders()', pc.getSenders())
-                pc.addTransceiver('audio', { 'direction': 'recvonly' })
-                pc.addTransceiver('video', { 'direction': 'recvonly' })
+                //// pc.addTransceiver('audio', { 'direction': 'recvonly' })
+                // pc.addTransceiver('video', { 'direction': 'recvonly' })
                 console.debug('n senders in getsenders()', pc.getSenders())
                 let init = await pc.createAnswer()
                 await pc.setLocalDescription(init)
