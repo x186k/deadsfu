@@ -186,10 +186,14 @@
 
 
                 pc.ontrack = function (event) {
+                    let z = event.streams[0]
+                    console.debug('on track fired naudio', z.getAudioTracks().length)
+                    console.debug('on track fired nvideo', z.getVideoTracks().length)
                     var el = document.getElementById('video1')
                     el.srcObject = event.streams[0]
                     el.autoplay = true
                     el.controls = true
+                    return false
                 }
 
                 console.debug('got N line offer:', resptext.split(/\r\n|\r|\n/).length)
