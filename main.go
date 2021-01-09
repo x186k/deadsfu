@@ -45,7 +45,8 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var myMetrics struct {
-	writeRTPError uint64
+	writeRTPError      uint64
+	audioErrClosedPipe uint64
 }
 
 var (
@@ -55,11 +56,11 @@ var (
 	rtcapi               *webrtc.API
 	ingestPresent        bool
 	pubStartCount        uint32
-	// going to need more of these
-	subMap       map[string]*Subscriber = make(map[string]*Subscriber)
-	subMapMutex  sync.Mutex
-	outputTracks map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
+	subMap               map[string]*Subscriber = make(map[string]*Subscriber)
+	subMapMutex          sync.Mutex
+	outputTracks         map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
 	//outputTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
+	audioTrack *webrtc.TrackLocalStaticRTP
 )
 
 //XXXXXXXX fixme add time & purge occasionally
@@ -354,6 +355,12 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			log.Println(pcs)
 		})
 
+		//audio
+		log.Println("-- before audio", audioTrack)
+		if audioTrack == nil {
+			panic("no audio available, panic")
+		}
+
 		// pion can receiver either
 		//single m=video with simulcast, which is 3x ssrcs
 		// or three m=video non-simulcast, old style mediadesc
@@ -371,7 +378,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 			rtpSender, err := peerConnection.AddTrack(vidtrack)
 			checkPanic(err)
-			go rtcpReadLoop(rtpSender)
+			go processRTCP(rtpSender)
+
+			// log.Println("-- adding audio track", audioTrack)
+			rtpSenderAudio, err := peerConnection.AddTrack(audioTrack)
+			checkPanic(err)
+			go processRTCP(rtpSenderAudio)
+			// AddTransceiverFromTrack currently only supports sendonly and sendrecv
+			//audtx, err := peerConnection.AddTransceiverFromTrack(audioTrack,webrtc.RTPTransceiverInit{Direction:webrtc.RTPTransceiverDirectionRecvonly})
 
 		} else {
 			// another x186ksfu instance
@@ -380,7 +394,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 				log.Println("addtrack for sfu subscriber:", k)
 				rtpSender, err := peerConnection.AddTrack(v)
 				checkPanic(err)
-				go rtcpReadLoop(rtpSender)
+				go processRTCP(rtpSender)
 			}
 		}
 
@@ -512,7 +526,7 @@ func dialUpstream(url string) error {
 	return nil
 }
 
-func rtcpReadLoop(rtpSender *webrtc.RTPSender) {
+func processRTCP(rtpSender *webrtc.RTPSender) {
 	rtcpBuf := make([]byte, 1500)
 	for {
 		if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
@@ -563,7 +577,7 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	// it is just a receiver
 	// log.Println("num senders", len(peerConnection.GetSenders()))
 	// for _, rtpSender := range peerConnection.GetSenders() {
-	// 	go rtcpReadLoop(rtpSender)
+	// 	go processRTCP(rtpSender)
 	// }
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
@@ -574,6 +588,42 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	checkPanic(err)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		mimetype := track.Codec().MimeType
+
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			log.Println("OnTrack audio", mimetype)
+
+			audioTrack, err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "audio", "pion")
+			checkPanic(err)
+
+			// forever loop
+			for {
+				p, _, err := track.ReadRTP()
+				checkPanic(err) //cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
+
+				// os.Stdout.WriteString("a")
+				// os.Stdout.Sync()
+				// fmt.Println(time.Now().Clock())
+				if err := audioTrack.WriteRTP(p); err != nil {
+					if errors.Is(err, io.ErrClosedPipe) {
+						// I believe this occurs when there is no subscribers connected with audioTrack
+						// thus it is non-fatal
+						myMetrics.audioErrClosedPipe++
+						continue
+					}
+					// not-ErrClosedPipe, fatal
+					//cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
+					panic(err)
+				}
+			}
+		}
+
+		// audio callbacks never get here
+		// video will proceed here
+
+		if track.Kind() != webrtc.RTPCodecTypeVideo || !strings.HasPrefix(mimetype, "video") {
+			panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
+		}
 
 		log.Println("OnTrack ID():", track.ID())
 		log.Println("OnTrack RID():", track.RID())
@@ -585,23 +635,20 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 			availableRIDSetMutex.Unlock()
 		}
 		log.Println("OnTrack trackname:", trackname)
-		mimetype := track.Codec().MimeType
 		log.Println("OnTrack codec:", mimetype)
 
 		// save the video mime type, and check that all video tracks are the same type
-		if strings.HasPrefix(mimetype, "video") {
-			if videoMimeType == "" {
-				videoMimeType = mimetype
-			} else {
-				if mimetype != videoMimeType {
-					panic("cannot support multiple mime types")
-				}
+
+		if videoMimeType == "" {
+			videoMimeType = mimetype
+		} else {
+			if mimetype != videoMimeType {
+				panic("cannot support multiple mime types")
 			}
 		}
 
-		localtrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
+		outputTracks[trackname], err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
 		checkPanic(err)
-		outputTracks[trackname] = localtrack
 
 		go func() {
 			ticker := time.NewTicker(3 * time.Second)
@@ -633,6 +680,10 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 			for _, sub := range subMap {
 				subMapMutex.Unlock()
 
+				if sub.simuTrack == nil {
+					panic("unfinished subscriber / never got audio??")
+				}
+
 				if sub.requestedRID == track.RID() {
 					iskey := keyFrameHelper(packet.Payload, mimetype)
 					if iskey {
@@ -660,7 +711,7 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 					// if yes, forward packet
 
 					//XXXXXXXX fixme
-					packet.SSRC = 0xdeadbeef
+					//packet.SSRC = 0xdeadbeef
 					packet.SequenceNumber -= sub.seqnoOffset
 					packet.Timestamp -= sub.timestampOffset
 
