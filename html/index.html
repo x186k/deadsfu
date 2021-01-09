@@ -123,7 +123,7 @@
                 } else {
                     pc.addTransceiver(stream.getVideoTracks()[0], { 'direction': 'sendonly' })
                 }
-                pc.addTransceiver('audio', { 'direction': 'sendonly' })
+                pc.addTransceiver(stream.getAudioTracks()[0], { 'direction': 'sendonly' })
 
                 let desc = await pc.createOffer()
                 await pc.setLocalDescription(desc)
