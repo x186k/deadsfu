@@ -50,16 +50,16 @@ var myMetrics struct {
 }
 
 var (
-	availableRIDSet      map[string]bool = make(map[string]bool)
-	availableRIDSetMutex sync.Mutex
-	videoMimeType        string
-	rtcapi               *webrtc.API
-	ingestPresent        bool
-	pubStartCount        uint32
-	subMap               map[string]*Subscriber = make(map[string]*Subscriber)
-	subMapMutex          sync.Mutex
-	outputTracks         map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
-	//outputTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
+	ingestIsSimulcast bool
+
+	videoMimeType  string
+	rtcapi         *webrtc.API
+	ingestPresent  bool
+	pubStartCount  uint32
+	subMap         map[string]*Subscriber = make(map[string]*Subscriber)
+	subMapMutex    sync.Mutex
+	localVidTracks map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
+	//localVidTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
 	audioTrack *webrtc.TrackLocalStaticRTP
 )
 
@@ -268,7 +268,11 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	// inside here will panic if something prevents success
 	// this is by design/ cam
-	answer := createIngestPeerConnection(string(offer))
+	answer, err := createIngestPeerConnection(string(offer))
+	if err != nil {
+		teeErrorStderrHttp(w, err)
+		panic(err)
+	}
 
 	w.WriteHeader(http.StatusAccepted)
 	_, err = w.Write([]byte(answer))
@@ -321,15 +325,13 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	step := httpreq.URL.Query().Get("step")
 
 	if rid != "" {
-		availableRIDSetMutex.Lock()
-		_, ok := availableRIDSet[rid]
-		availableRIDSetMutex.Unlock()
-		if ok {
-			sub.requestedRID = rid
-			w.WriteHeader(http.StatusAccepted)
+		if rid != "a" && rid != "b" && rid != "c" {
+			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only a,b,c are valid"))
 			return
 		}
-		teeErrorStderrHttp(w, fmt.Errorf("rid is not available"))
+
+		sub.requestedRID = rid
+		w.WriteHeader(http.StatusAccepted)
 		return
 	} else if step == "1" { // asking for offer
 		if httpreq.Method != "POST" {
@@ -365,7 +367,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		//single m=video with simulcast, which is 3x ssrcs
 		// or three m=video non-simulcast, old style mediadesc
 
-		subscriberIsBrowser := true
+		subscriberIsBrowser := false
 
 		if subscriberIsBrowser {
 			// we just give browsers a single track, but their own unique track
@@ -380,23 +382,21 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
-			// log.Println("-- adding audio track", audioTrack)
-			rtpSenderAudio, err := peerConnection.AddTrack(audioTrack)
-			checkPanic(err)
-			go processRTCP(rtpSenderAudio)
-			// AddTransceiverFromTrack currently only supports sendonly and sendrecv
-			//audtx, err := peerConnection.AddTransceiverFromTrack(audioTrack,webrtc.RTPTransceiverInit{Direction:webrtc.RTPTransceiverDirectionRecvonly})
-
 		} else {
 			// another x186ksfu instance
 			// we forward all tracks down
-			for k, v := range outputTracks {
+			for k, v := range localVidTracks {
 				log.Println("addtrack for sfu subscriber:", k)
 				rtpSender, err := peerConnection.AddTrack(v)
 				checkPanic(err)
 				go processRTCP(rtpSender)
 			}
 		}
+
+		// audio
+		rtpSenderAudio, err := peerConnection.AddTrack(audioTrack)
+		checkPanic(err)
+		go processRTCP(rtpSenderAudio)
 
 		// Create an offer for the other PeerConnection
 		offer, err := peerConnection.CreateOffer(nil)
@@ -488,11 +488,11 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func dialUpstream(url string) error {
+func dialUpstream(baseurl string) error {
 
 	txid, err := randomHex(10)
 	checkPanic(err)
-	url = url + "?txid=" + txid
+	url := baseurl + "?step=1&txid=" + txid
 
 	log.Println("dialUpstream url:", url)
 
@@ -510,9 +510,13 @@ func dialUpstream(url string) error {
 	}
 	// inside here will panic if something prevents success
 	// this is by design/ cam
-	answer := createIngestPeerConnection(offer)
+	answer, err := createIngestPeerConnection(offer)
+	if err != nil {
+		return err
+	}
 
 	ansreader := strings.NewReader(answer)
+	url = baseurl + "?step=2&txid=" + txid
 	resp2, err := http.Post(url, "application/sdp", ansreader)
 	checkPanic(err)
 	defer resp2.Body.Close()
@@ -535,6 +539,183 @@ func processRTCP(rtpSender *webrtc.RTPSender) {
 	}
 }
 
+func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	var err error
+	mimetype := track.Codec().MimeType
+
+	if track.Kind() == webrtc.RTPCodecTypeAudio {
+		log.Println("OnTrack audio", mimetype)
+
+		audioTrack, err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "audio", "pion")
+		checkPanic(err)
+
+		// forever loop
+		for {
+			p, _, err := track.ReadRTP()
+			checkPanic(err) //cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
+
+			// os.Stdout.WriteString("a")
+			// os.Stdout.Sync()
+			// fmt.Println(time.Now().Clock())
+			if err := audioTrack.WriteRTP(p); err != nil {
+				if errors.Is(err, io.ErrClosedPipe) {
+					// I believe this occurs when there is no subscribers connected with audioTrack
+					// thus it is non-fatal
+					myMetrics.audioErrClosedPipe++
+					continue
+				}
+				// not-ErrClosedPipe, fatal
+				//cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
+				panic(err)
+			}
+		}
+	}
+
+	// audio callbacks never get here
+	// video will proceed here
+
+	if track.Kind() != webrtc.RTPCodecTypeVideo || !strings.HasPrefix(mimetype, "video") {
+		panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
+	}
+
+	trackRID := track.RID() // use local to avoid locks
+
+	log.Println("OnTrack ID():", track.ID())
+	log.Println("OnTrack RID():", trackRID)
+	trackname := "main"
+	if trackRID != "" {
+		ingestIsSimulcast = true
+		log.Println("Ingest is simulcast!")
+
+		if trackRID != "a" && trackRID != "b" && trackRID != "c" {
+			panic("only track names a,b,c supported")
+		}
+
+		trackname = trackRID
+	}
+	log.Println("OnTrack trackname:", trackname)
+	log.Println("OnTrack codec:", mimetype)
+
+	// save the video mime type, and check that all video tracks are the same type
+
+	if videoMimeType == "" {
+		videoMimeType = mimetype
+	} else {
+		if mimetype != videoMimeType {
+			panic("cannot support multiple mime types")
+		}
+	}
+
+	localVidTracks[trackname], err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
+	checkPanic(err)
+
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		for range ticker.C {
+			//fmt.Printf("Sending pli for stream with rid: %q, ssrc: %d\n", trackRID, track.SSRC())
+			if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}); writeErr != nil {
+				fmt.Println(writeErr)
+			}
+			// Send a remb message with a very high bandwidth to trigger chrome to send also the high bitrate stream
+			//fmt.Printf("Sending remb for stream with rid: %q, ssrc: %d\n", trackRID, track.SSRC())
+			if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
+				fmt.Println(writeErr)
+			}
+		}
+	}()
+
+	//this is the main rtp read/write loop
+	// one per track (OnTrack above)
+	for {
+		// Read RTP packets being sent to Pion
+		//fmt.Println(99,rid)
+		packet, _, readErr := track.ReadRTP()
+		if readErr != nil {
+			panic(readErr)
+		}
+
+		/* pseudo code
+
+		if ingest == simulcast {
+			for s := range subscribers {
+				if s.type == Browser {
+						forward selected 1 of 3 input to sub.simuTrack
+				}
+			}
+		}
+
+		for o := range outputtracks {
+			write to localVidTracks
+		}
+
+		*/
+
+		if ingestIsSimulcast {
+
+			subMapMutex.Lock()
+			// for each subscriber
+			for _, sub := range subMap {
+				subMapMutex.Unlock()
+
+				// if sub.simuTrack == nil {
+				// 	panic("unfinished subscriber / never got audio??")
+				// }
+
+				// if subscriber is a browser
+				// we decide which RID he should receive
+				if sub.simuTrack != nil { // we write to per-subscriber tracks when they are browser
+
+					// has subscriber requested to switch tracks?
+					if sub.requestedRID == trackRID {
+						iskey := keyFrameHelper(packet.Payload, mimetype)
+						if iskey {
+
+							// 12 7 20 chrome seems more sensative to timestamp than seqnp
+
+							sub.seqnoOffset = packet.SequenceNumber - sub.lastSent.SequenceNumber - 1
+							// one could argue that X should be the inter-frame-TS-delta
+							// but if you use the inter-frame-TS-delta, you will make the timestamp change early
+							// which might mess with gstreamer type decoders
+							// if you use X=0, then the new frame probably starts on the same timestamp as the cut
+							// frame. But the math&housekeeping is easier! :)
+							x := uint32(2970)
+							sub.timestampOffset = packet.Timestamp - sub.lastSent.Timestamp - x
+
+							sub.currentRID = sub.requestedRID
+							sub.requestedRID = ""
+						}
+					}
+
+					ridMatch := sub.currentRID == trackRID
+					useDefaultRid := sub.currentRID == "" && trackRID == "a"
+
+					if ridMatch || useDefaultRid {
+						// if yes, forward packet
+
+						//XXXXXXXX fixme
+						//packet.SSRC = 0xdeadbeef
+						packet.SequenceNumber -= sub.seqnoOffset
+						packet.Timestamp -= sub.timestampOffset
+
+						sub.lastSent = packet
+
+						err = sub.simuTrack.WriteRTP(packet)
+						if err != nil {
+							myMetrics.writeRTPError++
+						}
+					}
+				}
+				subMapMutex.Lock()
+			}
+			subMapMutex.Unlock()
+		}
+
+		if writeErr := localVidTracks[trackname].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
+			panic(writeErr)
+		}
+	}
+}
+
 /*
 	IMPORTANT
 	read this like your life depends upon it.
@@ -551,7 +732,7 @@ func processRTCP(rtpSender *webrtc.RTPSender) {
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngestPeerConnection(offersdp string) (answer string) {
+func createIngestPeerConnection(offersdp string) (string, error) {
 
 	log.Println("createIngestPeerConnection")
 
@@ -588,149 +769,9 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	checkPanic(err)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		mimetype := track.Codec().MimeType
-
-		if track.Kind() == webrtc.RTPCodecTypeAudio {
-			log.Println("OnTrack audio", mimetype)
-
-			audioTrack, err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "audio", "pion")
-			checkPanic(err)
-
-			// forever loop
-			for {
-				p, _, err := track.ReadRTP()
-				checkPanic(err) //cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
-
-				// os.Stdout.WriteString("a")
-				// os.Stdout.Sync()
-				// fmt.Println(time.Now().Clock())
-				if err := audioTrack.WriteRTP(p); err != nil {
-					if errors.Is(err, io.ErrClosedPipe) {
-						// I believe this occurs when there is no subscribers connected with audioTrack
-						// thus it is non-fatal
-						myMetrics.audioErrClosedPipe++
-						continue
-					}
-					// not-ErrClosedPipe, fatal
-					//cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
-					panic(err)
-				}
-			}
-		}
-
-		// audio callbacks never get here
-		// video will proceed here
-
-		if track.Kind() != webrtc.RTPCodecTypeVideo || !strings.HasPrefix(mimetype, "video") {
-			panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
-		}
-
-		log.Println("OnTrack ID():", track.ID())
-		log.Println("OnTrack RID():", track.RID())
-		trackname := "main"
-		if track.RID() != "" {
-			trackname = track.RID()
-			availableRIDSetMutex.Lock()
-			availableRIDSet[track.RID()] = true
-			availableRIDSetMutex.Unlock()
-		}
-		log.Println("OnTrack trackname:", trackname)
-		log.Println("OnTrack codec:", mimetype)
-
-		// save the video mime type, and check that all video tracks are the same type
-
-		if videoMimeType == "" {
-			videoMimeType = mimetype
-		} else {
-			if mimetype != videoMimeType {
-				panic("cannot support multiple mime types")
-			}
-		}
-
-		outputTracks[trackname], err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
-		checkPanic(err)
-
-		go func() {
-			ticker := time.NewTicker(3 * time.Second)
-			for range ticker.C {
-				//fmt.Printf("Sending pli for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
-				if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}); writeErr != nil {
-					fmt.Println(writeErr)
-				}
-				// Send a remb message with a very high bandwidth to trigger chrome to send also the high bitrate stream
-				//fmt.Printf("Sending remb for stream with rid: %q, ssrc: %d\n", track.RID(), track.SSRC())
-				if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
-					fmt.Println(writeErr)
-				}
-			}
-		}()
-
-		//this is the main rtp read/write loop
-		// one per track (OnTrack above)
-		for {
-			// Read RTP packets being sent to Pion
-			//fmt.Println(99,rid)
-			packet, _, readErr := track.ReadRTP()
-			if readErr != nil {
-				panic(readErr)
-			}
-
-			subMapMutex.Lock()
-			// for each subscriber
-			for _, sub := range subMap {
-				subMapMutex.Unlock()
-
-				if sub.simuTrack == nil {
-					panic("unfinished subscriber / never got audio??")
-				}
-
-				if sub.requestedRID == track.RID() {
-					iskey := keyFrameHelper(packet.Payload, mimetype)
-					if iskey {
-
-						// 12 7 20 chrome seems more sensative to timestamp than seqnp
-
-						sub.seqnoOffset = packet.SequenceNumber - sub.lastSent.SequenceNumber - 1
-						// one could argue that X should be the inter-frame-TS-delta
-						// but if you use the inter-frame-TS-delta, you will make the timestamp change early
-						// which might mess with gstreamer type decoders
-						// if you use X=0, then the new frame probably starts on the same timestamp as the cut
-						// frame. But the math&housekeeping is easier! :)
-						x := uint32(2970)
-						sub.timestampOffset = packet.Timestamp - sub.lastSent.Timestamp - x
-
-						sub.currentRID = sub.requestedRID
-						sub.requestedRID = ""
-					}
-				}
-
-				ridMatch := sub.currentRID == track.RID()
-				useDefaultRid := sub.currentRID == "" && track.RID() == "q"
-
-				if ridMatch || useDefaultRid {
-					// if yes, forward packet
-
-					//XXXXXXXX fixme
-					//packet.SSRC = 0xdeadbeef
-					packet.SequenceNumber -= sub.seqnoOffset
-					packet.Timestamp -= sub.timestampOffset
-
-					sub.lastSent = packet
-
-					err = sub.simuTrack.WriteRTP(packet)
-					if err != nil {
-						myMetrics.writeRTPError++
-					}
-				}
-				subMapMutex.Lock()
-			}
-			subMapMutex.Unlock()
-
-			if writeErr := outputTracks[trackname].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
-				panic(writeErr)
-			}
-		}
+		ingestOnTrack(peerConnection, track, receiver)
 	})
+
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 	})
@@ -762,7 +803,7 @@ func createIngestPeerConnection(offersdp string) (answer string) {
 	err = logSdpReport("pion-publisher", *ansrtcsd)
 	checkPanic(err)
 
-	return ansrtcsd.SDP
+	return ansrtcsd.SDP, nil
 }
 
 func keyFrameHelper(payload []byte, mimetype string) bool {
