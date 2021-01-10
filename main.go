@@ -11,6 +11,7 @@ import (
 	_ "io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -101,8 +102,8 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 var debug = flag.Bool("debug", true, "enable debug output")
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
 var dialRxURL = flag.String("dial-rx", "", "do not take http WHIP for ingress, dial for ingress")
-var port = flag.Int("port", 8000, "default port to accept HTTPS on")
-
+var port = flag.Int("port", 8080, "default port to accept HTTPS on")
+var httpsHostname = flag.String("https-hostname", "", "hostname for Let's Encrypt TLS certificate (https)")
 var info = log.New(os.Stderr, "I ", log.Lmicroseconds|log.LUTC)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 
@@ -194,36 +195,47 @@ func main() {
 	//     })
 	// }
 
-	certmagic.DefaultACME.Agreed = true
-	//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
+	var ln net.Listener
+	httpType := ""
 
-	cftoken := os.Getenv("CLOUDFLARE_TOKEN")
-	if cftoken == "" {
-		fmt.Printf("CLOUDFLARE_TOKEN not set\n")
-		return
+	if *httpsHostname != "" {
+
+		certmagic.DefaultACME.Agreed = true
+		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
+
+		cftoken := os.Getenv("CLOUDFLARE_TOKEN")
+		if cftoken != "" {
+			log.Printf("CLOUDFLARE_TOKEN set, will use DNS challenge for Let's Encrypt\n")
+
+			//xx:=digitalocean.Provider{APIToken: dotoken,
+			//	Client: digitalocean.Client{XClient:  client}}
+			dnsProvider := cloudflare.Provider{APIToken: cftoken}
+
+			certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
+				DNSProvider:        &dnsProvider,
+				TTL:                0,
+				PropagationTimeout: 0,
+				Resolvers:          []string{},
+			}
+		}
+
+		// We do NOT do port 80 redirection, as certmagic.HTTPS()
+		tlsConfig, err := certmagic.TLS([]string{*httpsHostname})
+		checkPanic(err)
+		/// XXX ro work with OBS studio for now
+		tlsConfig.MinVersion = 0
+
+		ln, err = tls.Listen("tcp", ":"+strconv.Itoa(*port), tlsConfig)
+		checkPanic(err)
+		httpType = "https"
+	} else {
+		ln, err = net.Listen("tcp", ":"+strconv.Itoa(*port))
+		checkPanic(err)
+		httpType = "http"
 	}
-	//xx:=digitalocean.Provider{APIToken: dotoken,
-	//	Client: digitalocean.Client{XClient:  client}}
-	yy := cloudflare.Provider{APIToken: cftoken}
 
-	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-		DNSProvider:        &yy,
-		TTL:                0,
-		PropagationTimeout: 0,
-		Resolvers:          []string{},
-	}
-
-	// We do NOT do port 80 redirection, as
-	tlsConfig, err := certmagic.TLS([]string{"foo.sfu1.com"})
-	checkPanic(err)
-	/// XXX ro work with OBS studio for now
-	tlsConfig.MinVersion = 0
-
-	ln, err := tls.Listen("tcp", ":"+strconv.Itoa(*port), tlsConfig)
-	checkPanic(err)
-
-	log.Println("WHIP input listener at:  ", "https://"+ln.Addr().String()+pubPath)
-	log.Println("WHIP output listener at:", "https://"+ln.Addr().String()+subPath)
+	log.Printf("WHIP input listener at: %s://%s%s", httpType, ln.Addr().String(), pubPath)
+	log.Printf("WHIP output listener at: %s://%s%s", httpType, ln.Addr().String(), subPath)
 
 	err = http.Serve(ln, mux)
 	panic(err)
@@ -589,8 +601,11 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 
 	trackRID := track.RID() // use local to avoid locks
 
+	
 	log.Println("OnTrack ID():", track.ID())
+	log.Println("OnTrack MID():", track.Mid())
 	log.Println("OnTrack RID():", trackRID)
+	log.Println("OnTrack msid():", track.StreamID())
 	trackname := "main"
 	if trackRID != "" {
 		ingestIsSimulcast = true
@@ -615,7 +630,8 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		}
 	}
 
-	localVidTracks[trackname], err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", "pion")
+//change from pion to a,b,c
+	localVidTracks[trackname], err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", trackRID)
 	checkPanic(err)
 
 	go func() {
