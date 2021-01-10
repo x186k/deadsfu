@@ -323,6 +323,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	rid := httpreq.URL.Query().Get("rid")
 	step := httpreq.URL.Query().Get("step")
+	issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
 		if rid != "a" && rid != "b" && rid != "c" {
@@ -367,9 +368,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		//single m=video with simulcast, which is 3x ssrcs
 		// or three m=video non-simulcast, old style mediadesc
 
-		subscriberIsBrowser := false
+		// for egress, we can provide 1x output video
+		// or we can provide 3x output video when we have
+		// simulcast ingress or multi-track ingress
 
-		if subscriberIsBrowser {
+		if !issfu {
+			// !issfu true, means this is a broswer connecting
+			// and it can only take one track of input
+
 			// we just give browsers a single track, but their own unique track
 			log.Println("addtrack for browser subscriber")
 
@@ -383,6 +389,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			go processRTCP(rtpSender)
 
 		} else {
+			// issfu true, means this is a SFU subscribing
+			// and it can only take many tracks of input
+
 			// another x186ksfu instance
 			// we forward all tracks down
 			for k, v := range localVidTracks {
@@ -492,7 +501,7 @@ func dialUpstream(baseurl string) error {
 
 	txid, err := randomHex(10)
 	checkPanic(err)
-	url := baseurl + "?step=1&txid=" + txid
+	url := baseurl + "?issfu=1&step=1&txid=" + txid
 
 	log.Println("dialUpstream url:", url)
 
@@ -516,7 +525,7 @@ func dialUpstream(baseurl string) error {
 	}
 
 	ansreader := strings.NewReader(answer)
-	url = baseurl + "?step=2&txid=" + txid
+	url = baseurl + "?issfu=1&step=2&txid=" + txid
 	resp2, err := http.Post(url, "application/sdp", ansreader)
 	checkPanic(err)
 	defer resp2.Body.Close()
