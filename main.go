@@ -331,7 +331,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	}
 	subMapMutex.Unlock()
 
-	rid := httpreq.URL.Query().Get("rid")
+	rid := httpreq.URL.Query().Get("level")
 	step := httpreq.URL.Query().Get("step")
 	issfu := httpreq.URL.Query().Get("issfu") != ""
 
