@@ -117,7 +117,7 @@ func initPion() {
 	// 	panic(err)
 	// }
 
-	h264 := false
+	h264 := true
 	if h264 {
 		err := RegisterH264Codecs(&m)
 		checkPanic(err)
