@@ -16,7 +16,7 @@ jobs:
   # The "build" workflow
   build:
     # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -37,11 +37,10 @@ jobs:
         # Optional: working directory, useful for monorepos
         # working-directory: somedir
         # Optional: golangci-lint command line arguments.
-        # args: --issues-exit-code=0
+        args: --skip-files pion.go
         # Optional: show only new issues if it's a pull request. The default value is `false`.
         # only-new-issues: true
-        # Optional: if set to true then the action will use pre-installed Go
-        skip-go-installation: true
+
 
     # Install all the dependencies
     - name: Install dependencies
