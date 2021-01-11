@@ -1,27 +1,74 @@
-# .github/workflows/release.yaml
+# This is a basic workflow to help you get started with Actions
+# https://gist.github.com/wilsontwm/28beb84b0bad67d03c8c2bff18a75188
 
-on: 
+
+name: CICD
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
   push:
-  release:
-    types: [created]
+  pull_request:
 
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  releases-matrix:
-    name: Release Go Binary
+  # The "build" workflow
+  build:
+    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/386, darwin/amd64 
-        goos: [linux, windows, darwin]
-        goarch: [amd64]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v2
-    - uses: wangyoucao577/go-release-action@v1.12
+    
+    # Setup Go
+    - name: Setup Go
+      uses: actions/setup-go@v2
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        goos: ${{ matrix.goos }}
-        goarch: ${{ matrix.goarch }}
-        goversion: "https://dl.google.com/go/go1.15.6.linux-amd64.tar.gz"
-#        project_path: "."
-#        binary_name: "test-binary"
-#        extra_files: LICENSE README.md
+        go-version: '1.15.6' # The Go version to download (if necessary) and use.
+    
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v2
+      with:
+        # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
+        version: v1.35.2
+        # Optional: working directory, useful for monorepos
+        # working-directory: somedir
+        # Optional: golangci-lint command line arguments.
+        # args: --issues-exit-code=0
+        # Optional: show only new issues if it's a pull request. The default value is `false`.
+        # only-new-issues: true
+        # Optional: if set to true then the action will use pre-installed Go
+        skip-go-installation: true
+
+    # Install all the dependencies
+    - name: Install dependencies
+      run: |
+        go version
+        go get
+        
+    # Run build of the application
+    - name: Run build
+      run: go build . 
+      
+    # # Run vet & lint on the code
+    # - name: Run vet & lint
+    #   run: |
+    #     go vet .
+    #     golint .
+    
+    # # Run testing on the code
+    # - name: Run testing
+    #   run: cd test && go test -v
+    
+    - name: Deploy to Docker registry
+      uses: docker/build-push-action@v1
+      with:
+        #target: janus-factory
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: x186k/sfu-x186k
+        tag_with_ref: true
+        tag_with_sha: true
