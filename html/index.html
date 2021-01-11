@@ -7,60 +7,125 @@
     <title>x186k broadcast/watch page</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css">
     <script defer src="https://use.fontawesome.com/releases/v5.14.0/js/all.js"></script>
+    <!-- https://www.w3schools.com/css/tryit.asp?filename=tryresponsive_video -->
+    <style>
+        video {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
 </head>
 
 <body>
+
+    <!-- main navbar -->
     <nav class="navbar" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
+            <a class="navbar-item" href="https://bulma.io">
 
-            <div class="navbar-item">
-                <div class="buttons">
-                    <a class="button is-primary">
-                        <strong>Sign up</strong>
-                    </a>
-                    <a class="button is-light">
-                        Log in
-                    </a>
-                </div>
+                <svg width="70.944" height="29.328" viewBox="0 0 112.944 29.328" xmlns="http://www.w3.org/2000/svg">
+                    <g id="svgGroup" stroke-linecap="round" fill-rule="evenodd" font-size="9pt" stroke="#000"
+                        stroke-width="0.25mm" fill="#3298dc" style="stroke:#3298dc;stroke-width:0.25mm;fill:#3298dc">
+                        <path
+                            d="M 92.391 28.86 L 98.163 0 L 102.219 0 L 98.709 17.589 L 98.943 17.589 L 102.18 14.157 L 108.147 8.58 L 112.944 8.58 L 104.247 16.77 L 107.796 25.467 L 110.253 25.467 L 109.59 28.86 L 107.367 28.86 Q 106.002 28.86 105.164 28.255 A 3.19 3.19 0 0 1 104.45 27.53 Q 104.201 27.186 103.995 26.745 A 6.446 6.446 0 0 1 103.818 26.325 L 101.049 19.383 L 97.695 22.542 L 96.447 28.86 L 92.391 28.86 Z M 41.223 28.86 L 23.01 28.86 L 23.712 25.233 L 31.2 25.233 L 35.334 4.836 L 35.022 4.836 L 27.456 11.622 L 25.116 9.165 L 33.384 1.638 L 40.092 1.638 L 35.373 25.233 L 41.886 25.233 L 41.223 28.86 Z M 4.524 28.86 L 0 28.86 L 9.048 18.33 L 4.368 8.58 L 8.736 8.58 L 11.856 15.912 L 12.051 15.912 L 17.979 8.58 L 22.503 8.58 L 13.689 18.837 L 18.642 28.86 L 14.235 28.86 L 10.881 21.294 L 10.686 21.294 L 4.524 28.86 Z M 82.992 1.638 L 88.959 1.638 A 63.54 63.54 0 0 0 84.252 4.833 A 46.717 46.717 0 0 0 80.281 8.151 Q 76.713 11.505 75.387 15.561 L 75.621 15.639 Q 76.791 13.767 78.234 12.694 A 5.337 5.337 0 0 1 80.475 11.74 A 7.351 7.351 0 0 1 81.822 11.622 A 7.969 7.969 0 0 1 83.391 11.771 A 6.432 6.432 0 0 1 84.63 12.149 Q 85.878 12.675 86.775 13.65 Q 87.672 14.625 88.159 16.01 A 8.579 8.579 0 0 1 88.595 18.002 A 10.618 10.618 0 0 1 88.647 19.071 A 10.983 10.983 0 0 1 88.139 22.436 A 10.264 10.264 0 0 1 87.906 23.088 Q 87.165 24.96 85.819 26.345 A 9.586 9.586 0 0 1 82.918 28.373 A 11.102 11.102 0 0 1 82.563 28.529 A 10.351 10.351 0 0 1 79.594 29.265 A 12.718 12.718 0 0 1 78.312 29.328 A 10.56 10.56 0 0 1 75.896 29.068 Q 74.095 28.645 72.837 27.533 A 6.532 6.532 0 0 1 72.325 27.027 A 7.618 7.618 0 0 1 70.653 23.922 Q 70.323 22.753 70.256 21.357 A 15.15 15.15 0 0 1 70.239 20.631 Q 70.239 17.706 71.312 14.878 Q 72.384 12.051 74.178 9.555 Q 75.972 7.059 78.253 5.031 A 27.39 27.39 0 0 1 81.774 2.362 A 24.341 24.341 0 0 1 82.992 1.638 Z M 52.962 14.664 L 53.04 14.391 Q 49.608 13.065 49.608 9.165 Q 49.608 7.527 50.251 6.084 Q 50.895 4.641 52.123 3.549 A 8.655 8.655 0 0 1 54.062 2.259 A 10.689 10.689 0 0 1 55.107 1.814 A 10.261 10.261 0 0 1 57.242 1.293 A 13.773 13.773 0 0 1 59.124 1.17 A 12.825 12.825 0 0 1 61.268 1.338 Q 62.421 1.533 63.34 1.958 A 5.927 5.927 0 0 1 64.779 2.886 A 5.619 5.619 0 0 1 66.719 6.987 A 7.561 7.561 0 0 1 66.729 7.371 Q 66.729 8.58 66.339 9.691 Q 65.949 10.803 65.208 11.739 Q 64.467 12.675 63.394 13.397 A 8.538 8.538 0 0 1 61.242 14.432 A 9.662 9.662 0 0 1 60.996 14.508 L 60.957 14.82 A 5.98 5.98 0 0 1 62.58 15.494 A 4.927 4.927 0 0 1 63.98 16.77 A 5.305 5.305 0 0 1 64.91 18.908 A 7.462 7.462 0 0 1 65.052 20.397 A 9.98 9.98 0 0 1 65.052 20.426 A 8.809 8.809 0 0 1 64.35 23.907 Q 63.648 25.545 62.322 26.735 Q 60.996 27.924 59.085 28.626 A 11.157 11.157 0 0 1 56.762 29.194 A 14.916 14.916 0 0 1 54.717 29.328 A 13.79 13.79 0 0 1 52.901 29.214 Q 51.947 29.087 51.123 28.819 A 8.521 8.521 0 0 1 51.071 28.801 A 8.658 8.658 0 0 1 49.576 28.15 A 6.816 6.816 0 0 1 48.418 27.339 Q 47.346 26.403 46.8 25.116 A 6.964 6.964 0 0 1 46.267 22.778 A 8.184 8.184 0 0 1 46.254 22.308 Q 46.254 20.904 46.702 19.636 Q 47.151 18.369 48.009 17.355 Q 48.867 16.341 50.115 15.639 A 8.267 8.267 0 0 1 51.997 14.877 A 10.117 10.117 0 0 1 52.962 14.664 Z M 78.585 25.779 Q 80.886 25.779 82.29 24.453 A 6.095 6.095 0 0 0 83.775 22.213 A 8.194 8.194 0 0 0 84.162 20.904 A 6.11 6.11 0 0 0 84.257 20.356 A 6.962 6.962 0 0 0 84.279 20.163 Q 84.318 19.773 84.318 19.383 Q 84.318 17.355 83.245 16.243 A 3.426 3.426 0 0 0 81.731 15.347 Q 81.193 15.186 80.548 15.145 A 7.105 7.105 0 0 0 80.106 15.132 A 6.678 6.678 0 0 0 78.516 15.311 A 4.606 4.606 0 0 0 76.381 16.458 A 6.11 6.11 0 0 0 74.941 18.63 A 8.269 8.269 0 0 0 74.529 20.007 A 6.11 6.11 0 0 0 74.434 20.555 A 6.962 6.962 0 0 0 74.412 20.748 Q 74.373 21.138 74.373 21.528 Q 74.373 23.556 75.445 24.668 A 3.426 3.426 0 0 0 76.96 25.564 Q 77.498 25.725 78.143 25.766 A 7.105 7.105 0 0 0 78.585 25.779 Z M 54.99 25.857 A 7.68 7.68 0 0 0 56.602 25.697 Q 57.692 25.463 58.525 24.888 A 4.801 4.801 0 0 0 58.695 24.765 A 4.705 4.705 0 0 0 60.223 22.728 A 6.611 6.611 0 0 0 60.567 21.567 A 18.533 18.533 0 0 0 60.62 21.262 Q 60.66 21.021 60.684 20.826 Q 60.711 20.613 60.719 20.327 A 9.543 9.543 0 0 0 60.723 20.046 A 4.186 4.186 0 0 0 60.571 18.886 A 3.116 3.116 0 0 0 59.592 17.355 Q 58.686 16.574 57.13 16.419 A 8.195 8.195 0 0 0 56.316 16.38 A 7.411 7.411 0 0 0 54.689 16.549 A 5.148 5.148 0 0 0 52.611 17.511 A 4.959 4.959 0 0 0 51.006 19.763 A 6.707 6.707 0 0 0 50.739 20.709 Q 50.672 21.078 50.634 21.374 A 8.683 8.683 0 0 0 50.622 21.469 A 5.306 5.306 0 0 0 50.595 21.778 Q 50.583 21.989 50.583 22.23 A 4.343 4.343 0 0 0 50.717 23.34 A 2.986 2.986 0 0 0 51.714 24.921 A 3.674 3.674 0 0 0 52.941 25.575 Q 53.813 25.857 54.99 25.857 Z M 57.447 13.104 Q 59.514 13.104 60.742 12.09 A 4.648 4.648 0 0 0 62.054 10.309 A 6.352 6.352 0 0 0 62.4 9.243 A 6.968 6.968 0 0 0 62.501 8.685 A 6.237 6.237 0 0 0 62.517 8.561 Q 62.556 8.229 62.556 7.917 Q 62.556 6.396 61.542 5.518 A 3.245 3.245 0 0 0 60.431 4.903 Q 59.945 4.741 59.353 4.679 A 7.453 7.453 0 0 0 58.578 4.641 A 7.206 7.206 0 0 0 57.25 4.756 Q 56.507 4.895 55.917 5.204 A 3.789 3.789 0 0 0 55.263 5.635 A 4.531 4.531 0 0 0 54.012 7.302 A 6.317 6.317 0 0 0 53.625 8.463 A 6.968 6.968 0 0 0 53.524 9.021 A 6.237 6.237 0 0 0 53.508 9.145 Q 53.469 9.477 53.469 9.789 A 3.679 3.679 0 0 0 53.622 10.877 A 2.876 2.876 0 0 0 54.483 12.207 A 3.248 3.248 0 0 0 55.639 12.851 Q 56.411 13.104 57.447 13.104 Z"
+                            vector-effect="non-scaling-stroke" />
+                    </g>
+                </svg>
+
+                <!-- <img src="https://bulma.io/images/bulma-logo.png" width="112" height="28"> -->
+            </a>
+
+            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false"
+                data-target="navbarBasicExample">
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+
+        <div id="navbarBasicExample" class="navbar-menu">
+            <div class="navbar-start">
+                <a class="navbar-item" onclick="transmit()">
+                    <span class="icon has-text-success">
+                        <i class="fas fa-arrow-right"></i>
+                    </span>
+                    <span>Transmit</span>
+                </a>
+                <a class="navbar-item" onclick="receive()">
+                    <span class="icon has-text-link">
+                        <i class="fas fa-arrow-left"></i>
+                    </span>
+                    <span>Receive</span>
+                </a>
+                <a class="navbar-item">
+                    <span class="icon has-text-warning">
+                        <i class="fas fa-external-link-alt"></i>
+                    </span>
+                    <span>New RX Tab</span>
+                </a>
+                <a class="navbar-item" onclick="level('a')">
+                    <span class="icon">
+                        <i class="fas fa-layer-group"></i>
+                    </span>
+                    <span>Level &nbsp;<strong>'A'</strong></span>
+                </a>
+                <a class="navbar-item" onclick="level('b')">
+                    <span class="icon">
+                        <i class="fas fa-layer-group"></i>
+                    </span>
+                    <span>Level &nbsp;<strong>'B'</strong></span>
+                </a>
+                <a class="navbar-item" onclick="level('c')">
+                    <span class="icon">
+                        <i class="fas fa-layer-group"></i>
+                    </span>
+                    <span>Level &nbsp;<strong>'C'</strong></span>
+                </a>
+
+
             </div>
 
-
-
-
-        </div>
-    </nav>
-    <section class="section">
-        <div class="container">
-            <div class="columns">
-                <div class="column is-half">
-                    <div class="field is-grouped is-centered p-4">
-                        <p class="control">
-                            <button class="button is-link" onclick="transmit()">Start Transmission</button>
-                        </p>
-                        <p class="control">
-                            <button class=" button is-link" onclick="receive()">Start Receive</button>
-                        </p>
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="buttons">
+                        <a class="navbar-item">
+                            <span class="icon has-text-info">
+                                <i class="fas fa-book"></i>
+                            </span>
+                            <span>Docs</span>
+                        </a>
+                        <a class="navbar-item">
+                            <span class="icon has-text-danger">
+                                <i class="fas fa-redo-alt"></i>
+                            </span>
+                            <span>Reload</span>
+                        </a>
                     </div>
                 </div>
-                <div class=" column">
-                    <figure class="image is-16by9">
-                        <video id="video1" autoplay muted class="has-ratio" width="1280" height="720" frameborder="0"
-                            poster="https://x186k.org/x186k.png" allowfullscreen>
-                        </video>
-                    </figure>
-                </div>
             </div>
         </div>
-    </section>
+    </nav>
 
 
-    <section class="section">
-        <div class="container">
 
+
+
+
+    <div class="container">
+        <div class=" column">
+            <figure class="image is-16by9">
+                <video id="video1" autoplay muted class="has-ratio" width="1280" frameborder="2"
+                    poster="https://x186k.org/x186k.png" allowfullscreen>
+                </video>
+            </figure>
         </div>
-    </section>
+    </div>
+
+
+
     <script>
         //@ts-check
+        const txid = longRandomString()
 
         let suburl = location.origin + '/sub'        // output from sfu
         let puburl = location.origin + '/pub'          // input to sfu
@@ -72,6 +137,12 @@
             return Array.prototype.map.call(new Uint8Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
         }
 
+
+        async function level(ll) {
+            const url = suburl + '?txid=' + txid + '&level=' + ll
+            console.debug('before level fetch')
+            fetch(url)
+        }
 
 
         async function transmit() {
@@ -156,10 +227,8 @@
         async function receive() {
             console.log("--receive")
 
-
-
             try {
-                const txid = longRandomString()
+
                 const url = suburl + '?step=1&txid=' + txid
                 const fetchopt1 =
                 {
@@ -225,6 +294,34 @@
             }
         }
 
+    </script>
+    <script>
+        //bumla menu bar
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // Get all "navbar-burger" elements
+            const $navbarBurgers = Array.prototype.slice.call(document.querySelectorAll('.navbar-burger'), 0);
+
+            // Check if there are any navbar burgers
+            if ($navbarBurgers.length > 0) {
+
+                // Add a click event on each of them
+                $navbarBurgers.forEach(el => {
+                    el.addEventListener('click', () => {
+
+                        // Get the target from the "data-target" attribute
+                        const target = el.dataset.target;
+                        const $target = document.getElementById(target);
+
+                        // Toggle the "is-active" class on both the "navbar-burger" and the "navbar-menu"
+                        el.classList.toggle('is-active');
+                        $target.classList.toggle('is-active');
+
+                    });
+                });
+            }
+
+        });
     </script>
 </body>
 
