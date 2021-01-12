@@ -35,58 +35,25 @@ jobs:
         version: v1.35.2
         args: --skip-files pion.go
 
-
-
-
-  binary-release-matrix:
+  releases-matrix:
     name: Release Go Binary
     runs-on: ubuntu-20.04
     strategy:
       matrix:
         # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/386, darwin/amd64 
         goos: [linux, windows, darwin]
-        goarch: [amd64]
+        goarch: ["386", amd64, arm64]
     steps:
     - uses: actions/checkout@v2
-    
-    - name: Setup Go
-      uses: actions/setup-go@v2
+    - uses: wangyoucao577/go-release-action@v1.12
       with:
-        go-version: '1.15.6'  
-
-    - name: Run build
-      run: go build -o main .
-      env:
-        GOOS: ${{ matrix.os }}
-        GOARCH: ${{ matrix.arch }}
-
-
-    # dont want a release per matrix combo. nope
-    # - name: Create Release
-    #   id: create_release
-    #   uses: actions/create-release@v1
-    #   env:
-    #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #   with:
-    #     tag_name: ${{ github.ref }}
-    #     release_name: Release ${{ github.ref }}
-    #     draft: false
-    #     prerelease: false
-    - name: Get release
-      id: get_release
-      uses: bruceadams/get-release@v1.2.2
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-
-    - name: Upload release binary
-      uses: actions/upload-release-asset@v1.0.2
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with: # This pulls from the CREATE RELEASE step above,
-        upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ./main
-        asset_name: sfu-x186k-${{ matrix.goos }}-${{ matrix.goarch }}
-        asset_content_type: application/octet-stream
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: ${{ matrix.goos }}
+        goarch: ${{ matrix.goarch }}
+        goversion: "https://dl.google.com/go/go1.15.6.linux-amd64.tar.gz"
+        project_path: "."
+        binary_name: "main"
+        extra_files: LICENSE README.md
 
 
 
