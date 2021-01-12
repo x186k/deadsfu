@@ -14,7 +14,8 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  docker:
+  linting:
+    name: Run the linter
     # The type of runner that the job will run on
     runs-on: ubuntu-20.04
 
@@ -41,18 +42,18 @@ jobs:
     #     go get
         
     # Run build of the application
-    - name: Run build
-      run: go build . 
+    # - name: Run build
+    #   run: go build . 
     
-    - name: Deploy to Docker registry
-      uses: docker/build-push-action@v1
-      with:
-        #target: janus-factory
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-        repository: x186k/sfu-x186k
-        tag_with_ref: true
-        tag_with_sha: true
+    # - name: Deploy to Docker registry
+    #   uses: docker/build-push-action@v1
+    #   with:
+    #     #target: janus-factory
+    #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+    #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+    #     repository: x186k/sfu-x186k
+    #     tag_with_ref: true
+    #     tag_with_sha: true
 
   releases-matrix:
     name: Release Go Binary
@@ -68,5 +69,9 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v2
       with:
-        go-version: '1.15.6'
+        go-version: '1.15.6'  
 
+    - name: Run build
+      run: go build . 
+
+#upload to releases
