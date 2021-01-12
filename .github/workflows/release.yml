@@ -62,7 +62,7 @@ jobs:
 
 
   docker-build-push:
-    if: false
+#    if: false
     name: docker build and push
     runs-on: ubuntu-20.04
     steps:
