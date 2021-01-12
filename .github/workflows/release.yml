@@ -56,6 +56,9 @@ jobs:
 
     - name: Run build
       run: go build -o main .
+      env:
+        GOOS: ${{ matrix.os }}
+        GOARCH: ${{ matrix.arch }}
 
 
     # dont want a release per matrix combo. nope
