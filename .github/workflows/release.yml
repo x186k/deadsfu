@@ -57,7 +57,7 @@ jobs:
         go-version: '1.15.6'  
 
     - name: Run build
-      run: go build . -o main
+      run: go build -o main .
 
 
     # dont want a release per matrix combo. nope
