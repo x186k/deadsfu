@@ -9,12 +9,12 @@ name: CICD
 on:
   push:
   pull_request:
-
+  release:
+    types: [created]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # The "build" workflow
-  build:
+  docker:
     # The type of runner that the job will run on
     runs-on: ubuntu-20.04
 
@@ -27,40 +27,22 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v2
       with:
-        go-version: '1.15.6' # The Go version to download (if necessary) and use.
+        go-version: '1.15.6'
     
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v2
       with:
-        # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
         version: v1.35.2
-        # Optional: working directory, useful for monorepos
-        # working-directory: somedir
-        # Optional: golangci-lint command line arguments.
         args: --skip-files pion.go
-        # Optional: show only new issues if it's a pull request. The default value is `false`.
-        # only-new-issues: true
 
-
-    # Install all the dependencies
-    - name: Install dependencies
-      run: |
-        go version
-        go get
+    # - name: Install dependencies
+    #   run: |
+    #     go version
+    #     go get
         
     # Run build of the application
     - name: Run build
       run: go build . 
-      
-    # # Run vet & lint on the code
-    # - name: Run vet & lint
-    #   run: |
-    #     go vet .
-    #     golint .
-    
-    # # Run testing on the code
-    # - name: Run testing
-    #   run: cd test && go test -v
     
     - name: Deploy to Docker registry
       uses: docker/build-push-action@v1
@@ -71,3 +53,23 @@ jobs:
         repository: x186k/sfu-x186k
         tag_with_ref: true
         tag_with_sha: true
+
+
+
+jobs:
+  releases-matrix:
+    name: Release Go Binary
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/386, darwin/amd64 
+        goos: [linux, windows, darwin]
+        goarch: [amd64]
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.15.6'
+
