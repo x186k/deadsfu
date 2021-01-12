@@ -52,7 +52,7 @@ jobs:
         goarch: ${{ matrix.goarch }}
         goversion: "https://dl.google.com/go/go1.15.6.linux-amd64.tar.gz"
         project_path: "."
-        binary_name: "main"
+        binary_name: "sfu-x186k"
         extra_files: LICENSE README.md
 
 
