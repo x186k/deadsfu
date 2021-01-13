@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	_ "io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -28,10 +27,21 @@ import (
 	//"github.com/digitalocean/godo"
 	"github.com/libdns/cloudflare"
 
+	"embed"
+
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
+
+//go:generate go run scripts/gen.go
+
+// content is our static web server content.
+//go:embed html/index.html
+var indexHtml []byte
+
+//go:embed downloaded
+var downloaded embed.FS
 
 const (
 	debugsdp = true
@@ -65,7 +75,7 @@ var (
 //XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
 	step            int                         // true indicates got
-	unsharedTrack       *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
+	unsharedTrack   *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
 	conn            *webrtc.PeerConnection      // peerconnection
 	currentRID      string                      // simulcast level for playback
 	requestedRID    string
@@ -88,12 +98,16 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	buf, err := ioutil.ReadFile("html/index.html")
-	if err != nil {
-		http.Error(res, "can't open index.html", http.StatusInternalServerError)
-		return
+	if len(indexHtml) == 0 {
+		buf, err := ioutil.ReadFile("html/index.html")
+		if err != nil {
+			http.Error(res, "can't open index.html", http.StatusInternalServerError)
+			return
+		}
+		_, _ = res.Write(buf)
+	} else {
+		_, _ = res.Write(indexHtml)
 	}
-	_, _ = res.Write(buf)
 }
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
@@ -138,6 +152,7 @@ func init() {
 
 func main() {
 	var err error
+
 	flag.Parse()
 
 	if *debug {
