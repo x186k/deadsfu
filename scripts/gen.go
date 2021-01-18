@@ -25,7 +25,7 @@ func check(err error) {
 }
 
 func main() {
-	const url = "https://github.com/x186k/x186k-sfu-assets/raw/main/waiting.h264.rtp"
+	const url = "https://github.com/x186k/x186k-sfu-assets/raw/main/idle.screen.h264.pcapng"
 
 	// a, err := ioutil.ReadFile("html/index.html")
 	// die(err)
@@ -49,7 +49,7 @@ func main() {
 	raw, err := ioutil.ReadAll(rsp.Body)
 	check(err)
 
-	err = ioutil.WriteFile("downloaded/waiting.h264.rtp", raw, 0777)
+	err = ioutil.WriteFile("embed/idle.screen.h264.pcapng", raw, 0777)
 	check(err)
 
 }
