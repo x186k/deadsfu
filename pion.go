@@ -8,25 +8,25 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func  RegisterH264Codecs(m *webrtc.MediaEngine) error {
+func  RegisterH264AndOpusCodecs(m *webrtc.MediaEngine) error {
 	// Default Pion Audio Codecs
 	for _, codec := range []webrtc.RTPCodecParameters{
 		{
 			RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypeOpus, 48000, 2, "minptime=10;useinbandfec=1", nil},
 			PayloadType:        111,
 		},
-		{
-			RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypeG722, 8000, 0, "", nil},
-			PayloadType:        9,
-		},
-		{
-			RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypePCMU, 8000, 0, "", nil},
-			PayloadType:        0,
-		},
-		{
-			RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypePCMA, 8000, 0, "", nil},
-			PayloadType:        8,
-		},
+		// {
+		// 	RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypeG722, 8000, 0, "", nil},
+		// 	PayloadType:        9,
+		// },
+		// {
+		// 	RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypePCMU, 8000, 0, "", nil},
+		// 	PayloadType:        0,
+		// },
+		// {
+		// 	RTPCodecCapability: webrtc.RTPCodecCapability{webrtc.MimeTypePCMA, 8000, 0, "", nil},
+		// 	PayloadType:        8,
+		// },
 	} {
 		if err := m.RegisterCodec(codec, webrtc.RTPCodecTypeAudio); err != nil {
 			return err
