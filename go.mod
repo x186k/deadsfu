@@ -13,6 +13,7 @@ require (
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/pion/rtcp v1.2.6
 	github.com/pion/rtp v1.6.2
+	github.com/pion/sdp/v3 v3.0.3
 	github.com/pion/webrtc/v3 v3.0.3
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
