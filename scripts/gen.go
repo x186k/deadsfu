@@ -24,8 +24,10 @@ func check(err error) {
 	}
 }
 
+const assetsBaseUrl= "https://github.com/x186k/x186k-sfu-assets/raw/main/"
+
 func main() {
-	const url = "https://github.com/x186k/x186k-sfu-assets/raw/main/idle.screen.h264.pcapng"
+	url:=assetsBaseUrl+"idle.screen.h264.pcapng"
 
 	// a, err := ioutil.ReadFile("html/index.html")
 	// die(err)
