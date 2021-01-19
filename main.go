@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"strconv"
@@ -25,12 +27,16 @@ import (
 	//"github.com/davecgh/go-spew/spew"
 
 	//"github.com/digitalocean/godo"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcapgo"
 	"github.com/libdns/cloudflare"
 
 	"embed"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -40,12 +46,8 @@ import (
 //go:embed html/index.html
 var indexHtml []byte
 
-//go:embed downloaded
-var downloaded embed.FS
-
-const (
-	debugsdp = true
-)
+//go:embed embed
+var embedfs embed.FS
 
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
@@ -61,27 +63,26 @@ var myMetrics struct {
 }
 
 var (
-	videoMimeType  string
-	rtcapi         *webrtc.API
-	ingestPresent  bool
-	pubStartCount  uint32
-	subMap         map[string]*Subscriber = make(map[string]*Subscriber)
-	subMapMutex    sync.Mutex
-	localVidTracks map[string]*webrtc.TrackLocalStaticRTP = make(map[string]*webrtc.TrackLocalStaticRTP)
-	//localVidTracksMutex sync.Mutex  NOPE! ingestPresent is used with pubStartCount to prevent concurrent access
-	audioTrack *webrtc.TrackLocalStaticRTP
+	h264IdleRtpPackets []*rtp.Packet
+	videoMimeType      string = "video/H264"
+	audioMimeType      string = "audio/opus"
+	rtcapi             *webrtc.API
+	pubStartCount      int32
+	subMap             map[string]*Subscriber = make(map[string]*Subscriber)
+	subMapMutex        sync.Mutex
+
+	audioTrack, video1, video2, video3 *webrtc.TrackLocalStaticRTP
 )
 
 //XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
-	step            int                         // true indicates got
-	unsharedTrack   *webrtc.TrackLocalStaticRTP // individual track for simulcast situations
-	conn            *webrtc.PeerConnection      // peerconnection
-	currentRID      string                      // simulcast level for playback
+	conn            *webrtc.PeerConnection // peerconnection
+	currentRID      string                 // simulcast level for playback
 	requestedRID    string
 	timestampOffset uint32
 	seqnoOffset     uint16
 	lastSent        *rtp.Packet
+	rtpSenders      [4]*webrtc.RTPSender
 }
 
 func checkPanic(err error) {
@@ -98,7 +99,8 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(indexHtml) == 0 {
+	//XXX fix
+	if true || len(indexHtml) == 0 {
 		buf, err := ioutil.ReadFile("html/index.html")
 		if err != nil {
 			http.Error(res, "can't open index.html", http.StatusInternalServerError)
@@ -112,42 +114,77 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("debug", true, "enable debug output")
+var logPackets = flag.Bool("log-packets", false, "log packets for later use with text2pcap")
+
+// egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
 var dialRxURL = flag.String("dial-rx", "", "do not take http WHIP for ingress, dial for ingress")
 var port = flag.Int("port", 8080, "default port to accept HTTPS on")
+var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 var httpsHostname = flag.String("https-hostname", "", "hostname for Let's Encrypt TLS certificate (https)")
-var info = log.New(os.Stderr, "I ", log.Lmicroseconds|log.LUTC)
+
+var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
+
+//var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 
-func initPion() {
-	m := webrtc.MediaEngine{}
-
-	// Setup the codecs you want to use.
-	// We'll use a VP8 and Opus but you can also define your own
-	// if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-	// 	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/vp8", ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
-	// 	PayloadType:        96,
-	// }, webrtc.RTPCodecTypeVideo); err != nil {
-	// 	panic(err)
-	// }
-
-	h264 := true
-	if h264 {
-		err := RegisterH264Codecs(&m)
-		checkPanic(err)
-	} else {
-		err := m.RegisterDefaultCodecs()
-		checkPanic(err)
-	}
+func init() {
+	var err error
 
 	// Create the API object with the MediaEngine
+	m := webrtc.MediaEngine{}
 	rtcapi = webrtc.NewAPI(webrtc.WithMediaEngine(&m))
 	//rtcApi = webrtc.NewAPI()
 
-}
-func init() {
+	// Create a audio track
+	audioTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", "pion")
+	checkPanic(err)
+	video1, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video1", "pion")
+	checkPanic(err)
+	video2, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video2", "pion")
+	checkPanic(err)
+	video3, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video3", "pion")
+	checkPanic(err)
 
-	initPion()
+	if *videoCodec == "h264" {
+		err := RegisterH264AndOpusCodecs(&m)
+		checkPanic(err)
+	} else {
+		log.Fatalln("only h.264 supported")
+		// err := m.RegisterDefaultCodecs()
+		// checkPanic(err)
+	}
+
+	pcapng := getEmbeddedOrFetch("idle.screen.h264.pcapng")
+
+	h264IdleRtpPackets = readPcap2RTP(bytes.NewReader(pcapng))
+
+	go func() {
+		rtpdumpLoopPlayer(h264IdleRtpPackets, video1)
+	}()
+
+}
+
+const assetsBaseUrl = "https://github.com/x186k/x186k-sfu-assets/raw/main/"
+
+func getEmbeddedOrFetch(filename string) []byte {
+
+	x, err := embedfs.ReadFile("embed/" + filename)
+	if err == nil && len(x) > 0 {
+		return x
+	}
+	//checkPanic(err)
+
+	url := assetsBaseUrl + filename
+	rsp, err := http.Get(url)
+	checkPanic(err)
+	defer rsp.Body.Close()
+
+	raw, err := ioutil.ReadAll(rsp.Body)
+	checkPanic(err)
+
+	return raw
+
 }
 
 func main() {
@@ -158,24 +195,18 @@ func main() {
 	if *debug {
 		log.SetFlags(log.Lmicroseconds | log.LUTC)
 		log.SetPrefix("D ")
-		info.Println("debug output IS enabled")
+		log.SetOutput(os.Stdout)
+		log.Println("debug output IS enabled")
 	} else {
-		info.Println("debug output NOT enabled")
+		log.Println("debug output NOT enabled")
 		log.SetOutput(ioutil.Discard)
 		log.SetPrefix("")
 		log.SetFlags(0)
 	}
 
-	//unclear if we need
-	//var group *errgroup.Group
-
-	// ln, err := net.Listen("tcp", ":8000")
-	// checkPanic(err)
-
 	mux := http.NewServeMux()
 
 	pubPath := "/pub"
-	//subPath := "/sub/" // pre-query string version
 	subPath := "/sub" // 2nd slash important
 
 	if !*nohtml {
@@ -186,34 +217,15 @@ func main() {
 	if *dialRxURL == "" {
 		mux.HandleFunc(pubPath, pubHandler)
 	} else {
-		err = dialUpstream(*dialRxURL)
-		checkPanic(err)
+		dialUpstream(*dialRxURL)
 	}
-
-	//certmagic.DefaultACME.Email = ""
-
-	//I find this function from certmagic more opaque than I like
-	//err = HTTPS([]string{"x186k.duckdns.org"}, mux, ducktoken) // https automagic
-	//panic(err)
-
-	//client := godo.NewFromToken(dotoken)
-
-	// if true {
-	//     client.OnRequestCompleted(func(req *http.Request, resp *http.Response) {
-	//         data, _ := httputil.DumpRequestOut(req, true)
-	//         fmt.Printf("Req: %s\n", data)
-
-	//         data, _ = httputil.DumpResponse(resp, true)
-	//         fmt.Printf("Resp: %s\n\n", data)
-	//     })
-	// }
 
 	var ln net.Listener
 	httpType := ""
 
 	if *httpsHostname != "" {
 
-		certmagic.DefaultACME.Agreed = true
+		//certmagic.DefaultACME.Agreed = true
 		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
 
 		cftoken := os.Getenv("CLOUDFLARE_TOKEN")
@@ -267,6 +279,8 @@ func teeErrorStderrHttp(w http.ResponseWriter, err error) {
 	http.Error(w, m, http.StatusInternalServerError)
 }
 
+var pcnum int = 0
+
 // sfu ingest setup
 func pubHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
@@ -286,24 +300,65 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if atomic.AddUint32(&pubStartCount, 1) > 1 {
-		// handle this
-		teeErrorStderrHttp(w, errors.New("cannot accept 2nd ingress connection, restart for new session"))
+	if atomic.AddInt32(&pubStartCount, 1) > 1 {
+		teeErrorStderrHttp(w, errors.New("ingress busy"))
 		return
 	}
+
 	// inside here will panic if something prevents success
 	// this is by design/ cam
-	answer, err := createIngestPeerConnection(string(offer))
-	if err != nil {
-		teeErrorStderrHttp(w, err)
-		panic(err)
-	}
+	answersd, peerConnection := createIngestPeerConnection(string(offer))
+
+	logSdpReport("listen-ingress-answer", *answersd)
+
+	pcnum++
+
+	connConnected := make(chan bool)
+	connDone := make(chan bool)
+	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+		log.Println("ingress Connection State has changed", cs.String(), pcnum)
+		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+			connConnected <- true
+		case webrtc.PeerConnectionStateFailed:
+		case webrtc.PeerConnectionStateClosed:
+		case webrtc.PeerConnectionStateDisconnected:
+			close(connDone)
+		}
+	})
+
+	go func() {
+		select {
+		case <-connConnected:
+		case <-time.After(15 * time.Second):
+			log.Println("pubhandler: timeout waiting for connected", pcnum)
+			peerConnection.Close()
+		}
+		<-connDone
+		log.Println("ingress DONE! re-opening ingress", pcnum)
+
+		if atomic.AddInt32(&pubStartCount, -1) != 0 {
+			panic("cant free ingress pcnum=" + strconv.Itoa(pcnum))
+		}
+	}()
 
 	w.WriteHeader(http.StatusAccepted)
-	_, err = w.Write([]byte(answer))
+	_, err = w.Write([]byte(answersd.SDP))
 	checkPanic(err) // cam/if this write fails, then fail hard!
 
 	//NOTE, Do NOT ever use http.error to return SDPs
+}
+
+//number of video media sections
+//will be 1 for simulcast
+// will be 3 for three m=video
+func numVideoMediaDesc(sdpsd *sdp.SessionDescription) (n int) {
+	for _, v := range sdpsd.MediaDescriptions {
+		if v.MediaName.Media == "video" {
+			n++
+		}
+	}
+	return
 }
 
 // sfu egress setup
@@ -311,11 +366,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	defer httpreq.Body.Close()
 
 	log.Println("subHandler request", httpreq.URL.String())
-
-	if !ingestPresent {
-		teeErrorStderrHttp(w, fmt.Errorf("no publisher, please connect publisher first"))
-		return
-	}
 
 	txid := httpreq.URL.Query().Get("txid")
 	if txid == "" {
@@ -330,25 +380,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("txid is", txid)
 
-	// empty or answer
-	raw, err := ioutil.ReadAll(httpreq.Body)
-	if err != nil {
-		teeErrorStderrHttp(w, err)
-		return
-	}
-	emptyOrRecvOnlyAnswer := string(raw)
-
-	subMapMutex.Lock()
-	sub, ok := subMap[txid]
-	if !ok {
-		sub = &Subscriber{}
-		subMap[txid] = sub
-	}
-	subMapMutex.Unlock()
-
 	rid := httpreq.URL.Query().Get("level")
-	step := httpreq.URL.Query().Get("step")
-	issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
 		if rid != "a" && rid != "b" && rid != "c" {
@@ -356,162 +388,156 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			return
 		}
 
+		subMapMutex.Lock()
+		sub, ok := subMap[txid]
+		subMapMutex.Unlock()
+		if !ok {
+			teeErrorStderrHttp(w, fmt.Errorf("no such sub"))
+			return
+		}
+
 		sub.requestedRID = rid
 		w.WriteHeader(http.StatusAccepted)
 		return
-	} else if step == "1" { // asking for offer
+	} else {
+		// rx offer, tx answer
+
 		if httpreq.Method != "POST" {
-			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed for ?step="))
+			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
 			return
 		}
 
-		if sub.step != 0 {
-			teeErrorStderrHttp(w, fmt.Errorf("cannot repeat step=1"))
+		// offer from browser
+		offersdpbytes, err := ioutil.ReadAll(httpreq.Body)
+		if err != nil {
+			teeErrorStderrHttp(w, err)
 			return
 		}
-		sub.step = 1
 
-		// part one of two part transaction
+		subMapMutex.Lock()
+		_, ok := subMap[txid]
+		subMapMutex.Unlock()
+		if ok {
+			teeErrorStderrHttp(w, fmt.Errorf("cannot re-use or re-nego subscriber"))
+			return
+		}
+
+		sub := &Subscriber{}
 
 		// Create a new PeerConnection
 		log.Println("created PC")
 		peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
-		if err != nil {
-			panic(err)
-		}
-		peerConnection.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
-			log.Println(pcs)
+		checkPanic(err)
+
+		sub.conn = peerConnection
+
+		offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdpbytes)}
+		logSdpReport("publisher", offer)
+
+		err = peerConnection.SetRemoteDescription(offer)
+		checkPanic(err)
+
+		sdsdp, err := offer.Unmarshal()
+		checkPanic(err)
+
+		// NO!
+		// peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {...}
+		// Pion says:
+		// "OnTrack sets an event handler which is called when remote track arrives from a remote peer."
+		// the 'sub' side of our SFU just Pushes tracks, it can't receive them,
+		// so there is no OnTrack handler
+
+		peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
+			log.Println("sub ICE Connection State has changed", icecs.String())
+		})
+		peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+			log.Println("sub Connection State has changed", cs.String())
 		})
 
-		//audio
-		log.Println("-- before audio", audioTrack)
-		if audioTrack == nil {
-			panic("no audio available, panic")
-		}
+		/* logic
+		when browser subscribes, we always give it one video track
+		and we just switch simulcast to that subscriber's RtpSender using replacetrack
 
-		// pion can receiver either
-		//single m=video with simulcast, which is 3x ssrcs
-		// or three m=video non-simulcast, old style mediadesc
+		when another sfu subscribes, we really want to add a track for each
+		track it has prepared an m=video section for
 
-		// for egress, we can provide 1x output video
-		// or we can provide 3x output video when we have
-		// simulcast ingress or multi-track ingress
+		so, we count the number of m=video sections using numVideoMediaDesc()
 
-		if !issfu {
-			// !issfu true, means this is a broswer connecting
-			// and it can only take one track of input
+		this 'numvideo' logic should do that
+		*/
 
-			// we just give browsers a single track, but their own unique track
-			log.Println("addtrack for browser subscriber")
+		//should be 1 from browser sub
+		//should be 3 from x186k sfu
+		numvideo := numVideoMediaDesc(sdsdp)
+		log.Println("numvideo", numvideo)
 
-			vidtrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
-			checkPanic(err)
+		// audio first
+		rtpSender, err := sub.conn.AddTrack(audioTrack)
+		checkPanic(err)
+		go processRTCP(rtpSender)
+		sub.rtpSenders[0] = rtpSender
 
-			sub.unsharedTrack = vidtrack
+		rtpSender, err = sub.conn.AddTrack(video1)
+		checkPanic(err)
+		go processRTCP(rtpSender)
+		sub.rtpSenders[1] = rtpSender
 
-			rtpSender, err := peerConnection.AddTrack(vidtrack)
+		if numvideo >= 2 { // is browser!
+			rtpSender, err = sub.conn.AddTrack(video2)
 			checkPanic(err)
 			go processRTCP(rtpSender)
+			sub.rtpSenders[2] = rtpSender
+		}
+		if numvideo >= 3 {
 
-		} else {
-			// issfu true, means this is a SFU subscribing
-			// and it can only take many tracks of input
-
-			// another x186ksfu instance
-			// we forward all tracks down
-			for k, v := range localVidTracks {
-				log.Println("addtrack for sfu subscriber:", k)
-				rtpSender, err := peerConnection.AddTrack(v)
-				checkPanic(err)
-				go processRTCP(rtpSender)
-			}
+			rtpSender, err = sub.conn.AddTrack(video3)
+			checkPanic(err)
+			go processRTCP(rtpSender)
+			sub.rtpSenders[3] = rtpSender
 		}
 
-		// audio
-		rtpSenderAudio, err := peerConnection.AddTrack(audioTrack)
+		// Create answer
+		sessdesc, err := peerConnection.CreateAnswer(nil)
 		checkPanic(err)
-		go processRTCP(rtpSenderAudio)
-
-		// Create an offer for the other PeerConnection
-		offer, err := peerConnection.CreateOffer(nil)
-		if err != nil {
-			panic(err)
-		}
 
 		// Create channel that is blocked until ICE Gathering is complete
 		gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 
-		// SetLocalDescription, needed before remote gets offer
-		if err = peerConnection.SetLocalDescription(offer); err != nil {
-			panic(err)
-		}
+		// Sets the LocalDescription, and starts our UDP listeners
+		err = peerConnection.SetLocalDescription(sessdesc)
+		checkPanic(err)
 
 		// Block until ICE Gathering is complete, disabling trickle ICE
 		// we do this because we only can exchange one signaling message
 		// in a production application you should exchange ICE Candidates via OnICECandidate
-		log.Println("pre gatherComplete read")
 		<-gatherComplete
-		log.Println("post gatherComplete read")
 
-		sub.conn = peerConnection
-		// delete the map entry in one minute. should be plenty of time
+		// Get the LocalDescription and take it to base64 so we can paste in browser
+		ansrtcsd := peerConnection.LocalDescription()
 
-		o := *peerConnection.LocalDescription()
-
-		err = logSdpReport("pion-subscribe", o)
-		checkPanic(err)
+		logSdpReport("sub-answer", *ansrtcsd)
 
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(o.SDP))
+		_, _ = w.Write([]byte(ansrtcsd.SDP))
 
-		return
-	} else if step == "2" {
-		if httpreq.Method != "POST" {
-			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed for ?step="))
-			return
-		}
-
-		if sub.step != 1 {
-			teeErrorStderrHttp(w, fmt.Errorf("step=2 must follow step=1"))
-			return
-		}
-		sub.step = 2
-		// part two of two part transaction
-
-		sdesc := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: emptyOrRecvOnlyAnswer}
-
-		err = logSdpReport("subscriber-recd-answer", sdesc)
-		checkPanic(err)
-
-		subMapMutex.Lock()
-		peerConnection := subMap[txid].conn
-		subMapMutex.Unlock()
-
-		err = peerConnection.SetRemoteDescription(sdesc)
-		checkPanic(err)
-
-		log.Println("setremote done")
-	} else {
-		teeErrorStderrHttp(w, fmt.Errorf("step=1 or step=2 or rid=<rid> must be supplied"))
-		return
 	}
 }
 
-func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
+func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 	good := strings.HasPrefix(rtcsd.SDP, "v=")
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
 	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
-	if debugsdp {
-		_ = ioutil.WriteFile("/tmp/"+wherefrom, []byte(rtcsd.SDP), 0777)
-	}
+	// if debugsdp {
+	// 	_ = ioutil.WriteFile("/tmp/"+wherefrom, []byte(rtcsd.SDP), 0777)
+	// }
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
-		return err
+		elog.Printf(" n/0 fail to unmarshal")
+		return
 	}
 	log.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
-	return nil
 }
 
 func randomHex(n int) (string, error) {
@@ -522,46 +548,137 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func dialUpstream(baseurl string) error {
+func readPcap2RTP(reader io.Reader) []*rtp.Packet {
+
+	var pkts []*rtp.Packet
+	r, err := pcapgo.NewNgReader(reader, pcapgo.DefaultNgReaderOptions)
+	checkPanic(err)
+
+	for {
+		data, _, err := r.ReadPacketData()
+		if err == io.EOF {
+			break
+		}
+		checkPanic(err)
+
+		// Decode a packet
+		packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
+
+		udplayer := packet.Layer(layers.LayerTypeUDP)
+		if udplayer == nil {
+			panic("non-udp in pcap")
+		}
+
+		udp, _ := udplayer.(*layers.UDP)
+
+		var p rtp.Packet
+		err = p.Unmarshal(udp.Payload)
+		checkPanic(err)
+
+		pkts = append(pkts, &p)
+	}
+
+	return pkts
+}
+
+func rtpdumpLoopPlayer(p []*rtp.Packet, track *webrtc.TrackLocalStaticRTP) {
+	n := len(p)
+	delta1 := time.Second / time.Duration(n)
+	delta2 := uint32(90000 / n)
+	seq := uint16(mrand.Uint32())
+	ts := mrand.Uint32()
+
+	for {
+		for _, v := range p {
+			time.Sleep(delta1)
+			v.SequenceNumber = seq
+			seq++
+			v.Timestamp = ts
+			err := track.WriteRTP(v)
+			checkPanic(err)
+		}
+		ts += delta2
+	}
+
+}
+
+func dialUpstream(baseurl string) {
 
 	txid, err := randomHex(10)
 	checkPanic(err)
-	url := baseurl + "?issfu=1&step=1&txid=" + txid
+	url := baseurl + "?txid=" + txid
 
 	log.Println("dialUpstream url:", url)
 
-	// for pub ingest, we want to take offer, generate answer: double post
-	empty := strings.NewReader("")
-	resp, err := http.Post(url, "application/sdp", empty)
+	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
+	checkPanic(err)
+
+	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
+		log.Println("dial ICE Connection State has changed", icecs.String())
+	})
+
+	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
+	// create transceivers for 1x audio, 3x video
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
+	checkPanic(err)
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
+	checkPanic(err)
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
+	checkPanic(err)
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
+	checkPanic(err)
+
+	// Create an offer to send to the other process
+	offer, err := peerConnection.CreateOffer(nil)
+	if err != nil {
+		panic(err)
+	}
+
+	logSdpReport("dialupstream-offer", offer)
+
+	// Sets the LocalDescription, and starts our UDP listeners
+	// Note: this will start the gathering of ICE candidates
+	if err = peerConnection.SetLocalDescription(offer); err != nil {
+		panic(err)
+	}
+	connConnected := make(chan bool)
+	connDone := make(chan bool)
+	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+		log.Println("ingress Connection State has changed", cs.String())
+		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+			connConnected <- true
+		case webrtc.PeerConnectionStateFailed:
+		case webrtc.PeerConnectionStateClosed:
+		case webrtc.PeerConnectionStateDisconnected:
+			close(connDone)
+		}
+	})
+	go func() {
+		select {
+		case <-connConnected:
+		case <-time.After(15 * time.Second):
+			log.Println("dial:timeout waiting for connected")
+			peerConnection.Close()
+		}
+		<-connDone
+		log.Println("dial ingress DONE! exiting")
+		os.Exit(0)
+	}()
+
+	// send offer, get answer
+	resp, err := http.Post(url, "application/sdp", strings.NewReader(offer.SDP))
 	checkPanic(err)
 	defer resp.Body.Close()
-	offerraw, err := ioutil.ReadAll(resp.Body)
+	answerraw, err := ioutil.ReadAll(resp.Body)
 	checkPanic(err) //cam
-	offer := string(offerraw)
 
-	if atomic.AddUint32(&pubStartCount, 1) > 1 {
-		return errors.New("cannot accept 2nd ingress connection, please restart for new session")
-	}
-	// inside here will panic if something prevents success
-	// this is by design/ cam
-	answer, err := createIngestPeerConnection(offer)
-	if err != nil {
-		return err
-	}
+	anssd := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
+	logSdpReport("dial-answer", anssd)
 
-	ansreader := strings.NewReader(answer)
-	url = baseurl + "?issfu=1&step=2&txid=" + txid
-	resp2, err := http.Post(url, "application/sdp", ansreader)
-	checkPanic(err)
-	defer resp2.Body.Close()
-	secondResponse, err := ioutil.ReadAll(resp.Body)
+	err = peerConnection.SetRemoteDescription(anssd)
 	checkPanic(err)
 
-	if len(secondResponse) > 0 {
-		elog.Println("got unexpected data back from 2nd fetch to upstream:", string(secondResponse))
-		//we will ignore this
-	}
-	return nil
 }
 
 func processRTCP(rtpSender *webrtc.RTPSender) {
@@ -573,16 +690,25 @@ func processRTCP(rtpSender *webrtc.RTPSender) {
 	}
 }
 
+func logPacket(packet *rtp.Packet, msg string) string {
+	var b bytes.Buffer
+	b.Grow(20 + len(packet.Raw)*3)
+	b.WriteString("000000 ")
+	// tools for text2pcap
+	for _, v := range packet.Raw {
+		b.WriteString(fmt.Sprintf("%02x ", v))
+	}
+	b.WriteString(msg)
+	return b.String()
+}
+
 func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	var err error
+
 	mimetype := track.Codec().MimeType
 	log.Println("OnTrack codec:", mimetype)
 
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		log.Println("OnTrack audio", mimetype)
-
-		audioTrack, err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "audio", "pion")
-		checkPanic(err)
 
 		// forever loop
 		for {
@@ -609,7 +735,7 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 	// audio callbacks never get here
 	// video will proceed here
 
-	if track.Kind() != webrtc.RTPCodecTypeVideo || !strings.HasPrefix(mimetype, "video") {
+	if mimetype != videoMimeType {
 		panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
 	}
 
@@ -625,27 +751,10 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		log.Println("using RID for trackname:", track.RID())
 		trackname = track.RID()
 	}
-	if trackname == "" {
-		panic("empty trackname")
-	}
 
 	if trackname != "a" && trackname != "b" && trackname != "c" {
 		panic("only track names a,b,c supported")
 	}
-
-	// save the video mime type, and check that all video tracks are the same type
-
-	if videoMimeType == "" {
-		videoMimeType = mimetype
-	} else {
-		if mimetype != videoMimeType {
-			panic("cannot support multiple video mime types")
-		}
-	}
-
-	//change from pion to a,b,c
-	localVidTracks[trackname], err = webrtc.NewTrackLocalStaticRTP(track.Codec().RTPCodecCapability, "video", trackname)
-	checkPanic(err)
 
 	go func() {
 		sendPLI(peerConnection, track)
@@ -657,6 +766,16 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		}
 	}()
 
+	var destrack *webrtc.TrackLocalStaticRTP
+	switch trackname {
+	case "a":
+		destrack = video1
+	case "b":
+		destrack = video2
+	case "c":
+		destrack = video3
+	}
+
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
 	for {
@@ -665,6 +784,14 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		packet, _, readErr := track.ReadRTP()
 		if readErr != nil {
 			panic(readErr)
+		}
+
+		if *logPackets {
+			logPacketIn.Print(logPacket(packet, "RTP_PACKET video ingress"))
+		}
+
+		if writeErr := destrack.WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
+			panic(writeErr)
 		}
 
 		/* pseudo code
@@ -683,64 +810,61 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 
 		*/
 
-		subMapMutex.Lock()
-		// for each subscriber
-		for _, sub := range subMap {
-			subMapMutex.Unlock()
+		// subMapMutex.Lock()
+		// // for each subscriber
+		// for _, sub := range subMap {
+		// 	subMapMutex.Unlock()
 
-			// if sub.simuTrack == nil {
-			// 	panic("unfinished subscriber / never got audio??")
-			// }
+		// 	// if sub.simuTrack == nil {
+		// 	// 	panic("unfinished subscriber / never got audio??")
+		// 	// }
 
-			// if subscriber is a browser
-			// we decide which RID he should receive
-			if sub.unsharedTrack != nil { // we write to per-subscriber tracks when they are browser
+		// 	// if subscriber is a browser
+		// 	// we decide which RID he should receive
+		// 	// if sub.unsharedTrack != nil { // we write to per-subscriber tracks when they are browser
 
-				// has subscriber requested to switch tracks?
-				if sub.requestedRID == trackname {
-					iskey := keyFrameHelper(packet.Payload, mimetype)
-					if iskey {
+		// 	// 	// has subscriber requested to switch tracks?
+		// 	// 	if sub.requestedRID == trackname {
+		// 	// 		iskey := keyFrameHelper(packet.Payload, mimetype)
+		// 	// 		if iskey {
 
-						// 12 7 20 chrome seems more sensative to timestamp than seqnp
+		// 	// 			// 12 7 20 chrome seems more sensative to timestamp than seqnp
 
-						sub.seqnoOffset = packet.SequenceNumber - sub.lastSent.SequenceNumber - 1
-						// one could argue that X should be the inter-frame-TS-delta
-						// but if you use the inter-frame-TS-delta, you will make the timestamp change early
-						// which might mess with gstreamer type decoders
-						// if you use X=0, then the new frame probably starts on the same timestamp as the cut
-						// frame. But the math&housekeeping is easier! :)
-						x := uint32(2970)
-						sub.timestampOffset = packet.Timestamp - sub.lastSent.Timestamp - x
+		// 	// 			sub.seqnoOffset = packet.SequenceNumber - sub.lastSent.SequenceNumber - 1
+		// 	// 			// one could argue that X should be the inter-frame-TS-delta
+		// 	// 			// but if you use the inter-frame-TS-delta, you will make the timestamp change early
+		// 	// 			// which might mess with gstreamer type decoders
+		// 	// 			// if you use X=0, then the new frame probably starts on the same timestamp as the cut
+		// 	// 			// frame. But the math&housekeeping is easier! :)
+		// 	// 			x := uint32(2970)
+		// 	// 			sub.timestampOffset = packet.Timestamp - sub.lastSent.Timestamp - x
 
-						sub.currentRID = sub.requestedRID
-						sub.requestedRID = ""
-					}
-				}
+		// 	// 			sub.currentRID = sub.requestedRID
+		// 	// 			sub.requestedRID = ""
+		// 	// 		}
+		// 	// 	}
 
-				ridMatch := sub.currentRID == trackname
-				useDefaultRid := sub.currentRID == "" && trackname == "a"
+		// 	// 	ridMatch := sub.currentRID == trackname
+		// 	// 	useDefaultRid := sub.currentRID == "" && trackname == "a"
 
-				if ridMatch || useDefaultRid {
-					// if yes, forward packet
+		// 	// 	if ridMatch || useDefaultRid {
+		// 	// 		// if yes, forward packet
 
-					packet.SequenceNumber -= sub.seqnoOffset
-					packet.Timestamp -= sub.timestampOffset
+		// 	// 		packet.SequenceNumber -= sub.seqnoOffset
+		// 	// 		packet.Timestamp -= sub.timestampOffset
 
-					sub.lastSent = packet
+		// 	// 		sub.lastSent = packet
 
-					err = sub.unsharedTrack.WriteRTP(packet)
-					if err != nil {
-						myMetrics.writeRTPError++
-					}
-				}
-			}
-			subMapMutex.Lock()
-		}
-		subMapMutex.Unlock()
+		// 	// 		err = sub.unsharedTrack.WriteRTP(packet)
+		// 	// 		if err != nil {
+		// 	// 			myMetrics.writeRTPError++
+		// 	// 		}
+		// 	// 	}
+		// 	// }
+		// 	subMapMutex.Lock()
+		// }
+		// subMapMutex.Unlock()
 
-		if writeErr := localVidTracks[trackname].WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
-			panic(writeErr)
-		}
 	}
 }
 
@@ -772,7 +896,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) {
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngestPeerConnection(offersdp string) (string, error) {
+func createIngestPeerConnection(offersdp string) (*webrtc.SessionDescription, *webrtc.PeerConnection) {
 
 	log.Println("createIngestPeerConnection")
 
@@ -784,6 +908,10 @@ func createIngestPeerConnection(offersdp string) (string, error) {
 	// Create a new RTCPeerConnection
 	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
 	checkPanic(err)
+
+	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
+		log.Println("ingress ICE Connection State has changed", icecs.String())
+	})
 
 	// XXX 1 5 20 cam
 	// not sure reading rtcp helps, since we should not have any
@@ -802,18 +930,13 @@ func createIngestPeerConnection(offersdp string) (string, error) {
 	// }
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
-	err = logSdpReport("publisher", offer)
-	checkPanic(err)
+	logSdpReport("publisher", offer)
 
 	err = peerConnection.SetRemoteDescription(offer)
 	checkPanic(err)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		ingestOnTrack(peerConnection, track, receiver)
-	})
-
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 	})
 
 	// Create answer
@@ -832,18 +955,8 @@ func createIngestPeerConnection(offersdp string) (string, error) {
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
 
-	// XXX
-	// someday we should check pion for webrtc/connected status to set this bool
-	//
-	ingestPresent = true
-
 	// Get the LocalDescription and take it to base64 so we can paste in browser
-	ansrtcsd := peerConnection.LocalDescription()
-
-	err = logSdpReport("pion-publisher", *ansrtcsd)
-	checkPanic(err)
-
-	return ansrtcsd.SDP, nil
+	return peerConnection.LocalDescription(), peerConnection
 }
 
 func keyFrameHelper(payload []byte, mimetype string) bool {
