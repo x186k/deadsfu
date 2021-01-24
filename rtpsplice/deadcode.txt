@@ -1,0 +1,54 @@
+// SpliceRTP takes RTP from a number of different sources, and
+// allows switching between the RTP streams while fixing the RTP timestamps and sequence numbers
+// to be continuous.
+// Sequence numbers are easy.
+// Timestamps are tricky, and could likely be improved (see comments on regression, use TS edge)
+//
+func (s *RtpSplicer) SpliceRTPOld(o *rtp.Packet, src RtpSource, now time.Time, rtphz int) (r *rtp.Packet) {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	activeSSRCHasChanged := s.active == src && s.lastSentValid && r.SSRC != s.activeSSRC
+
+	if s.pending == src || activeSSRCHasChanged {
+
+		iskeyframe := ContainSPS(r.Payload)
+		//tsedge := s.lastPendingSSRC != p.SSRC || s.lastPendingTS != p.Timestamp
+		//s.lastPendingSSRC = p.SSRC
+		//s.lastPendingTS = p.Timestamp
+
+		if iskeyframe || activeSSRCHasChanged {
+			// Transition between RTP streams
+			s.subtractSeqno = r.SequenceNumber - s.lastSentSeqno - 1
+
+			// XXX we currently use the last packet as the time reference to
+			// compute the delta for adjusting the new source's timestamps.
+			// we should consider creating s.lastTSEdgeTime, which might give a better estimage
+			// we also might consider doing linear regression to compute the Y-offset (slope is known)
+			// (using multiple points, not just a single point)
+			// so, I guess we are basically doing one-point regression with known slope, but unknown Y-axis
+			ticks := now.Sub(s.lastSentTime) * time.Duration(rtphz) / time.Second
+			s.subtractTS = r.Timestamp - s.lastSentTS - uint32(ticks)
+
+			s.active = src
+			s.pending = None
+
+			s.activeSSRC = o.SSRC
+			s.lastSentSeqno = o.SequenceNumber
+			s.lastSentTS = o.Timestamp
+			s.lastSentTime = now
+
+		}
+	} else if s.active == src {
+		s.activeSSRC = o.SSRC
+		s.lastSentSeqno = o.SequenceNumber
+		s.lastSentTS = o.Timestamp
+		s.lastSentTime = now
+
+		r.SequenceNumber -= s.subtractSeqno
+		r.Timestamp -= s.subtractTS
+		return r
+	}
+	return nil
+}
