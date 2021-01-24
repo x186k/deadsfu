@@ -3,3 +3,6 @@ core
 workspace.code-workspace
 sfu-x186k
 embed
+
+# do not track intermediate files used for making idle screens
+*.y4m
