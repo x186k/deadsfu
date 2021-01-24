@@ -1,0 +1,27 @@
+# The GST approach is fast, but has been observed missing frames.
+# :(
+cat h264.012021.0x58F98CC5.pcapng |\
+tshark -F pcap -r - -w - |\
+gst-launch-1.0 fdsrc fd=0 ! pcapparse caps = "application/x-rtp, media=video, \
+clock-rate=90000, encoding-name=H264, payload=102" ! rtph264depay ! \
+"video/x-h264,stream-format=byte-stream" ! fdsink fd=1 |\
+ffprobe -f h264 -i pipe:  -select_streams v \
+-show_frames -show_entries frame=pict_type -of csv
+
+
+tshark -r h264.012021.pcapng -w h264.012021.0x84A6D47C.pcapng -Y 'rtp.ssrc == 0x84A6D47C'
+tshark -r h264.012021.pcapng -w h264.012021.0x58F98CC5.pcapng -Y 'rtp.ssrc == 0x58F98CC5'
+
+
+
+cat x.probe | sort | uniq -c | sort -bgr
+
+cat h264.0x58F98CC5.012021.pcapng |\
+pcapngplay -send-udp |\
+ffprobe -i h264.sdp  -protocol_whitelist rtp,file,udp -select_streams v -show_frames -show_entries frame=pict_type -of csv
+
+
+
+
+
+
