@@ -959,19 +959,3 @@ func createIngestPeerConnection(offersdp string) (*webrtc.SessionDescription, *w
 	return peerConnection.LocalDescription(), peerConnection
 }
 
-func keyFrameHelper(payload []byte, mimetype string) bool {
-	switch mimetype {
-
-	case "video/VP8":
-		vp8 := &VP8Helper{}
-		err := vp8.Unmarshal(payload)
-		if err != nil {
-			elog.Println(err) //cam, malformed rtp is not fatal
-		}
-		return vp8.IsKeyFrame
-
-	case "video/H264":
-		return isH264Keyframe(payload)
-	}
-	panic("unhandled keyframe mimetype " + mimetype)
-}
