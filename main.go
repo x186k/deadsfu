@@ -67,11 +67,11 @@ var (
 	audioMimeType      string = "audio/opus"
 	rtcapi             *webrtc.API
 	pubStartCount      int32
-	
-	subMap             map[string]*Subscriber = make(map[string]*Subscriber)
-	subMapMutex        sync.Mutex
+
+	subMap                             map[string]*Subscriber = make(map[string]*Subscriber)
+	subMapMutex                        sync.Mutex
 	audioTrack, video1, video2, video3 *webrtc.TrackLocalStaticRTP
-	ingressSemaphore         = semaphore.NewWeighted(int64(1))
+	ingressSemaphore                   = semaphore.NewWeighted(int64(1))
 )
 
 //XXXXXXXX fixme add time & purge occasionally
