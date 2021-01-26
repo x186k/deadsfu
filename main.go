@@ -395,7 +395,17 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			return
 		}
 
-		sub.requestedRID = rid
+		switch rid {
+		case "a":
+			sub.videoSplicer.Pending = rtpsplice.Video1
+		case "b":
+			sub.videoSplicer.Pending = rtpsplice.Video2
+		case "c":
+			sub.videoSplicer.Pending = rtpsplice.Video3
+		}
+
+		// XXX
+		//sub.requestedRID = rid
 		w.WriteHeader(http.StatusAccepted)
 		return
 	} else {
