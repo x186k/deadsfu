@@ -62,7 +62,7 @@ var myMetrics struct {
 }
 
 var (
-	h264IdleRtpPackets []*rtp.Packet
+	h264IdleRtpPackets []rtp.Packet
 	videoMimeType      string = "video/H264"
 	audioMimeType      string = "audio/opus"
 	rtcapi             *webrtc.API
@@ -157,7 +157,8 @@ func init() {
 
 	pcapng := getEmbeddedOrFetch("idle.screen.h264.pcapng")
 
-	h264IdleRtpPackets = readPcap2RTP(bytes.NewReader(pcapng))
+	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(pcapng))
+	checkPanic(err)
 
 	go func() {
 		rtpdumpLoopPlayer(h264IdleRtpPackets, video1)
