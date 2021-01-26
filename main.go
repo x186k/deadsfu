@@ -71,6 +71,7 @@ var (
 	subMapMutex        sync.Mutex
 
 	audioTrack, video1, video2, video3 *webrtc.TrackLocalStaticRTP
+	ingressSemaphore         = semaphore.NewWeighted(int64(1))
 )
 
 //XXXXXXXX fixme add time & purge occasionally
@@ -299,7 +300,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if atomic.AddInt32(&pubStartCount, 1) > 1 {
+	if !ingressSemaphore.TryAcquire(1) {
 		teeErrorStderrHttp(w, errors.New("ingress busy"))
 		return
 	}
@@ -336,9 +337,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		<-connDone
 		log.Println("ingress DONE! re-opening ingress", pcnum)
 
-		if atomic.AddInt32(&pubStartCount, -1) != 0 {
-			panic("cant free ingress pcnum=" + strconv.Itoa(pcnum))
-		}
+		ingressSemaphore.Release(1)
 	}()
 
 	w.WriteHeader(http.StatusAccepted)
