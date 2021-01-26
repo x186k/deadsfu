@@ -432,6 +432,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		}
 
 		sub := &Subscriber{}
+		sub.videoSplicer.Active = rtpsplice.Idle
 
 		// Create a new PeerConnection
 		log.Println("created PC")
