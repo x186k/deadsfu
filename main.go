@@ -547,7 +547,7 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func rtpdumpLoopPlayer(p []rtp.Packet, track *webrtc.TrackLocalStaticRTP) {
+func rtpdumpLoopPlayer(p []rtp.Packet, tracks ...*webrtc.TrackLocalStaticRTP) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
@@ -560,8 +560,11 @@ func rtpdumpLoopPlayer(p []rtp.Packet, track *webrtc.TrackLocalStaticRTP) {
 			v.SequenceNumber = seq
 			seq++
 			v.Timestamp = ts
-			err := track.WriteRTP(v)
-			checkPanic(err)
+			sendRTPToEachSubscriber(&v, rtpsplice.Idle)
+			for _, track := range tracks {
+				err := track.WriteRTP(&v)
+				checkPanic(err)
+			}
 		}
 		ts += delta2
 	}
