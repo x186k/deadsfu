@@ -67,22 +67,22 @@ var (
 	audioMimeType      string = "audio/opus"
 	rtcapi             *webrtc.API
 	pubStartCount      int32
+	
 	subMap             map[string]*Subscriber = make(map[string]*Subscriber)
 	subMapMutex        sync.Mutex
-
 	audioTrack, video1, video2, video3 *webrtc.TrackLocalStaticRTP
 	ingressSemaphore         = semaphore.NewWeighted(int64(1))
 )
 
 //XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
-	conn            *webrtc.PeerConnection // peerconnection
-	currentRID      string                 // simulcast level for playback
-	requestedRID    string
-	timestampOffset uint32
-	seqnoOffset     uint16
-	lastSent        *rtp.Packet
-	rtpSenders      [4]*webrtc.RTPSender
+	isBrowser bool                   // media forwarding is quite different between browser subscriber vs sfu subscriber
+	conn      *webrtc.PeerConnection // peerconnection
+	//myVideo   *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
+	myVideo *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
+	myAudio *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
+
+	videoSplicer rtpsplice.RtpSplicer
 }
 
 func checkPanic(err error) {
