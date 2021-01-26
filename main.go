@@ -480,29 +480,44 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		numvideo := numVideoMediaDesc(sdsdp)
 		log.Println("numvideo", numvideo)
 
-		// audio first
-		rtpSender, err := sub.conn.AddTrack(audioTrack)
-		checkPanic(err)
-		go processRTCP(rtpSender)
-		sub.rtpSenders[0] = rtpSender
+		sub.isBrowser = numvideo == 1
 
-		rtpSender, err = sub.conn.AddTrack(video1)
-		checkPanic(err)
-		go processRTCP(rtpSender)
-		sub.rtpSenders[1] = rtpSender
+		if sub.isBrowser {
+			sub.myAudio, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", "pion")
+			checkPanic(err)
+			sub.myVideo, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
+			checkPanic(err)
+		} else {
+			// is sfu
+			sub.myVideo = nil // redundant but helpful for reading this code
+			sub.myAudio = nil // redundant but helpful for reading this code
+		}
 
-		if numvideo >= 2 { // is browser!
+		if sub.isBrowser {
+			rtpSender, err := sub.conn.AddTrack(sub.myAudio)
+			checkPanic(err)
+			go processRTCP(rtpSender)
+
+			rtpSender, err = sub.conn.AddTrack(sub.myVideo)
+			checkPanic(err)
+			go processRTCP(rtpSender)
+		} else {
+			// is sfu
+			rtpSender, err := sub.conn.AddTrack(audioTrack)
+			checkPanic(err)
+			go processRTCP(rtpSender)
+
+			rtpSender, err = sub.conn.AddTrack(video1)
+			checkPanic(err)
+			go processRTCP(rtpSender)
+
 			rtpSender, err = sub.conn.AddTrack(video2)
 			checkPanic(err)
 			go processRTCP(rtpSender)
-			sub.rtpSenders[2] = rtpSender
-		}
-		if numvideo >= 3 {
 
 			rtpSender, err = sub.conn.AddTrack(video3)
 			checkPanic(err)
 			go processRTCP(rtpSender)
-			sub.rtpSenders[3] = rtpSender
 		}
 
 		// Create answer
