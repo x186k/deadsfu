@@ -532,14 +532,18 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	}
 }
 
+var logSDP = flag.Bool("log-sdp", false, "write sdps to stdout/log")
+
 func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 	good := strings.HasPrefix(rtcsd.SDP, "v=")
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
 	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
-	// if debugsdp {
-	// 	_ = ioutil.WriteFile("/tmp/"+wherefrom, []byte(rtcsd.SDP), 0777)
-	// }
+	if *logSDP {
+		//	_ = ioutil.WriteFile("/tmp/"+wherefrom, []byte(rtcsd.SDP), 0777)
+		//	_ = ioutil.WriteFile("/tmp/"+wherefrom, []byte(rtcsd.SDP), 0777)
+		log.Println("sdp", wherefrom, rtcsd.SDP)
+	}
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
