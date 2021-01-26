@@ -68,14 +68,14 @@ func DoSpliceTest(t *testing.T, merged []XPacket, active RtpSource) []XPacket {
 
 	s := &RtpSplicer{}
 
-	s.active = active
+	s.Active = active
 
 	o := make([]XPacket, 0)
 
 	for _, v := range merged {
 
 		if v.setPending != None {
-			s.pending = v.setPending
+			s.Pending = v.setPending
 		}
 
 		new := s.SpliceRTP(&v.Packet, v.source, v.t.UnixNano(), 90000)
