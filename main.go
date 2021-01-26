@@ -544,6 +544,10 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(ansrtcsd.SDP))
 
+		subMapMutex.Lock()
+		subMap[txid] = sub
+		subMapMutex.Unlock()
+
 	}
 }
 
