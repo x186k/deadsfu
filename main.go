@@ -161,7 +161,7 @@ func init() {
 	checkPanic(err)
 
 	go func() {
-		rtpdumpLoopPlayer(h264IdleRtpPackets, video1)
+		rtpdumpLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
 	}()
 
 }
