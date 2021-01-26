@@ -732,6 +732,16 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		}
 	}()
 
+	var rtpsource rtpsplice.RtpSource
+	switch trackname {
+	case "a":
+		rtpsource = rtpsplice.Video1
+	case "b":
+		rtpsource = rtpsplice.Video2
+	case "c":
+		rtpsource = rtpsplice.Video3
+	}
+
 	var destrack *webrtc.TrackLocalStaticRTP
 	switch trackname {
 	case "a":
