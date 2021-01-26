@@ -547,40 +547,7 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func readPcap2RTP(reader io.Reader) []*rtp.Packet {
-
-	var pkts []*rtp.Packet
-	r, err := pcapgo.NewNgReader(reader, pcapgo.DefaultNgReaderOptions)
-	checkPanic(err)
-
-	for {
-		data, _, err := r.ReadPacketData()
-		if err == io.EOF {
-			break
-		}
-		checkPanic(err)
-
-		// Decode a packet
-		packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
-
-		udplayer := packet.Layer(layers.LayerTypeUDP)
-		if udplayer == nil {
-			panic("non-udp in pcap")
-		}
-
-		udp, _ := udplayer.(*layers.UDP)
-
-		var p rtp.Packet
-		err = p.Unmarshal(udp.Payload)
-		checkPanic(err)
-
-		pkts = append(pkts, &p)
-	}
-
-	return pkts
-}
-
-func rtpdumpLoopPlayer(p []*rtp.Packet, track *webrtc.TrackLocalStaticRTP) {
+func rtpdumpLoopPlayer(p []rtp.Packet, track *webrtc.TrackLocalStaticRTP) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
