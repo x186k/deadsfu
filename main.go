@@ -74,12 +74,10 @@ var (
 
 //XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
-	isBrowser bool                   // media forwarding is quite different between browser subscriber vs sfu subscriber
-	conn      *webrtc.PeerConnection // peerconnection
-	//myVideo   *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
-	myVideo *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
-	myAudio *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
-
+	isBrowser    bool                        // media forwarding is quite different between browser subscriber vs sfu subscriber
+	conn         *webrtc.PeerConnection      // peerconnection
+	myVideo      *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
+	myAudio      *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
 	videoSplicer rtpsplice.RtpSplicer
 }
 
