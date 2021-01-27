@@ -856,55 +856,12 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 				}
 			}
 		}
-
 		subMapMutex.Lock()
 	}
 	subMapMutex.Unlock()
-
-	// if subscriber is a browser
-	// we decide which RID he should receive
-	// if sub.unsharedTrack != nil { // we write to per-subscriber tracks when they are browser
-
-	// 	// has subscriber requested to switch tracks?
-	// 	if sub.requestedRID == trackname {
-	// 		iskey := keyFrameHelper(packet.Payload, mimetype)
-	// 		if iskey {
-
-	// 			// 12 7 20 chrome seems more sensative to timestamp than seqnp
-
-	// 			sub.seqnoOffset = packet.SequenceNumber - sub.lastSent.SequenceNumber - 1
-	// 			// one could argue that X should be the inter-frame-TS-delta
-	// 			// but if you use the inter-frame-TS-delta, you will make the timestamp change early
-	// 			// which might mess with gstreamer type decoders
-	// 			// if you use X=0, then the new frame probably starts on the same timestamp as the cut
-	// 			// frame. But the math&housekeeping is easier! :)
-	// 			x := uint32(2970)
-	// 			sub.timestampOffset = packet.Timestamp - sub.lastSent.Timestamp - x
-
-	// 			sub.currentRID = sub.requestedRID
-	// 			sub.requestedRID = ""
-	// 		}
-	// 	}
-
-	// 	ridMatch := sub.currentRID == trackname
-	// 	useDefaultRid := sub.currentRID == "" && trackname == "a"
-
-	// 	if ridMatch || useDefaultRid {
-	// 		// if yes, forward packet
-
-	// 		packet.SequenceNumber -= sub.seqnoOffset
-	// 		packet.Timestamp -= sub.timestampOffset
-
-	// 		sub.lastSent = packet
-
-	// 		err = sub.unsharedTrack.WriteRTP(packet)
-	// 		if err != nil {
-	// 			myMetrics.writeRTPError++
-	// 		}
-	// 	}
-	// }
-
 }
+
+
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) {
 	if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
