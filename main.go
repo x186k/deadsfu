@@ -158,7 +158,7 @@ func init() {
 	checkPanic(err)
 
 	go func() {
-		rtpdumpLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
+		idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
 	}()
 
 }
@@ -559,7 +559,7 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func rtpdumpLoopPlayer(p []rtp.Packet, tracks ...*webrtc.TrackLocalStaticRTP) {
+func idleLoopPlayer(p []rtp.Packet, tracks ...*webrtc.TrackLocalStaticRTP) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
