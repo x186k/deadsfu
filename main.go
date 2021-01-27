@@ -31,7 +31,7 @@ import (
 	"github.com/libdns/cloudflare"
 	"github.com/x186k/sfu-x186k/rtpsplice"
 
-	"embed"
+	_ "embed"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -39,14 +39,13 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-//go:generate go run scripts/gen.go
 
 // content is our static web server content.
 //go:embed html/index.html
 var indexHtml []byte
 
-//go:embed embed
-var embedfs embed.FS
+//go:embed lfs/idle.screen.h264.pcapng
+var idleScreenH264Pcapng []byte
 
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
@@ -155,9 +154,8 @@ func init() {
 		// checkPanic(err)
 	}
 
-	pcapng := getEmbeddedOrFetch("idle.screen.h264.pcapng")
 
-	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(pcapng))
+	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkPanic(err)
 
 	go func() {
@@ -166,27 +164,8 @@ func init() {
 
 }
 
-const assetsBaseUrl = "https://github.com/x186k/x186k-sfu-assets/raw/main/"
 
-func getEmbeddedOrFetch(filename string) []byte {
 
-	x, err := embedfs.ReadFile("embed/" + filename)
-	if err == nil && len(x) > 0 {
-		return x
-	}
-	//checkPanic(err)
-
-	url := assetsBaseUrl + filename
-	rsp, err := http.Get(url)
-	checkPanic(err)
-	defer rsp.Body.Close()
-
-	raw, err := ioutil.ReadAll(rsp.Body)
-	checkPanic(err)
-
-	return raw
-
-}
 
 func main() {
 	var err error
