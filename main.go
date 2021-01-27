@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 
 	//"net/http/httputil"
 	"os"
@@ -38,7 +39,6 @@ import (
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
 )
-
 
 // content is our static web server content.
 //go:embed html/index.html
@@ -70,6 +70,7 @@ var (
 	subMapMutex                        sync.Mutex
 	audioTrack, video1, video2, video3 *webrtc.TrackLocalStaticRTP
 	ingressSemaphore                   = semaphore.NewWeighted(int64(1))
+	lastTimeIngressVideoReceived       int64
 )
 
 //XXXXXXXX fixme add time & purge occasionally
@@ -79,6 +80,7 @@ type Subscriber struct {
 	myVideo      *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
 	myAudio      *webrtc.TrackLocalStaticRTP // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
 	videoSplicer rtpsplice.RtpSplicer
+	activeSource rtpsplice.RtpSource
 }
 
 func checkPanic(err error) {
@@ -151,18 +153,13 @@ func init() {
 		// checkPanic(err)
 	}
 
-
 	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkPanic(err)
 
-	go func() {
-		idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
-	}()
+	go idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
+	go subscriberVideoSourceController()
 
 }
-
-
-
 
 func main() {
 	var err error
@@ -373,11 +370,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		switch rid {
 		case "a":
-			sub.videoSplicer.Pending = rtpsplice.Video1
+			sub.activeSource = rtpsplice.Video1
 		case "b":
-			sub.videoSplicer.Pending = rtpsplice.Video2
+			sub.activeSource = rtpsplice.Video2
 		case "c":
-			sub.videoSplicer.Pending = rtpsplice.Video3
+			sub.activeSource = rtpsplice.Video3
 		}
 
 		// XXX
@@ -555,6 +552,43 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func isVideo123(src rtpsplice.RtpSource) bool {
+	if src == rtpsplice.Video1 || src == rtpsplice.Video2 || src == rtpsplice.Video3 {
+		return true
+	}
+	return false
+}
+
+func subscriberVideoSourceController() {
+
+	for {
+		time.Sleep(time.Millisecond)
+
+		subMapMutex.Lock()
+		for _, sub := range subMap {
+			subMapMutex.Unlock()
+
+			const maxTimeNoVideo = int64(float64(time.Second) * 1.5)
+			ingressVideoIsHappy := (time.Now().UnixNano() - lastTimeIngressVideoReceived) < maxTimeNoVideo
+			if ingressVideoIsHappy {
+				if sub.videoSplicer.Active != sub.activeSource && sub.videoSplicer.Pending != sub.activeSource {
+					sub.videoSplicer.Pending = sub.activeSource
+				}
+			} else {
+				//not happy
+				if sub.videoSplicer.Pending != rtpsplice.Idle && sub.videoSplicer.Active != rtpsplice.Idle {
+					sub.videoSplicer.Pending = rtpsplice.Idle
+				}
+			}
+
+			subMapMutex.Lock()
+		}
+		subMapMutex.Unlock()
+
+	}
+
 }
 
 func idleLoopPlayer(p []rtp.Packet, tracks ...*webrtc.TrackLocalStaticRTP) {
@@ -802,6 +836,8 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 			panic(readErr)
 		}
 
+		atomic.StoreInt64(&lastTimeIngressVideoReceived, time.Now().UnixNano())
+
 		if *logPackets {
 			logPacket(logPacketIn, packet)
 		}
@@ -844,9 +880,8 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 			pprime := sub.videoSplicer.SpliceRTP(p, src, time.Now().UnixNano(), int64(90000))
 			if pprime != nil {
 				if *logPackets {
-					logPacket(logPacketOut,pprime)
+					logPacket(logPacketOut, pprime)
 				}
-				
 
 				err := sub.myVideo.WriteRTP(pprime)
 				if err != nil {
@@ -858,8 +893,6 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 	}
 	subMapMutex.Unlock()
 }
-
-
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) {
 	if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
@@ -951,4 +984,3 @@ func createIngestPeerConnection(offersdp string) (*webrtc.SessionDescription, *w
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	return peerConnection.LocalDescription(), peerConnection
 }
-
