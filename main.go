@@ -65,7 +65,6 @@ var (
 	videoMimeType      string = "video/H264"
 	audioMimeType      string = "audio/opus"
 	rtcapi             *webrtc.API
-	pubStartCount      int32
 
 	subMap                             map[string]*Subscriber = make(map[string]*Subscriber)
 	subMapMutex                        sync.Mutex
