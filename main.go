@@ -845,9 +845,11 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 		if sub.videoSplicer.IsActiveOrPending(src) {
 			pprime := sub.videoSplicer.SpliceRTP(p, src, time.Now().UnixNano(), int64(90000))
 			if pprime != nil {
-				//os.Stdout.WriteString(string(rune(int('a') + int(src))))
-				os.Stdout.Write([]byte{byte('a') + byte(src)})
-				err := sub.myVideo.WriteRTP(p)
+				if *logPackets {
+					logPacket(logPacketOut,pprime)
+				}
+				
+
 				if err != nil {
 					myMetrics.writeRTPError++
 				}
