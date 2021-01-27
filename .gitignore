@@ -6,3 +6,4 @@ embed
 
 # do not track intermediate files used for making idle screens
 *.y4m
+moz.log
