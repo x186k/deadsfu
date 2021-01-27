@@ -706,7 +706,7 @@ func logPacket(log *log.Logger, packet *rtp.Packet) {
 // 	text2pcapLog(log, buf.Bytes())
 // }
 
-func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 
 	mimetype := track.Codec().MimeType
 	log.Println("OnTrack codec:", mimetype)
@@ -931,7 +931,7 @@ func createIngestPeerConnection(offersdp string) (*webrtc.SessionDescription, *w
 	checkPanic(err)
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingestOnTrack(peerConnection, track, receiver)
+		ingressOnTrack(peerConnection, track, receiver)
 	})
 
 	// Create answer
