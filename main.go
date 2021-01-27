@@ -309,7 +309,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	go func() {
 		select {
 		case <-connConnected:
-		case <-time.After(15 * time.Second):
+		case <-time.After(5 * time.Second):
 			log.Println("pubhandler: timeout waiting for connected", pcnum)
 			peerConnection.Close()
 		}
