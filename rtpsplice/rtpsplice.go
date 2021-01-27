@@ -11,14 +11,14 @@ import (
 	"github.com/pion/rtp"
 )
 
-type RtpSource int
+type RtpSource byte // make a byte, so everything is atomic! Yay mom!
 
 const (
 	None RtpSource = iota
 	Video1
 	Video2
 	Video3
-	Idle = 1000
+	Idle = 100
 )
 
 type RtpSplicer struct {
@@ -42,7 +42,6 @@ func (s *RtpSplicer) IsActiveOrPending(src RtpSource) bool {
 	isactive := s.Active == src
 	ispending := s.Pending == src
 
-	
 	if !isactive && !ispending {
 		return false
 	}
@@ -56,7 +55,6 @@ func (s *RtpSplicer) IsActiveOrPending(src RtpSource) bool {
 // as a way of making seqno most consistent in the face of lots of switching,
 // and also more robust to seqno bug/jumps on input
 func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtphz int64) *rtp.Packet {
-
 
 	isactive := s.Active == src
 	ispending := s.Pending == src
@@ -78,8 +76,6 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 		s.Active = src
 		s.Pending = None
 	}
-
-
 
 	activeSSRCHasChanged := isactive && o.SSRC != s.activeSSRC
 
