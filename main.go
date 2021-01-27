@@ -56,8 +56,8 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var myMetrics struct {
-	writeRTPError      uint64
-	audioErrClosedPipe uint64
+	myVideoWriteRTPError uint64
+	audioErrClosedPipe   uint64
 }
 
 var (
@@ -852,7 +852,7 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 
 				err := sub.myVideo.WriteRTP(pprime)
 				if err != nil {
-					myMetrics.writeRTPError++
+					myMetrics.myVideoWriteRTPError++
 				}
 			}
 		}
