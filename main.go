@@ -123,8 +123,8 @@ var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h26
 var httpsHostname = flag.String("https-hostname", "", "hostname for Let's Encrypt TLS certificate (https)")
 
 var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
+var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
-//var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 
 func init() {
@@ -573,6 +573,9 @@ func rtpdumpLoopPlayer(p []rtp.Packet, tracks ...*webrtc.TrackLocalStaticRTP) {
 			v.SequenceNumber = seq
 			seq++
 			v.Timestamp = ts
+			if *logPackets {
+				logPacket(logPacketIn, &v)
+			}
 			sendRTPToEachSubscriber(&v, rtpsplice.Idle)
 			for _, track := range tracks {
 				err := track.WriteRTP(&v)
@@ -672,17 +675,37 @@ func processRTCP(rtpSender *webrtc.RTPSender) {
 	}
 }
 
-func logPacket(packet *rtp.Packet, msg string) string {
+func text2pcapLog(log *log.Logger, inbuf []byte) {
 	var b bytes.Buffer
-	b.Grow(20 + len(packet.Raw)*3)
+	b.Grow(20 + len(inbuf)*3)
 	b.WriteString("000000 ")
-	// tools for text2pcap
-	for _, v := range packet.Raw {
+	for _, v := range inbuf {
 		b.WriteString(fmt.Sprintf("%02x ", v))
 	}
-	b.WriteString(msg)
-	return b.String()
+	b.WriteString("!text2pcap")
+
+	log.Print(b.String())
 }
+
+// logPacket writes text2pcap compatible lines
+func logPacket(log *log.Logger, packet *rtp.Packet) {
+	text2pcapLog(log, packet.Raw)
+}
+
+// logPacketNewSSRCValue writes text2pcap compatible lines
+// but, this packet will NOT contain RTP,
+// // but rather: ether/ip/udp/special_token
+// func logPacketNewSSRCValue(log *log.Logger, ssrc webrtc.SSRC, src rtpsplice.RtpSource) {
+// 	text2pcapSentinel := []byte{0, 31, 0xde, 0xad, 0xbe, 0xef}
+// 	buf := new(bytes.Buffer)
+// 	buf.Write(text2pcapSentinel)
+
+// 	source := []uint64{1, uint64(ssrc), uint64(src)}
+// 	err := binary.Write(buf, binary.LittleEndian, source)
+// 	checkPanic(err)
+
+// 	text2pcapLog(log, buf.Bytes())
+// }
 
 func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 
@@ -768,6 +791,10 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		destrack = video3
 	}
 
+	// if *logPackets {
+	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
+	// }
+
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
 	for {
@@ -779,7 +806,7 @@ func ingestOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRem
 		}
 
 		if *logPackets {
-			logPacketIn.Print(logPacket(packet, "RTP_PACKET video ingress"))
+			logPacket(logPacketIn, packet)
 		}
 
 		if writeErr := destrack.WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
