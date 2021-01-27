@@ -850,6 +850,7 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 				}
 				
 
+				err := sub.myVideo.WriteRTP(pprime)
 				if err != nil {
 					myMetrics.writeRTPError++
 				}
