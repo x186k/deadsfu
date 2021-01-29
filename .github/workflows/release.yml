@@ -31,7 +31,8 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v2
       with:
-        go-version: 'go1.16beta1'
+        stable: 'false'
+        go-version: '1.16beta1' # The Go version to download (if necessary) and use.
     
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v2
