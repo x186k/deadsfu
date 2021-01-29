@@ -35,9 +35,10 @@ jobs:
         go-version: '1.16.0-rc1' # The Go version to download (if necessary) and use.
 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v2
+      uses: golangci/golangci-lint-action@v2.3.0
       with:
         version: v1.35.2
+        skip-go-installation: true
         args: --skip-files pion.go
 
   releases-matrix:
