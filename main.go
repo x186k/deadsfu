@@ -561,12 +561,6 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func isVideo123(src rtpsplice.RtpSource) bool {
-	if src == rtpsplice.Video1 || src == rtpsplice.Video2 || src == rtpsplice.Video3 {
-		return true
-	}
-	return false
-}
 
 func ingressVideoIsHappy() bool {
 	const maxTimeNoVideo = int64(float64(time.Second) * 1.5)
