@@ -1,6 +1,6 @@
 module github.com/x186k/sfu-x186k
 
-go 1.15
+go 1.16
 
 require (
 	github.com/caddyserver/certmagic v0.12.0
