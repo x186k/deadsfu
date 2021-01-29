@@ -9,6 +9,9 @@ name: go lint and build
 # events but only for the master branch
 on:
   workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Test scenario tags'
   release:
     types: [created]
 
