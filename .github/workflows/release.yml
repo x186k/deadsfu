@@ -32,7 +32,7 @@ jobs:
       uses: actions/setup-go@v2
       with:
         stable: 'false'
-        go-version: 'https://golang.org/dl/go1.16rc1.linux-amd64.tar.gz' # The Go version to download (if necessary) and use.
+        go-version: 'go1.16rc1' # The Go version to download (if necessary) and use.
     
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v2
