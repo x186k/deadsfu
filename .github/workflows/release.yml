@@ -2,7 +2,7 @@
 # https://gist.github.com/wilsontwm/28beb84b0bad67d03c8c2bff18a75188
 
 
-name: go lint and build
+name: Make Release
 
 
 # Controls when the action will run. Triggers the workflow on push or pull request
