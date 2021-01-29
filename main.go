@@ -113,6 +113,7 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("debug", true, "enable debug output")
 var logPackets = flag.Bool("log-packets", false, "log packets for later use with text2pcap")
+var logSplicer = flag.Bool("log-splicer", false, "log rrp splicing debug info")
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
@@ -405,7 +406,13 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		}
 
 		sub := &Subscriber{}
-		sub.videoSplicer.Active = rtpsplice.Idle
+		if ingressVideoIsHappy() {
+			sub.activeSource = rtpsplice.Video1
+			sub.videoSplicer.Pending = rtpsplice.Video1
+		} else {
+			sub.activeSource = rtpsplice.Idle
+			sub.videoSplicer.Pending = rtpsplice.Idle
+		}
 
 		// Create a new PeerConnection
 		log.Println("created PC")
@@ -561,24 +568,29 @@ func isVideo123(src rtpsplice.RtpSource) bool {
 	return false
 }
 
-func subscriberVideoSourceController() {
+func ingressVideoIsHappy() bool {
+	const maxTimeNoVideo = int64(float64(time.Second) * 1.5)
+	t := atomic.LoadInt64(&lastTimeIngressVideoReceived)
+	happy := (time.Now().UnixNano() - t) < maxTimeNoVideo
+	return happy
+}
 
+func subscriberVideoSourceController() {
+	
 	for {
 		time.Sleep(time.Millisecond)
 
 		subMapMutex.Lock()
 		for _, sub := range subMap {
 			subMapMutex.Unlock()
-
-			const maxTimeNoVideo = int64(float64(time.Second) * 1.5)
-			ingressVideoIsHappy := (time.Now().UnixNano() - lastTimeIngressVideoReceived) < maxTimeNoVideo
-			if ingressVideoIsHappy {
+			
+			if ingressVideoIsHappy() {
 				if sub.videoSplicer.Active != sub.activeSource && sub.videoSplicer.Pending != sub.activeSource {
 					sub.videoSplicer.Pending = sub.activeSource
 				}
 			} else {
 				//not happy
-				if sub.videoSplicer.Pending != rtpsplice.Idle && sub.videoSplicer.Active != rtpsplice.Idle {
+				if sub.videoSplicer.Active != rtpsplice.Idle && sub.videoSplicer.Pending != rtpsplice.Idle {
 					sub.videoSplicer.Pending = rtpsplice.Idle
 				}
 			}
@@ -826,6 +838,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
 	// }
 
+//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
 	for {
@@ -836,16 +849,23 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 			panic(readErr)
 		}
 
+		// if lastts != packet.Timestamp && trackname == "a" {
+		// 	log.Println("xts", packet.Timestamp-lastts)
+		// 	lastts = packet.Timestamp
+		// }
+
 		atomic.StoreInt64(&lastTimeIngressVideoReceived, time.Now().UnixNano())
 
 		if *logPackets {
 			logPacket(logPacketIn, packet)
 		}
 
+		// sends video to chained SFUs
 		if writeErr := destrack.WriteRTP(packet); writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) {
 			panic(writeErr)
 		}
 
+		// send video to subscribing Browsers
 		sendRTPToEachSubscriber(packet, rtpsource)
 
 	}
@@ -881,6 +901,11 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 			if pprime != nil {
 				if *logPackets {
 					logPacket(logPacketOut, pprime)
+				}
+				if *logSplicer {
+					logPacketOut.Println("splicerx", sub.videoSplicer.Active, sub.videoSplicer.Pending, p.SSRC, p.Timestamp, p.SequenceNumber, rtpsplice.ContainSPS(p.Payload))
+					logPacketOut.Println("splicetx", sub.videoSplicer.Active, sub.videoSplicer.Pending, pprime.SSRC, pprime.Timestamp, pprime.SequenceNumber, rtpsplice.ContainSPS(pprime.Payload),
+						pprime.Timestamp <= p.Timestamp)
 				}
 
 				err := sub.myVideo.WriteRTP(pprime)
