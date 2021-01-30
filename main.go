@@ -66,12 +66,15 @@ var (
 	audioMimeType      string = "audio/opus"
 	rtcapi             *webrtc.API
 
-	subMap                             map[string]*Subscriber = make(map[string]*Subscriber)
-	subMapMutex                        sync.Mutex
-	audioTrack, video1, video2, video3 *webrtc.TrackLocalStaticRTP
-	ingressSemaphore                   = semaphore.NewWeighted(int64(1))
-	lastTimeIngressVideoReceived       int64
+	subMap                       map[string]*Subscriber = make(map[string]*Subscriber)
+	subMapMutex                  sync.Mutex
+	audioTrack                   *webrtc.TrackLocalStaticRTP
+	video1, video2, video3       *webrtc.TrackLocalStaticRTP // Downstream SFU shared tracks
+	ingressSemaphore             = semaphore.NewWeighted(int64(1))
+	lastTimeIngressVideoReceived int64
 )
+
+type Splic
 
 //XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
@@ -561,7 +564,6 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-
 func ingressVideoIsHappy() bool {
 	const maxTimeNoVideo = int64(float64(time.Second) * 1.5)
 	t := atomic.LoadInt64(&lastTimeIngressVideoReceived)
@@ -570,14 +572,14 @@ func ingressVideoIsHappy() bool {
 }
 
 func subscriberVideoSourceController() {
-	
+
 	for {
 		time.Sleep(time.Millisecond)
 
 		subMapMutex.Lock()
 		for _, sub := range subMap {
 			subMapMutex.Unlock()
-			
+
 			if ingressVideoIsHappy() {
 				if sub.videoSplicer.Active != sub.activeSource && sub.videoSplicer.Pending != sub.activeSource {
 					sub.videoSplicer.Pending = sub.activeSource
@@ -832,7 +834,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
 	// }
 
-//	var lastts uint32
+	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
 	for {
