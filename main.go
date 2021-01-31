@@ -408,7 +408,18 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			log.Println("sub ICE Connection State has changed", icecs.String())
 		})
 		peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-			log.Println("sub Connection State has changed", cs.String())
+			log.Println("subscriber Connection State has changed", cs.String())
+			switch cs {
+			case webrtc.PeerConnectionStateConnected:
+			case webrtc.PeerConnectionStateFailed:
+				peerConnection.Close()
+			case webrtc.PeerConnectionStateDisconnected:
+				peerConnection.Close()
+			case webrtc.PeerConnectionStateClosed:
+				subMapMutex.Lock()
+				delete(subMap, txid)
+				subMapMutex.Unlock()
+			}
 		})
 
 		offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdpbytes)}
