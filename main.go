@@ -64,15 +64,14 @@ var myMetrics struct {
 }
 
 var (
-	h264IdleRtpPackets []rtp.Packet
-	videoMimeType      string = "video/h264"
-	audioMimeType      string = "audio/opus"
-	rtcapi             *webrtc.API
-
-	subMap                       map[string]*Subscriber = make(map[string]*Subscriber)
-	subMapMutex                  sync.Mutex
-	audioTrack                   *webrtc.TrackLocalStaticRTP
-	video1, video2, video3       *SplicableVideo // Downstream SFU shared tracks
+	h264IdleRtpPackets           []rtp.Packet                // concurrent okay
+	videoMimeType                string                      = "video/h264"
+	audioMimeType                string                      = "audio/opus"
+	rtcapi                       *webrtc.API                                                // concurrent okay
+	subMap                       map[string]*Subscriber      = make(map[string]*Subscriber) //concurrent okay 013121
+	subMapMutex                  sync.Mutex                                                 //concurrent okay 013121
+	audioTrack                   *webrtc.TrackLocalStaticRTP                                //concurrent okay 013121
+	video1, video2, video3       *SplicableVideo                                            // Downstream SFU shared tracks
 	ingressSemaphore             = semaphore.NewWeighted(int64(1))
 	lastTimeIngressVideoReceived int64
 )

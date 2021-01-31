@@ -47,6 +47,7 @@ func checkPanic(err error) {
 }
 
 // IsActiveOrPending hopefully inlineable
+// not-mutexed on purpose, no mutex needed on byte-wide variables
 func (s *RtpSplicer) IsActiveOrPending(src RtpSource) bool {
 	isactive := s.Active == src
 	ispending := s.Pending == src
@@ -57,6 +58,8 @@ func (s *RtpSplicer) IsActiveOrPending(src RtpSource) bool {
 	return true
 }
 
+// findMostFrequentDelta is used to find inter-frame period
+// not-mutexed on purpose, only called from inside mutexed func
 func (s *RtpSplicer) findMostFrequentDelta(fallback uint32) (delta uint32) {
 	var n uint64
 
@@ -78,6 +81,7 @@ func (s *RtpSplicer) findMostFrequentDelta(fallback uint32) (delta uint32) {
 	}
 }
 
+// not-mutexed on purpose, only called from inside mutexed func
 func (s *RtpSplicer) trackTimestampDeltas(delta uint32) {
 	// classic insert into sorted set  https://golang.org/pkg/sort/#Search
 
@@ -101,15 +105,18 @@ func (s *RtpSplicer) trackTimestampDeltas(delta uint32) {
 // we may want to investigate adding seqno deltas onto a master counter
 // as a way of making seqno most consistent in the face of lots of switching,
 // and also more robust to seqno bug/jumps on input
+//
+// This grabs mutex after doing a fast, non-mutexed check for applicability
 func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtphz int64) *rtp.Packet {
 
+	//do not mutex this, it's okay
 	isactive := s.Active == src
 	ispending := s.Pending == src
-
 	if !isactive && !ispending {
 		return nil
 	}
 
+	// take mutex for messy stuff
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -168,6 +175,8 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 // from https://github.com/jech/galene/blob/codecs/rtpconn/rtpreader.go#L45
 // the original IDR detector was written by Juliusz Chroboczek @jech from the awesome Galene SFU
 // Types sps=7 pps=8 IDR-slice=5
+// no writes expects immutable []byte, so
+// no mutex is taken
 func ContainSPS(payload []byte) bool {
 	if len(payload) < 1 {
 		return false
@@ -232,8 +241,9 @@ func ContainSPS(payload []byte) bool {
 	return false
 }
 
+// ReadPcap2RTP reads a pcapng into an array of packets
+// no mutex needed
 func ReadPcap2RTP(reader io.Reader) ([]rtp.Packet, []time.Time, error) {
-
 	var pkts []rtp.Packet
 	var timestamps []time.Time
 
