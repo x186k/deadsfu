@@ -697,7 +697,7 @@ tryagain:
 	// back-off redialer
 	if err != nil && strings.HasSuffix(strings.ToLower(err.Error()), "connection refused") {
 		log.Println("connection refused")
-		myMetrics.dialConnectionRefused++
+		atomic.AddUint64(&myMetrics.dialConnectionRefused, 1)
 		time.Sleep(delay)
 		if delay <= time.Second*30 {
 			delay *= 2
@@ -708,7 +708,6 @@ tryagain:
 	defer resp.Body.Close()
 
 	log.Println("dial connected")
-
 
 	answerraw, err := ioutil.ReadAll(resp.Body)
 	checkPanic(err) //cam
@@ -785,7 +784,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 				if errors.Is(err, io.ErrClosedPipe) {
 					// I believe this occurs when there is no subscribers connected with audioTrack
 					// thus it is non-fatal
-					myMetrics.audioErrClosedPipe++
+					atomic.AddUint64(&myMetrics.audioErrClosedPipe, 1)
 					continue
 				}
 				// not-ErrClosedPipe, fatal
@@ -939,7 +938,7 @@ func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *Splicab
 
 	err := splicable.track.WriteRTP(pprime)
 	if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-		myMetrics.myVideoWriteRTPError++
+		atomic.AddUint64(&myMetrics.myVideoWriteRTPError, 1)
 	}
 }
 
