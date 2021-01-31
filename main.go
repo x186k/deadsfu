@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"runtime"
 
 	mrand "math/rand"
 	"net"
@@ -168,10 +169,24 @@ func init() {
 
 	go idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
 	go pollingVideoSourceController()
+	go oncePerSecond()
 
 }
 
+func oncePerSecond() {
+	n := runtime.NumGoroutine()
+	for {
+		time.Sleep(time.Second)
+		nn := runtime.NumGoroutine()
+		if nn != n {
+			log.Println("NumGoroutine", nn)
+			n = nn
+		}
+	}
+}
+
 func main() {
+
 	var err error
 
 	flag.Parse()
@@ -187,6 +202,7 @@ func main() {
 		log.SetPrefix("")
 		log.SetFlags(0)
 	}
+	log.Println("NumGoroutine", runtime.NumGoroutine())
 
 	mux := http.NewServeMux()
 
