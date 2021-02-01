@@ -602,14 +602,10 @@ func pollingVideoSourceController() {
 
 			if sub.browserVideo != nil {
 				if ingressVideoIsHappy() {
-					if sub.browserVideo.splicer.Active != sub.xsource && sub.browserVideo.splicer.Pending != sub.xsource {
-						sub.browserVideo.splicer.Pending = sub.xsource
-					}
+					changeSourceIfNeeded(sub.browserVideo, sub.xsource)
 				} else {
 					//not happy
-					if sub.browserVideo.splicer.Active != rtpsplice.Idle && sub.browserVideo.splicer.Pending != rtpsplice.Idle {
-						sub.browserVideo.splicer.Pending = rtpsplice.Idle
-					}
+					changeSourceIfNeeded(sub.browserVideo, rtpsplice.Idle)
 				}
 			}
 
