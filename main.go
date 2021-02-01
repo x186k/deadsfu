@@ -847,7 +847,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 				return
 			}
 			checkPanic(err)
-			
+
 			err = sendREMB(peerConnection, track)
 			if err == io.ErrClosedPipe {
 				return
