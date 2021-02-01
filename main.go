@@ -650,7 +650,11 @@ func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableVideo) {
 				if splicable.splicer.IsActiveOrPending(rtpsplice.Idle) {
 					pprime := splicable.splicer.SpliceRTP(&v, rtpsplice.Idle, time.Now().UnixNano(), int64(90000))
 					if pprime != nil {
-						LogAndWriteRTP(pprime, &v, splicable)
+						err := LogAndWriteRTP(pprime, &v, splicable)
+						if err == io.ErrClosedPipe {
+							return
+						}
+						checkPanic(err)
 					}
 				}
 			}
@@ -800,17 +804,16 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 			// os.Stdout.WriteString("a")
 			// os.Stdout.Sync()
 			// fmt.Println(time.Now().Clock())
-			if err := audioTrack.WriteRTP(p); err != nil {
-				if errors.Is(err, io.ErrClosedPipe) {
-					// I believe this occurs when there is no subscribers connected with audioTrack
-					// thus it is non-fatal
-					atomic.AddUint64(&myMetrics.audioErrClosedPipe, 1)
-					continue
-				}
-				// not-ErrClosedPipe, fatal
-				//cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
-				panic(err)
+			err = audioTrack.WriteRTP(p)
+			if err == io.ErrClosedPipe {
+				// I believe this occurs when there is no subscribers connected with audioTrack
+				// thus we continue anyway!, do not return here contrary to other examples
+				continue
 			}
+			// not-ErrClosedPipe, fatal
+			//cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
+			checkPanic(err)
+
 		}
 	}
 
@@ -908,7 +911,11 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		if splicable.splicer.IsActiveOrPending(rtpsource) {
 			pprime := splicable.splicer.SpliceRTP(packet, rtpsource, time.Now().UnixNano(), int64(90000))
 			if pprime != nil {
-				LogAndWriteRTP(pprime, packet, splicable)
+				err := LogAndWriteRTP(pprime, packet, splicable)
+				if err == io.ErrClosedPipe {
+					return
+				}
+				checkPanic(err)
 			}
 		}
 
@@ -946,7 +953,11 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 			if sub.browserVideo.splicer.IsActiveOrPending(src) {
 				pprime := sub.browserVideo.splicer.SpliceRTP(p, src, time.Now().UnixNano(), int64(90000))
 				if pprime != nil {
-					LogAndWriteRTP(pprime, p, sub.browserVideo)
+					err := LogAndWriteRTP(pprime, p, sub.browserVideo)
+					if err == io.ErrClosedPipe {
+						return
+					}
+					checkPanic(err)
 				}
 			}
 		}
@@ -956,7 +967,7 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 	subMapMutex.Unlock()
 }
 
-func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *SplicableVideo) {
+func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *SplicableVideo) error {
 	if *logPackets {
 		logPacket(logPacketOut, pprime)
 	}
@@ -966,10 +977,7 @@ func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *Splicab
 			pprime.Timestamp <= original.Timestamp)
 	}
 
-	err := splicable.track.WriteRTP(pprime)
-	if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-		atomic.AddUint64(&myMetrics.myVideoWriteRTPError, 1)
-	}
+	return splicable.track.WriteRTP(pprime)
 }
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
