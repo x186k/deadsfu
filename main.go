@@ -839,12 +839,22 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	}
 
 	go func() {
-		sendPLI(peerConnection, track)
-		sendREMB(peerConnection, track)
-		ticker := time.NewTicker(3 * time.Second)
-		for range ticker.C {
-			sendPLI(peerConnection, track)
-			sendREMB(peerConnection, track)
+		var err error
+
+		for {
+			err = sendPLI(peerConnection, track)
+			if err == io.ErrClosedPipe {
+				return
+			}
+			checkPanic(err)
+			
+			err = sendREMB(peerConnection, track)
+			if err == io.ErrClosedPipe {
+				return
+			}
+			checkPanic(err)
+
+			time.Sleep(3 * time.Second)
 		}
 	}()
 
