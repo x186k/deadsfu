@@ -972,16 +972,13 @@ func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *Splicab
 	}
 }
 
-func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) {
-	if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}}); writeErr != nil {
-		fmt.Println(writeErr)
-	}
+func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
+	return peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}})
+
 }
 
-func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) {
-	if writeErr := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}); writeErr != nil {
-		fmt.Println(writeErr)
-	}
+func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
+	return peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}})
 }
 
 /*
