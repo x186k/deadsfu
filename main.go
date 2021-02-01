@@ -304,10 +304,22 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !ingressSemaphore.TryAcquire(1) {
+	// it takes 5 seconds to drop peerconnection on page reload
+	// so, if a new connection comes in, we wait upto seven seconds to get the
+	// semaphore
+	ctx, cancel := context.WithTimeout(req.Context(), 7*time.Second)
+	defer cancel() // releases resources if slowOperation completes before timeout elapses)
+
+	err = ingressSemaphore.Acquire(ctx, 1)
+	if err != nil {
 		teeErrorStderrHttp(w, errors.New("ingress busy"))
 		return
 	}
+
+	// if !ingressSemaphore.TryAcquire(1) {
+	// 	teeErrorStderrHttp(w, errors.New("ingress busy"))
+	// 	return
+	// }
 	// inside here will panic if something prevents success/by design
 	answersd := createIngressPeerConnection(string(offer))
 
