@@ -59,8 +59,6 @@ var peerConnectionConfig = webrtc.Configuration{
 }
 
 var myMetrics struct {
-	myVideoWriteRTPError  uint64
-	audioErrClosedPipe    uint64
 	dialConnectionRefused uint64
 }
 
