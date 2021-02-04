@@ -226,6 +226,18 @@
                 }
                 pc.addTransceiver(stream.getAudioTracks()[0], { 'direction': 'sendonly' })
 
+                // Older firefox technique for simulcast from Janus blog
+                // var sender = pc.getSenders().find(s => s.track.kind == "video");
+                // var parameters = sender.getParameters();
+                // if (!parameters)
+                //     parameters = {};
+                // parameters.encodings = [
+                //     { rid: "h", active: true, maxBitrate: 900000 },
+                //     { rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
+                //     { rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
+                // ];
+                // sender.setParameters(parameters);
+
                 let desc = await pc.createOffer()
                 await pc.setLocalDescription(desc)
 
