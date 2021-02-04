@@ -259,6 +259,10 @@
                 console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
 
+                while (true) {
+                    document.getElementById('rxtx').innerText = await getRxTxRate(pc)
+                    await new Promise(r => setTimeout(r, 3000))
+                }
 
             } catch (error) {
                 console.error('pub error', error)
@@ -337,10 +341,69 @@
                 // pc.addTransceiver('audio', { 'direction': 'recvonly' })
                 // pc.addTransceiver('video', { 'direction': 'recvonly' })
 
+                while (true) {
+                    document.getElementById('rxtx').innerText = await getRxTxRate(pc)
+                    await new Promise(r => setTimeout(r, 3000))
+                }
+
 
             } catch (error) {
                 console.error('receive error', error)
             }
+        }
+
+        async function getRxTxRate(pc) {
+            let rxrate = 0
+            let txrate = 0
+            try {
+                if (typeof ratemap === 'undefined') {
+                    ratemap = new Map()
+                }
+
+                results = await pc.getStats(null)
+                results.forEach(report => {
+                    const now = report.timestamp
+
+                    //debugging notes
+                    // if (typeof report.bytesReceived !== 'undefined') {
+                    //     console.debug(report.type, report.mediaType, report.bytesReceived)
+                    // }
+                    // if (typeof report.bytesTransmitted !== 'undefined') {
+                    //     console.debug(report.type, report.mediaType, report.bytesTransmitted)
+                    // }
+
+                    if (report.type === 'outbound-rtp') {
+                        const bytes = report.bytesSent
+                        if (ratemap.has(report.ssrc)) { //report.id may also be a good key
+                            const bytesPrev = ratemap.get(report.ssrc).bytesPrev
+                            const timestampPrev = ratemap.get(report.ssrc).timestampPrev
+                            bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev);
+                            txrate += bitrate
+                            //console.debug('tx speed', report.ssrc, report.type, report.mediaType, bitrate)
+                        }
+                        ratemap.set(report.ssrc, { bytesPrev: bytes, timestampPrev: now })
+                    }
+                    if (report.type === 'inbound-rtp') {
+                        const bytes = report.bytesReceived
+                        if (ratemap.has(report.ssrc)) { //report.id may also be a good key
+                            const bytesPrev = ratemap.get(report.ssrc).bytesPrev
+                            const timestampPrev = ratemap.get(report.ssrc).timestampPrev
+                            bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev);
+                            rxrate += bitrate
+                            //console.debug('rx speed',report.ssrc, report.type, report.mediaType, bitrate)
+                        }
+                        ratemap.set(report.ssrc, { bytesPrev: bytes, timestampPrev: now })
+                    }
+                })
+
+            } catch (err) {
+                console.error(err);
+            }
+            // we have kbps
+            rxrate = Math.floor(rxrate)
+            txrate = Math.floor(txrate)
+
+            return `${rxrate}/${txrate} rx/tx kbps`
         }
 
     </script>
