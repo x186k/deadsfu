@@ -66,7 +66,6 @@ var (
 	h264IdleRtpPackets           []rtp.Packet                      // concurrent okay
 	videoMimeType                string                            = "video/h264"
 	audioMimeType                string                            = "audio/opus"
-	rtcapi                       *webrtc.API                                                      // concurrent okay
 	subMap                       map[string]*Subscriber            = make(map[string]*Subscriber) // concurrent okay 013121
 	subMapMutex                  sync.Mutex                                                       // concurrent okay 013121
 	audioTrack                   *webrtc.TrackLocalStaticRTP                                      // concurrent okay 013121
@@ -134,11 +133,6 @@ var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 func init() {
 	var err error
 
-	// Create the API object with the MediaEngine
-	m := webrtc.MediaEngine{}
-	rtcapi = webrtc.NewAPI(webrtc.WithMediaEngine(&m))
-	//rtcApi = webrtc.NewAPI()
-
 	video1 = &SplicableVideo{}
 	video2 = &SplicableVideo{}
 	video3 = &SplicableVideo{}
@@ -152,15 +146,6 @@ func init() {
 	checkPanic(err)
 	video3.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video3", "c")
 	checkPanic(err)
-
-	if *videoCodec == "h264" {
-		err := RegisterH264AndOpusCodecs(&m)
-		checkPanic(err)
-	} else {
-		log.Fatalln("only h.264 supported")
-		// err := m.RegisterDefaultCodecs()
-		// checkPanic(err)
-	}
 
 	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkPanic(err)
@@ -272,6 +257,29 @@ func main() {
 	panic(err)
 
 }
+
+func newPeerConnection() *webrtc.PeerConnection {
+	// Do NOT share MediaEngine between PC!  BUG of 020321
+	// with Sean & Orlando. They are so nice.
+	m := webrtc.MediaEngine{}
+	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(&m))
+
+	//rtcApi = webrtc.NewAPI()
+	if *videoCodec == "h264" {
+		err := RegisterH264AndOpusCodecs(&m)
+		checkPanic(err)
+	} else {
+		log.Fatalln("only h.264 supported")
+		// err := m.RegisterDefaultCodecs()
+		// checkPanic(err)
+	}
+
+	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
+	checkPanic(err)
+
+	return peerConnection
+}
+
 
 func mstime() string {
 	const timeformatutc = "2006-01-02T15:04:05.000Z07:00"
@@ -421,6 +429,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		// Create a new PeerConnection
 		log.Println("created PC")
+		peerConnection := newPeerConnection()
+
 		logTransceivers("new-pc", peerConnection)
 
 		// NO!
@@ -704,8 +714,7 @@ func dialUpstream(baseurl string) {
 
 	log.Println("dialUpstream url:", dialurl)
 
-	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
-	checkPanic(err)
+	peerConnection := newPeerConnection()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		ingressOnTrack(peerConnection, track, receiver)
@@ -1047,8 +1056,7 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	//	checkPanic(err)
 
 	// Create a new RTCPeerConnection
-	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
-	checkPanic(err)
+	peerConnection := newPeerConnection()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		ingressOnTrack(peerConnection, track, receiver)
