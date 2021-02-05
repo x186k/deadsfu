@@ -16,11 +16,19 @@ import (
 type RtpSource byte // make a byte, so everything is atomic! Yay mom!
 
 const (
-	None RtpSource = iota
+	NoSource RtpSource = iota
 	Video1
 	Video2
 	Video3
-	Idle = 100
+	Audio = 50
+	Idle  = 100
+)
+
+type KeyFrameType int
+
+const (
+	H264 KeyFrameType = iota
+	Opus
 )
 
 type RtpSplicer struct {
@@ -107,7 +115,7 @@ func (s *RtpSplicer) trackTimestampDeltas(delta uint32) {
 // and also more robust to seqno bug/jumps on input
 //
 // This grabs mutex after doing a fast, non-mutexed check for applicability
-func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtphz int64) *rtp.Packet {
+func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtphz int64, keytype KeyFrameType) *rtp.Packet {
 
 	//do not mutex this, it's okay
 	isactive := s.Active == src
@@ -120,7 +128,14 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	iskeyframe := ispending && ContainSPS(o.Payload) // performance short-circuit
+	iskeyframe := true
+
+	switch keytype {
+	case H264:
+		iskeyframe = iskeyframe && ContainSPS(o.Payload) // performance short-circuit
+	case Opus:
+		iskeyframe = true
+	}
 
 	if ispending && !iskeyframe {
 		return nil
@@ -128,7 +143,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 
 	if ispending && iskeyframe {
 		s.Active = src
-		s.Pending = None
+		s.Pending = NoSource
 	}
 
 	activeSSRCHasChanged := isactive && o.SSRC != s.activeSSRC

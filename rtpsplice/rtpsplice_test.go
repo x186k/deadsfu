@@ -74,11 +74,11 @@ func DoSpliceTest(t *testing.T, merged []XPacket, active RtpSource) []XPacket {
 
 	for _, v := range merged {
 
-		if v.setPending != None {
+		if v.setPending != NoSource {
 			s.Pending = v.setPending
 		}
 
-		new := s.SpliceRTP(&v.Packet, v.source, v.t.UnixNano(), 90000)
+		new := s.SpliceRTP(&v.Packet, v.source, v.t.UnixNano(), 90000, H264)
 		if new != nil {
 			//			println(len(merged))
 			x := XPacket{}

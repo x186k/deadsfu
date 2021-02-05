@@ -63,18 +63,18 @@ var myMetrics struct {
 }
 
 var (
-	h264IdleRtpPackets           []rtp.Packet                      // concurrent okay
-	videoMimeType                string                            = "video/h264"
-	audioMimeType                string                            = "audio/opus"
-	subMap                       map[string]*Subscriber            = make(map[string]*Subscriber) // concurrent okay 013121
-	subMapMutex                  sync.Mutex                                                       // concurrent okay 013121
-	audioTrack                   *webrtc.TrackLocalStaticRTP                                      // concurrent okay 013121
-	video1, video2, video3       *SplicableVideo                                                  // Downstream SFU shared tracks
-	ingressSemaphore             = semaphore.NewWeighted(int64(1))                                // concurrent okay
-	lastTimeIngressVideoReceived int64                                                            // concurrent okay
+	h264IdleRtpPackets           []rtp.Packet           // concurrent okay
+	videoMimeType                string                 = "video/h264"
+	audioMimeType                string                 = "audio/opus"
+	subMap                       map[string]*Subscriber = make(map[string]*Subscriber) // concurrent okay 013121
+	subMapMutex                  sync.Mutex                                            // concurrent okay 013121	//audioTrack                   *webrtc.TrackLocalStaticRTP                                      // concurrent okay 013121
+	video1, video2, video3       *SplicableTrack                                       // Downstream SFU shared tracks
+	audio                        *SplicableTrack
+	ingressSemaphore             = semaphore.NewWeighted(int64(1)) // concurrent okay
+	lastTimeIngressVideoReceived int64                             // concurrent okay
 )
 
-type SplicableVideo struct {
+type SplicableTrack struct {
 	track   *webrtc.TrackLocalStaticRTP
 	splicer rtpsplice.RtpSplicer
 }
@@ -82,7 +82,7 @@ type SplicableVideo struct {
 //XXXXXXXX fixme add time & purge occasionally
 type Subscriber struct {
 	conn         *webrtc.PeerConnection // peerconnection
-	browserVideo *SplicableVideo        // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
+	browserVideo *SplicableTrack        // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
 	xsource      rtpsplice.RtpSource
 }
 
@@ -133,12 +133,13 @@ var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 func init() {
 	var err error
 
-	video1 = &SplicableVideo{}
-	video2 = &SplicableVideo{}
-	video3 = &SplicableVideo{}
+	audio = &SplicableTrack{}
+	video1 = &SplicableTrack{}
+	video2 = &SplicableTrack{}
+	video3 = &SplicableTrack{}
 
 	// Create a audio track
-	audioTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", "pion")
+	audio.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", "pion")
 	checkPanic(err)
 	video1.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video1", "a")
 	checkPanic(err)
@@ -279,7 +280,6 @@ func newPeerConnection() *webrtc.PeerConnection {
 
 	return peerConnection
 }
-
 
 func mstime() string {
 	const timeformatutc = "2006-01-02T15:04:05.000Z07:00"
@@ -491,7 +491,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		if !issfu {
 			// browser path
-			sub.browserVideo = &SplicableVideo{}
+			sub.browserVideo = &SplicableTrack{}
 			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
 			checkPanic(err)
 
@@ -518,7 +518,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			// go processRTCP(trans.Sender())
 
 			//will associate or create new tx/rtpsender in pc
-			rtpSender, err := sub.conn.AddTrack(audioTrack)
+			rtpSender, err := sub.conn.AddTrack(audio.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
@@ -534,7 +534,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			sub.browserVideo = nil
 
 			//will associate or create new tx/rtpsender in pc
-			rtpSender, err := sub.conn.AddTrack(audioTrack)
+			rtpSender, err := sub.conn.AddTrack(audio.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
@@ -633,7 +633,7 @@ func ingressVideoIsHappy() bool {
 	return happy
 }
 
-func changeSourceIfNeeded(spv *SplicableVideo, src rtpsplice.RtpSource) {
+func changeSourceIfNeeded(spv *SplicableTrack, src rtpsplice.RtpSource) {
 	if spv.splicer.Active != src && spv.splicer.Pending != src {
 		spv.splicer.Pending = src
 	}
@@ -646,6 +646,7 @@ func pollingVideoSourceController() {
 
 		// downstream sfu business
 		if ingressVideoIsHappy() {
+			changeSourceIfNeeded(audio, rtpsplice.Audio)
 			changeSourceIfNeeded(video1, rtpsplice.Video1)
 			changeSourceIfNeeded(video2, rtpsplice.Video2)
 			changeSourceIfNeeded(video3, rtpsplice.Video3)
@@ -677,7 +678,7 @@ func pollingVideoSourceController() {
 
 }
 
-func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableVideo) {
+func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableTrack) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
@@ -710,7 +711,7 @@ func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableVideo) {
 			for _, splicable := range tracks {
 
 				if splicable.splicer.IsActiveOrPending(rtpsplice.Idle) {
-					pprime := splicable.splicer.SpliceRTP(&v, rtpsplice.Idle, time.Now().UnixNano(), int64(90000))
+					pprime := splicable.splicer.SpliceRTP(&v, rtpsplice.Idle, time.Now().UnixNano(), int64(90000), rtpsplice.H264)
 					if pprime != nil {
 						err := LogAndWriteRTP(pprime, &v, splicable)
 						if err == io.ErrClosedPipe {
@@ -862,19 +863,16 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 			}
 			checkPanic(err)
 
-			// os.Stdout.WriteString("a")
-			// os.Stdout.Sync()
-			// fmt.Println(time.Now().Clock())
-			err = audioTrack.WriteRTP(p)
-			if err == io.ErrClosedPipe {
-				// I believe this occurs when there is no subscribers connected with audioTrack
-				// thus we continue anyway!, do not return here contrary to other examples
-				continue
+			if audio.splicer.IsActiveOrPending(rtpsplice.Audio) {
+				pprime := audio.splicer.SpliceRTP(p, rtpsplice.Audio, time.Now().UnixNano(), int64(track.Codec().ClockRate), rtpsplice.Opus)
+				if pprime != nil {
+					err := LogAndWriteRTP(pprime, p, audio)
+					if err == io.ErrClosedPipe {
+						return
+					}
+					checkPanic(err)
+				}
 			}
-			// not-ErrClosedPipe, fatal
-			//cam, if there is no audio, better to destroy SFU and let new SFU sessions occur
-			checkPanic(err)
-
 		}
 	}
 
@@ -932,7 +930,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		rtpsource = rtpsplice.Video3
 	}
 
-	var splicable *SplicableVideo
+	var splicable *SplicableTrack
 	switch trackname {
 	case "a":
 		splicable = video1
@@ -970,7 +968,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 
 		if splicable.splicer.IsActiveOrPending(rtpsource) {
-			pprime := splicable.splicer.SpliceRTP(packet, rtpsource, time.Now().UnixNano(), int64(90000))
+			pprime := splicable.splicer.SpliceRTP(packet, rtpsource, time.Now().UnixNano(), int64(track.Codec().ClockRate), rtpsplice.H264)
 			if pprime != nil {
 				err := LogAndWriteRTP(pprime, packet, splicable)
 				if err == io.ErrClosedPipe {
@@ -1012,7 +1010,7 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 
 		if sub.browserVideo != nil {
 			if sub.browserVideo.splicer.IsActiveOrPending(src) {
-				pprime := sub.browserVideo.splicer.SpliceRTP(p, src, time.Now().UnixNano(), int64(90000))
+				pprime := sub.browserVideo.splicer.SpliceRTP(p, src, time.Now().UnixNano(), int64(90000), rtpsplice.H264)
 				if pprime != nil {
 					err := LogAndWriteRTP(pprime, p, sub.browserVideo)
 					if err == io.ErrClosedPipe {
@@ -1028,7 +1026,7 @@ func sendRTPToEachSubscriber(p *rtp.Packet, src rtpsplice.RtpSource) {
 	subMapMutex.Unlock()
 }
 
-func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *SplicableVideo) error {
+func LogAndWriteRTP(pprime *rtp.Packet, original *rtp.Packet, splicable *SplicableTrack) error {
 	if *logPackets {
 		logPacket(logPacketOut, pprime)
 	}
