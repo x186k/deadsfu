@@ -80,19 +80,19 @@
                     </span>
                     <span>New RX Tab</span>
                 </a>
-                <a class="navbar-item" onclick="level('a')">
+                <a class="navbar-item" onclick="level('video0')">
                     <span class="icon">
                         <i class="fas fa-layer-group"></i>
                     </span>
                     <span><strong>'A'</strong></span>
                 </a>
-                <a class="navbar-item" onclick="level('b')">
+                <a class="navbar-item" onclick="level('video1')">
                     <span class="icon">
                         <i class="fas fa-layer-group"></i>
                     </span>
                     <span><strong>'B'</strong></span>
                 </a>
-                <a class="navbar-item" onclick="level('c')">
+                <a class="navbar-item" onclick="level('video2')">
                     <span class="icon">
                         <i class="fas fa-layer-group"></i>
                     </span>
@@ -202,15 +202,15 @@
                         sendEncodings: [
                             // for firefox order matters... first high resolution, then scaled resolutions...
                             {
-                                rid: 'c',
+                                rid: 'video2',
                                 scaleResolutionDownBy: 4.0
                             },
                             {
-                                rid: 'b',
+                                rid: 'video1',
                                 scaleResolutionDownBy: 2.0
                             },
                             {
-                                rid: 'a'
+                                rid: 'video0'
                             },
                         ],
                     });
