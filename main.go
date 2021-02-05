@@ -1048,6 +1048,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 //
 func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 
+	var err error
 	log.Println("createIngressPeerConnection")
 
 	// Set the remote SessionDescription
