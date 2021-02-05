@@ -421,8 +421,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		// Create a new PeerConnection
 		log.Println("created PC")
-		peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
-		checkPanic(err)
+		logTransceivers("new-pc", peerConnection)
 
 		// NO!
 		// peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {...}
@@ -454,6 +453,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		err = peerConnection.SetRemoteDescription(offer)
 		checkPanic(err)
+
+		logTransceivers("offer-added", peerConnection)
 
 		sdsdp, err := offer.Unmarshal()
 		checkPanic(err)
@@ -494,6 +495,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			rtpSender, err := sub.conn.AddTrack(sub.browserVideo.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
+
+			logTransceivers("tracksadd", peerConnection)
 
 		} else {
 			// sfu path
@@ -548,7 +551,23 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	}
 }
 
-var logSDP = flag.Bool("log-sdp", false, "write sdps to stdout/log")
+func logTransceivers(tag string, pc *webrtc.PeerConnection) {
+	if len(pc.GetTransceivers()) == 0 {
+		log.Printf("%v transceivers is empty", tag)
+	}
+	for i, v := range pc.GetTransceivers() {
+		rx := v.Receiver()
+		tx := v.Sender()
+		log.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
+
+		if rx != nil && len(rx.GetParameters().Codecs) > 0 {
+			log.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
+		}
+		if tx != nil && len(tx.GetParameters().Codecs) > 0 {
+			log.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
+		}
+	}
+}
 
 func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 	good := strings.HasPrefix(rtcsd.SDP, "v=")
