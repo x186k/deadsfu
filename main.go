@@ -731,7 +731,7 @@ func dialUpstream(baseurl string) {
 
 	txid, err := randomHex(10)
 	checkPanic(err)
-	dialurl := baseurl + "?txid=" + txid
+	dialurl := baseurl + "?issfu=1&txid=" + txid
 
 	log.Println("dialUpstream url:", dialurl)
 
