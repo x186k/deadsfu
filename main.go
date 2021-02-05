@@ -362,6 +362,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	log.Println("txid is", txid)
 
 	rid := httpreq.URL.Query().Get("level")
+	issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
 		if rid != "a" && rid != "b" && rid != "c" {
@@ -477,7 +478,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		sub := &Subscriber{}
 		sub.conn = peerConnection
 
-		if numvideo == 1 {
+		if !issfu {
 			// browser path
 			sub.browserVideo = &SplicableVideo{}
 			if ingressVideoIsHappy() {
