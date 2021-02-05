@@ -115,7 +115,7 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
-var debug = flag.Bool("debug", true, "enable debug output")
+var debug = flag.Bool("debug", false, "enable debug output")
 var logPackets = flag.Bool("log-packets", false, "log packets for later use with text2pcap")
 var logSplicer = flag.Bool("log-splicer", false, "log rrp splicing debug info")
 
