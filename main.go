@@ -492,6 +492,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		if !issfu {
 			// browser path
 			sub.browserVideo = &SplicableVideo{}
+			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
+			checkPanic(err)
+
 			if ingressVideoIsHappy() {
 				sub.xsource = rtpsplice.Video1
 				sub.browserVideo.splicer.Pending = rtpsplice.Video1
@@ -502,7 +505,25 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
 			checkPanic(err)
 
-			rtpSender, err := sub.conn.AddTrack(sub.browserVideo.track)
+			// 020221 The transceivers should already be okay, no addtransceiver is needed.
+			//there should already be 2x recvonly transceivers (recv from offerer's perspective,not mine)
+
+			// We do need an add-track to associate the track with the pc/transceiver
+
+			// mdn: addTrack() adds a new media track to the set of
+			//   tracks which will be transmitted to the other peer.
+
+			// trans,err:=sub.conn.AddTransceiverFromTrack(audioTrack,webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+			// checkPanic(err)
+			// go processRTCP(trans.Sender())
+
+			//will associate or create new tx/rtpsender in pc
+			rtpSender, err := sub.conn.AddTrack(audioTrack)
+			checkPanic(err)
+			go processRTCP(rtpSender)
+
+			//will associate or create new tx/rtpsender in pc
+			rtpSender, err = sub.conn.AddTrack(sub.browserVideo.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
@@ -512,19 +533,22 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			// sfu path
 			sub.browserVideo = nil
 
-			// is sfu
+			//will associate or create new tx/rtpsender in pc
 			rtpSender, err := sub.conn.AddTrack(audioTrack)
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
+			//will associate or create new tx/rtpsender in pc
 			rtpSender, err = sub.conn.AddTrack(video1.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
+			//will associate or create new tx/rtpsender in pc
 			rtpSender, err = sub.conn.AddTrack(video2.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
+			//will associate or create new tx/rtpsender in pc
 			rtpSender, err = sub.conn.AddTrack(video3.track)
 			checkPanic(err)
 			go processRTCP(rtpSender)
