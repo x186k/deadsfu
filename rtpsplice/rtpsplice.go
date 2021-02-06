@@ -118,6 +118,10 @@ func (s *RtpSplicer) trackTimestampDeltas(delta uint32) {
 // This grabs mutex after doing a fast, non-mutexed check for applicability
 func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtphz int64, keytype KeyFrameType) *rtp.Packet {
 
+		// take mutex before changing stuff, or accessing >byte size
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
 	//do not mutex this, it's okay
 	isactive := s.Active == src
 	ispending := s.Pending == src
@@ -125,9 +129,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 		return nil
 	}
 
-	// take mutex for messy stuff
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
 
 	iskeyframe := true
 
