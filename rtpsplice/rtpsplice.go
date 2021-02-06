@@ -3,7 +3,6 @@ package rtpsplice
 import (
 	"io"
 	"log"
-	"sort"
 	"sync"
 	"time"
 
@@ -32,22 +31,23 @@ const (
 )
 
 type RtpSplicer struct {
-	mu                      sync.Mutex
-	Name					string
-	lastSentSeqno           uint16
-	lastSentTS              uint32
-	activeSSRC              uint32
-	subtractSeqno, addSeqno uint16
-	subtractTS, addTS       uint32
-	Active                  RtpSource // Never set this directly, even though it is exported
-	Pending                 RtpSource // This is the one to set
-	tsFrequencyDelta        []FrequencyPair
+	mu               sync.Mutex
+	Name             string
+	lastSSRC         uint32
+	lastSN           uint16
+	lastTS           uint32
+	lastUnixnanosNow int64
+	snOffset         uint16
+	tsOffset         uint32
+	Active           RtpSource // Never set this directly, even though it is exported
+	Pending          RtpSource // This is the one to set
+	//tsFrequencyDelta []FrequencyPair
 }
 
-type FrequencyPair struct {
-	delta uint32
-	count uint64 // better be safe than sorry
-}
+// type FrequencyPair struct {
+// 	delta uint32
+// 	count uint64 // better be safe than sorry
+// }
 
 func checkPanic(err error) {
 	if err != nil {
@@ -69,44 +69,44 @@ func (s *RtpSplicer) IsActiveOrPending(src RtpSource) bool {
 
 // findMostFrequentDelta is used to find inter-frame period
 // not-mutexed on purpose, only called from inside mutexed func
-func (s *RtpSplicer) findMostFrequentDelta(fallback uint32) (delta uint32) {
-	var n uint64
+// func (s *RtpSplicer) findMostFrequentDelta(fallback uint32) (delta uint32) {
+// 	var n uint64
 
-	for i, v := range s.tsFrequencyDelta {
+// 	for i, v := range s.tsFrequencyDelta {
 
-		log.Println("findMostFrequentDelta:", i, v.count, v.delta)
+// 		log.Println("findMostFrequentDelta:", i, v.count, v.delta)
 
-		if v.count >= n {
-			n = v.count
-			delta = v.delta
-		}
-	}
-	if n > 2 {
-		log.Println("rtpsplice: findMostFrequentDelta, clockDelta from observations:", delta)
-		return delta
-	} else {
-		log.Println("rtpsplice: findMostFrequentDelta, clockDelta from fallback:", fallback)
-		return fallback
-	}
-}
+// 		if v.count >= n {
+// 			n = v.count
+// 			delta = v.delta
+// 		}
+// 	}
+// 	if n > 2 {
+// 		log.Println("rtpsplice: findMostFrequentDelta, clockDelta from observations:", delta)
+// 		return delta
+// 	} else {
+// 		log.Println("rtpsplice: findMostFrequentDelta, clockDelta from fallback:", fallback)
+// 		return fallback
+// 	}
+// }
 
 // not-mutexed on purpose, only called from inside mutexed func
-func (s *RtpSplicer) trackTimestampDeltas(delta uint32) {
-	// classic insert into sorted set  https://golang.org/pkg/sort/#Search
+// func (s *RtpSplicer) trackTimestampDeltas(delta uint32) {
+// 	// classic insert into sorted set  https://golang.org/pkg/sort/#Search
 
-	//log.Println(delta)
-	i := sort.Search(len(s.tsFrequencyDelta), func(i int) bool { return s.tsFrequencyDelta[i].delta <= delta })
-	if i < len(s.tsFrequencyDelta) && s.tsFrequencyDelta[i].delta == delta {
-		s.tsFrequencyDelta[i].count++
-	} else {
-		// x is not present in data,
-		// but i is the index where it would be inserted.
-		// go slice tricks! https://github.com/golang/go/wiki/SliceTricks#insert
-		s.tsFrequencyDelta = append(s.tsFrequencyDelta, FrequencyPair{})
-		copy(s.tsFrequencyDelta[i+1:], s.tsFrequencyDelta[i:])
-		s.tsFrequencyDelta[i] = FrequencyPair{delta: delta, count: 0}
-	}
-}
+// 	//log.Println(delta)
+// 	i := sort.Search(len(s.tsFrequencyDelta), func(i int) bool { return s.tsFrequencyDelta[i].delta <= delta })
+// 	if i < len(s.tsFrequencyDelta) && s.tsFrequencyDelta[i].delta == delta {
+// 		s.tsFrequencyDelta[i].count++
+// 	} else {
+// 		// x is not present in data,
+// 		// but i is the index where it would be inserted.
+// 		// go slice tricks! https://github.com/golang/go/wiki/SliceTricks#insert
+// 		s.tsFrequencyDelta = append(s.tsFrequencyDelta, FrequencyPair{})
+// 		copy(s.tsFrequencyDelta[i+1:], s.tsFrequencyDelta[i:])
+// 		s.tsFrequencyDelta[i] = FrequencyPair{delta: delta, count: 0}
+// 	}
+// }
 
 // SpliceRTP
 // this is carefully handcrafted, be careful
@@ -131,64 +131,75 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 
 
 
-	iskeyframe := true
+	foo:=false
+	if ispending {
+		iskeyframe := true
 
-	switch keytype {
-	case H264:
-		iskeyframe = iskeyframe && ContainSPS(o.Payload) // performance short-circuit
-	case Opus:
-		iskeyframe = true
-	}
+		switch keytype {
+		case H264:
+			iskeyframe = ContainSPS(o.Payload) // performance short-circuit
+		case Opus:
+			iskeyframe = true
+		}
 
-	if ispending && !iskeyframe {
-		return nil
-	}
+		if !iskeyframe {
+			return nil
+		}
 
-	changeActive := ispending && iskeyframe
-	if changeActive {
+		log.Printf("SpliceRTP: %v: keyframe on pending source %v", s.Name, src)
+
 		s.Active = src
 		s.Pending = NoSource
-		log.Printf("SpliceRTP: %v: ispending && iskeyframe newactive=%v",s.Name, src)
-	}
-
-	activeSSRCHasChanged := isactive && o.SSRC != s.activeSSRC
-	if activeSSRCHasChanged {
-		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v",s.Name, o.SSRC, s.activeSSRC)
-
-	}
-
-	if changeActive || activeSSRCHasChanged { // written such way for readability
-
-		s.subtractSeqno = o.SequenceNumber // get to zero
-		s.addSeqno = s.lastSentSeqno + 1   // get to lastsent+1
-
-		s.subtractTS = o.Timestamp
-		// old approach/abandoned
-		//timestamp := unixnano * rtphz / int64(time.Second)
-		//s.addTS = uint32(timestamp)
-
-		//2970 is just a number that worked very with with chrome testing
-		// is it just a fallback
-		clockDelta := s.findMostFrequentDelta(uint32(2970))
-
-		s.tsFrequencyDelta = s.tsFrequencyDelta[:0] // reset frequency table
-
-		s.addTS = s.lastSentTS + clockDelta
+		foo=true
 	}
 
 	copy := *o
+	// credit to Orlando Co of ion-sfu
+	// for helping me decide to go this route and keep it simple
+	// code is modeled on code from ion-sfu
+	if o.SSRC != s.lastSSRC || foo {
+		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.Name, o.SSRC, s.lastSSRC)
 
-	copy.SequenceNumber = o.SequenceNumber - s.subtractSeqno + s.addSeqno
-	copy.Timestamp = o.Timestamp - s.subtractTS + s.addTS
+		td := unixnano - s.lastUnixnanosNow // nanos
+		if td < 0 {
+			td = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
+		}
+		td *= rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
+		if td == 0 {
+			td = 1
+		}
+		s.tsOffset = o.Timestamp - (s.lastTS + uint32(td))
+		s.snOffset = o.SequenceNumber - s.lastSN - 1
 
-	tsdelta := int64(copy.Timestamp) - int64(s.lastSentTS) // int64 avoids rollover issues
-	if !activeSSRCHasChanged && tsdelta > 0 {              // Track+measure uint32 timestamp deltas
-		s.trackTimestampDeltas(uint32(tsdelta))
+		log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
+		// old approach/abandoned
+		// timestamp := unixnano * rtphz / int64(time.Second)
+		// s.addTS = uint32(timestamp)
+
+		//2970 is just a number that worked very with with chrome testing
+		// is it just a fallback
+		//clockDelta := s.findMostFrequentDelta(uint32(2970))
+
+		//s.tsFrequencyDelta = s.tsFrequencyDelta[:0] // reset frequency table
+
+		//s.addTS = s.lastSentTS + clockDelta
 	}
 
-	s.lastSentTS = copy.Timestamp
-	s.lastSentSeqno = copy.SequenceNumber
-	s.activeSSRC = copy.SSRC
+	// we don't want to change original packet, it gets
+	// passed into this routine many times for many subscribers
+
+
+	copy.Timestamp -= s.tsOffset
+	copy.SequenceNumber -= s.snOffset
+	//	tsdelta := int64(copy.Timestamp) - int64(s.lastSentTS) // int64 avoids rollover issues
+	// if !ssrcChanged && tsdelta > 0 {              // Track+measure uint32 timestamp deltas
+	// 	s.trackTimestampDeltas(uint32(tsdelta))
+	// }
+
+	s.lastUnixnanosNow = unixnano
+	s.lastTS = copy.Timestamp
+	s.lastSN = copy.SequenceNumber
+	s.lastSSRC = copy.SSRC
 
 	return &copy
 }
