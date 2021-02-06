@@ -28,4 +28,5 @@ require (
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )
 
-replace github.com/pion/webrtc/v3 => ../webrtc
+//replace github.com/pion/webrtc/v3 => ../webrtc
+replace github.com/pion/webrtc/v3 v3.0.4 => github.com/cameronelliott/webrtc/v3 v3.0.5
