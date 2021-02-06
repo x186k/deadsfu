@@ -33,6 +33,7 @@ const (
 
 type RtpSplicer struct {
 	mu                      sync.Mutex
+	Name					string
 	lastSentSeqno           uint16
 	lastSentTS              uint32
 	activeSSRC              uint32
@@ -141,14 +142,20 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 		return nil
 	}
 
-	if ispending && iskeyframe {
+	changeActive := ispending && iskeyframe
+	if changeActive {
 		s.Active = src
 		s.Pending = NoSource
+		log.Printf("SpliceRTP: %v: ispending && iskeyframe newactive=%v",s.Name, src)
 	}
 
 	activeSSRCHasChanged := isactive && o.SSRC != s.activeSSRC
+	if activeSSRCHasChanged {
+		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v",s.Name, o.SSRC, s.activeSSRC)
 
-	if (iskeyframe && ispending) || activeSSRCHasChanged { // written such way for readability
+	}
+
+	if changeActive || activeSSRCHasChanged { // written such way for readability
 
 		s.subtractSeqno = o.SequenceNumber // get to zero
 		s.addSeqno = s.lastSentSeqno + 1   // get to lastsent+1
