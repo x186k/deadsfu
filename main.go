@@ -27,6 +27,7 @@ import (
 	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/duckdns"
+	"github.com/pkg/profile"
 	"github.com/x186k/sfu-x186k/rtpsplice"
 	"golang.org/x/sync/semaphore"
 
@@ -121,6 +122,7 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("debug", false, "enable debug output")
+var cpuprofile = flag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
 var logPackets = flag.Bool("log-packets", false, "log packets for later use with text2pcap")
 var logSplicer = flag.Bool("log-splicer", false, "log rrp splicing debug info")
 
@@ -276,9 +278,25 @@ func main() {
 	log.Printf("WHIP input listener at: %s://%s%s", httpType, ln.Addr().String(), pubPath)
 	log.Printf("WHIP output listener at: %s://%s%s", httpType, ln.Addr().String(), subPath)
 
-	err = http.Serve(ln, mux)
-	panic(err)
+	go func() {
+		err = http.Serve(ln, mux)
+		panic(err)
+	}()
 
+
+	println(*cpuprofile)
+	if *cpuprofile == 0 {
+		select {}
+	}
+
+	println("profiling enabled, runtime seconds:", *cpuprofile)
+
+	defer profile.Start(profile.CPUProfile).Stop()
+
+	time.Sleep(time.Duration(*cpuprofile) * time.Second)
+
+	
+	println("profiling done, exit")
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
