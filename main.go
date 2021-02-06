@@ -26,6 +26,7 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
+	"github.com/libdns/duckdns"
 	"github.com/x186k/sfu-x186k/rtpsplice"
 	"golang.org/x/sync/semaphore"
 
@@ -61,6 +62,11 @@ var peerConnectionConfig = webrtc.Configuration{
 var myMetrics struct {
 	dialConnectionRefused uint64
 }
+
+// https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
+// msid:streamid trackid/appdata
+// per RFC appdata is "application-specific data", we use a/b/c for simulcast
+const mediaStreamId = "x186k"
 
 var (
 	h264IdleRtpPackets           []rtp.Packet           // concurrent okay
@@ -133,19 +139,19 @@ var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 func init() {
 	var err error
 
-	audio = &SplicableTrack{}
-	video1 = &SplicableTrack{}
-	video2 = &SplicableTrack{}
-	video3 = &SplicableTrack{}
+	audio = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "audio"}}
+	video1 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid1"}}
+	video2 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid2"}}
+	video3 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid3"}}
 
 	// Create a audio track
-	audio.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", "pion")
+	audio.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkPanic(err)
-	video1.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video1", "a")
+	video1.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video0", mediaStreamId)
 	checkPanic(err)
-	video2.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video2", "b")
+	video2.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video1", mediaStreamId)
 	checkPanic(err)
-	video3.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video3", "c")
+	video3.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video2", mediaStreamId)
 	checkPanic(err)
 
 	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
@@ -389,8 +395,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
-		if rid != "a" && rid != "b" && rid != "c" {
-			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only a,b,c are valid"))
+		if rid != "video0" && rid != "video1" && rid != "video2" {
+			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video-a,video-b,video-c are valid"))
 			return
 		}
 
@@ -408,11 +414,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		}
 
 		switch rid {
-		case "a":
+		case "video0":
 			sub.xsource = rtpsplice.Video1
-		case "b":
+		case "video1":
 			sub.xsource = rtpsplice.Video2
-		case "c":
+		case "video2":
 			sub.xsource = rtpsplice.Video3
 		}
 
@@ -508,7 +514,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		if !issfu {
 			// browser path
 			sub.browserVideo = &SplicableTrack{}
-			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
+			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "subvideo", mediaStreamId)
 			checkPanic(err)
 
 			if ingressVideoIsHappy() {
@@ -518,8 +524,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 				sub.xsource = rtpsplice.Idle
 				sub.browserVideo.splicer.Pending = rtpsplice.Idle
 			}
-			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", "pion")
-			checkPanic(err)
 
 			// 020221 The transceivers should already be okay, no addtransceiver is needed.
 			//there should already be 2x recvonly transceivers (recv from offerer's perspective,not mine)
@@ -657,8 +661,10 @@ func changeSourceIfNeeded(spv *SplicableTrack, src rtpsplice.RtpSource) {
 
 func pollingVideoSourceController() {
 
+	changeSourceIfNeeded(audio, rtpsplice.Audio)
+
 	for {
-		time.Sleep(time.Millisecond / 10) // polling somewhere for lack of rx rtp is unavoidable
+		time.Sleep(time.Millisecond * 100) // polling somewhere for lack of rx rtp is unavoidable
 
 		// downstream sfu business
 		if ingressVideoIsHappy() {
@@ -899,21 +905,43 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
 	}
 
-	log.Println("OnTrack ID():", track.ID())
 	log.Println("OnTrack RID():", track.RID())
-	log.Println("OnTrack streamid():", track.StreamID())
+	log.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
+	log.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
 
 	var trackname string // store trackname here, reduce locks
 	if track.RID() == "" {
-		log.Println("using StreamID for trackname:", track.StreamID())
-		trackname = track.StreamID()
+		//not proper simulcast!
+		// either upstream SFU we are downstream of,
+		// or we are getting ingress request from non-simulcast browser (or OBS)
+
+		log.Println("using TrackId/msid: stream trackid for trackname:", track.ID())
+		if *dialIngressURL != "" {
+			// we are dialing, and thus we are downstream of SFU
+			if !strings.HasPrefix(track.ID(), "video") {
+				panic("Non conforming track.ID() on ingress")
+			}
+			trackname = track.ID()
+		} else {
+			// we are downstream of Browser and there is no RID on this video track
+			// presume this is a non-simulcast browser sending
+			// track ID will just be a guid or random data from browser
+			trackname = "video0"
+			// we could check for multiple video tracks and panic()
+			// but maybe ignoring this issue will help some poor soul.
+			// var numNonRIDVideoTracks int32
+			// if atomic.AddInt32(&numNonRIDVideoTracks,1)>1 {
+			// 	panic("")
+			// }
+		}
+
 	} else {
 		log.Println("using RID for trackname:", track.RID())
 		trackname = track.RID()
 	}
 
-	if trackname != "a" && trackname != "b" && trackname != "c" {
-		panic("only track names a,b,c supported:" + trackname)
+	if trackname != "video0" && trackname != "video1" && trackname != "video2" {
+		panic("only track names video0,video1,video2 supported:" + trackname)
 	}
 
 	go func() {
@@ -938,21 +966,21 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 
 	var rtpsource rtpsplice.RtpSource
 	switch trackname {
-	case "a":
+	case "video0":
 		rtpsource = rtpsplice.Video1
-	case "b":
+	case "video1":
 		rtpsource = rtpsplice.Video2
-	case "c":
+	case "video2":
 		rtpsource = rtpsplice.Video3
 	}
 
 	var splicable *SplicableTrack
 	switch trackname {
-	case "a":
+	case "video0":
 		splicable = video1
-	case "b":
+	case "video1":
 		splicable = video2
-	case "c":
+	case "video2":
 		splicable = video3
 	}
 
