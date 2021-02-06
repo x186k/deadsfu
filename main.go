@@ -220,13 +220,29 @@ func main() {
 		//certmagic.DefaultACME.Agreed = true
 		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
 
-		cftoken := os.Getenv("CLOUDFLARE_TOKEN")
-		if cftoken != "" {
+		cloudflareToken := os.Getenv("CLOUDFLARE_TOKEN")
+		if cloudflareToken != "" {
 			log.Printf("CLOUDFLARE_TOKEN set, will use DNS challenge for Let's Encrypt\n")
 
 			//xx:=digitalocean.Provider{APIToken: dotoken,
 			//	Client: digitalocean.Client{XClient:  client}}
-			dnsProvider := cloudflare.Provider{APIToken: cftoken}
+			dnsProvider := cloudflare.Provider{APIToken: cloudflareToken}
+
+			certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
+				DNSProvider:        &dnsProvider,
+				TTL:                0,
+				PropagationTimeout: 0,
+				Resolvers:          []string{},
+			}
+		}
+
+		duckdnsToken := os.Getenv("DUCKDNS_TOKEN")
+		if duckdnsToken != "" {
+			log.Printf("DUCKDNS_TOKEN set, will use DNS challenge for Let's Encrypt\n")
+
+			//xx:=digitalocean.Provider{APIToken: dotoken,
+			//	Client: digitalocean.Client{XClient:  client}}
+			dnsProvider := duckdns.Provider{APIToken: duckdnsToken}
 
 			certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
 				DNSProvider:        &dnsProvider,
