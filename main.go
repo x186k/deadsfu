@@ -283,8 +283,6 @@ func main() {
 		panic(err)
 	}()
 
-
-	println(*cpuprofile)
 	if *cpuprofile == 0 {
 		select {}
 	}
@@ -295,7 +293,6 @@ func main() {
 
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
-	
 	println("profiling done, exit")
 }
 
