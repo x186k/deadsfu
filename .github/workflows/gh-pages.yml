@@ -43,10 +43,10 @@ jobs:
 
       - name: Build site
         run: mkdocs build
-        working-directory: sfu1
+        working-directory: sfu1/website
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./sfu1/site
+          publish_dir: ./sfu1/website/site
