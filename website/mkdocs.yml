@@ -1,0 +1,7 @@
+site_name: My Docs
+
+#theme: bulma
+
+theme:
+    name: null
+    custom_dir: '../mkdocs-bulma/bulma/'
