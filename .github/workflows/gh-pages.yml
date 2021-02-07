@@ -9,9 +9,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-20.04
-    defaults:
-      # run:
-      #   working-directory: websi
     steps:
       - uses: actions/checkout@v2
         with:
