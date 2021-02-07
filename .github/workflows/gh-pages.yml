@@ -46,7 +46,7 @@ jobs:
 
       - name: Build site
         run: mkdocs build
-          working-directory: sfu1
+        working-directory: sfu1
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
