@@ -1,7 +1,7 @@
 core
 .vscode
 workspace.code-workspace
-sfu-x186k
+sfu1
 embed
 
 # do not track intermediate files used for making idle screens

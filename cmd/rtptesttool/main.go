@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/x186k/sfu-x186k/rtpsplice"
+	"github.com/x186k/sfu1/rtpsplice"
 )
 
 func checkPanic(err error) {

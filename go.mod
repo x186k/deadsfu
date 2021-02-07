@@ -1,4 +1,4 @@
-module github.com/x186k/sfu-x186k
+module github.com/x186k/sfu1
 
 go 1.16
 

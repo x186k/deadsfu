@@ -1,4 +1,4 @@
-# sfu-x186k
+# sfu1
 
 
 ## Goals

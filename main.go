@@ -28,7 +28,7 @@ import (
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/duckdns"
 	"github.com/pkg/profile"
-	"github.com/x186k/sfu-x186k/rtpsplice"
+	"github.com/x186k/sfu1/rtpsplice"
 	"golang.org/x/sync/semaphore"
 
 	//"net/http/httputil"
