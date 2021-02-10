@@ -16,8 +16,10 @@ require (
 	github.com/pion/rtp v1.6.2
 	github.com/pion/sdp/v3 v3.0.4
 	github.com/pion/webrtc/v3 v3.0.4
+	github.com/pkg/browser v0.0.0-20210115035449-ce105d075bb4
 	github.com/pkg/profile v1.5.0
 	github.com/stretchr/testify v1.7.0
+	github.com/x186k/sfu1net v0.0.0-20210210034117-b289919e46ab
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
