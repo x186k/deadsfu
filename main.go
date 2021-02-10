@@ -18,15 +18,18 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/duckdns"
+	"github.com/x186k/sfu1net"
+
+	"github.com/caddyserver/certmagic"
+
+	"github.com/pkg/browser"
 	"github.com/pkg/profile"
 	"github.com/x186k/sfu1/rtpsplice"
 	"golang.org/x/sync/semaphore"
@@ -99,6 +102,12 @@ func checkPanic(err error) {
 	}
 }
 
+func checkFatal(err error) {
+	if err != nil {
+		elog.Fatal(err)
+	}
+}
+
 func slashHandler(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", "text/html")
 
@@ -129,9 +138,14 @@ var logSplicer = flag.Bool("log-splicer", false, "log rrp splicing debug info")
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
 var dialIngressURL = flag.String("dial-ingress", "", "do not take http WHIP for ingress, dial for ingress")
-var port = flag.Int("port", 8080, "default port to accept HTTPS on")
 var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
-var httpsHostname = flag.String("https-hostname", "", "hostname for Let's Encrypt TLS certificate (https)")
+var listenHTTPS = flag.String("https", "", "HTTPS listener address of the form \"host:port\", details: Go:net.Dial()")
+var listenHTTP = flag.String("http", "", "HTTP listener address of the form \"host:port\", details: Go:net.Dial()")
+var domain = flag.String("domain", "", "Explicit override domain name to use for Let's Encrypt certificate")
+var openTab = flag.Bool("opentab", false, "Open a browser tab to the pub/sub panel")
+var cloudflareDDNS = flag.Bool("ddns-cloudflare", false, "Use Cloudflare for Dynamic DNS. env token in CLOUDFLARE_TOKEN")
+var duckdnsDDNS = flag.Bool("ddns-duckdns", false, "Use Duckdns for Dynamic DNS. env token in DUCKDNS_TOKEN")
+var sfu1netDDNS = flag.Bool("ddns-sfu1net", false, "Use sfu1.net for Dynamic DNS. env token in SFU1NET_TOKEN")
 
 var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
@@ -189,7 +203,7 @@ func main() {
 		log.SetOutput(os.Stdout)
 		log.Println("debug output IS enabled")
 	} else {
-		log.Println("debug output NOT enabled")
+		elog.Println("debug output NOT enabled")
 		log.SetOutput(ioutil.Discard)
 		log.SetPrefix("")
 		log.SetFlags(0)
@@ -206,9 +220,60 @@ func main() {
 	}
 	mux.HandleFunc(subPath, subHandler)
 
+	var ln net.Listener
+	httpType := ""
+	host := ""
+	port := ""
+
+	if *listenHTTPS != "" {
+		host, port, err = net.SplitHostPort(*listenHTTPS)
+		checkFatal(err)
+
+		//certmagic.DefaultACME.Agreed = true
+		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
+
+		if *cloudflareDDNS {
+			cloudflareConfigure()
+		}
+
+		if *duckdnsDDNS {
+			duckdnsConfigure()
+		}
+
+		if *sfu1netDDNS {
+			sfu1netConfigure()
+		}
+
+		if *domain != "" {
+			host = *domain
+		}
+		// We do NOT do port 80 redirection, as certmagic.HTTPS()
+		tlsConfig, err := certmagic.TLS([]string{host})
+		checkPanic(err)
+		/// XXX ro work with OBS studio for now
+		tlsConfig.MinVersion = 0
+
+		ln, err = tls.Listen("tcp", *listenHTTPS, tlsConfig)
+		checkPanic(err)
+		httpType = "https"
+	} else if *listenHTTP != "" {
+		host, port, err = net.SplitHostPort(*listenHTTP)
+		checkPanic(err)
+
+		ln, err = net.Listen("tcp", *listenHTTP)
+		checkPanic(err)
+		httpType = "http"
+	}
+
+	browserUrl := fmt.Sprintf("%s://%s:%s%s", httpType, host, port, "/")
+
+	elog.Printf("Browser HTML URL: %v", browserUrl)
+
 	if *dialIngressURL == "" {
+		elog.Printf("Publisher API URL: %s://%s:%s%s", httpType, host, port, pubPath)
 		mux.HandleFunc(pubPath, pubHandler)
 	} else {
+		elog.Printf("Publisher API URL: none")
 		go func() {
 			for {
 				err = ingressSemaphore.Acquire(context.Background(), 1)
@@ -217,71 +282,18 @@ func main() {
 				dialUpstream(*dialIngressURL)
 			}
 		}()
-
 	}
-
-	var ln net.Listener
-	httpType := ""
-
-	if *httpsHostname != "" {
-
-		//certmagic.DefaultACME.Agreed = true
-		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
-
-		cloudflareToken := os.Getenv("CLOUDFLARE_TOKEN")
-		if cloudflareToken != "" {
-			log.Printf("CLOUDFLARE_TOKEN set, will use DNS challenge for Let's Encrypt\n")
-
-			//xx:=digitalocean.Provider{APIToken: dotoken,
-			//	Client: digitalocean.Client{XClient:  client}}
-			dnsProvider := cloudflare.Provider{APIToken: cloudflareToken}
-
-			certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-				DNSProvider:        &dnsProvider,
-				TTL:                0,
-				PropagationTimeout: 0,
-				Resolvers:          []string{},
-			}
-		}
-
-		duckdnsToken := os.Getenv("DUCKDNS_TOKEN")
-		if duckdnsToken != "" {
-			log.Printf("DUCKDNS_TOKEN set, will use DNS challenge for Let's Encrypt\n")
-
-			//xx:=digitalocean.Provider{APIToken: dotoken,
-			//	Client: digitalocean.Client{XClient:  client}}
-			dnsProvider := duckdns.Provider{APIToken: duckdnsToken}
-
-			certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-				DNSProvider:        &dnsProvider,
-				TTL:                0,
-				PropagationTimeout: 0,
-				Resolvers:          []string{},
-			}
-		}
-
-		// We do NOT do port 80 redirection, as certmagic.HTTPS()
-		tlsConfig, err := certmagic.TLS([]string{*httpsHostname})
-		checkPanic(err)
-		/// XXX ro work with OBS studio for now
-		tlsConfig.MinVersion = 0
-
-		ln, err = tls.Listen("tcp", ":"+strconv.Itoa(*port), tlsConfig)
-		checkPanic(err)
-		httpType = "https"
-	} else {
-		ln, err = net.Listen("tcp", ":"+strconv.Itoa(*port))
-		checkPanic(err)
-		httpType = "http"
-	}
-
-	log.Printf("WHIP input listener at: %s://%s%s", httpType, ln.Addr().String(), pubPath)
-	log.Printf("WHIP output listener at: %s://%s%s", httpType, ln.Addr().String(), subPath)
+	elog.Printf("Subscriber API URL: %s://%s:%s%s", httpType, host, port, subPath)
+	elog.Printf("Bound listener interface address: %s", ln.Addr().String())
 
 	go func() {
 		err = http.Serve(ln, mux)
 		panic(err)
 	}()
+
+	if *openTab {
+		_ = browser.OpenURL(browserUrl)
+	}
 
 	if *cpuprofile == 0 {
 		select {}
@@ -294,6 +306,62 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
+}
+
+func duckdnsConfigure() {
+	duckdnsToken := os.Getenv("DUCKDNS_TOKEN")
+	if duckdnsToken == "" {
+		elog.Fatal("DUCKDNS_TOKEN environment variable not found")
+	} else {
+		log.Printf("DUCKDNS_TOKEN environment variable found")
+
+		dnsProvider := duckdns.Provider{APIToken: duckdnsToken}
+
+		certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
+			DNSProvider:        &dnsProvider,
+			TTL:                0,
+			PropagationTimeout: 0,
+			Resolvers:          []string{},
+		}
+	}
+}
+
+func cloudflareConfigure() {
+	cloudflareToken := os.Getenv("CLOUDFLARE_TOKEN")
+
+	if cloudflareToken == "" {
+		elog.Fatal("CLOUDFLARE_TOKEN environment variable not found")
+	} else {
+		log.Println("CLOUDFLARE_TOKEN environment variable found")
+
+		dnsProvider := cloudflare.Provider{APIToken: cloudflareToken}
+
+		certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
+			DNSProvider:        &dnsProvider,
+			TTL:                0,
+			PropagationTimeout: 0,
+			Resolvers:          []string{},
+		}
+	}
+}
+
+func sfu1netConfigure() {
+	token := os.Getenv("SFU1NET_TOKEN")
+
+	if token == "" {
+		elog.Fatal("SFU1NET_TOKEN environment variable not found")
+	} else {
+		log.Println("SFU1NET_TOKEN environment variable found")
+
+		dnsProvider := sfu1net.Provider{APIToken: token}
+
+		certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
+			DNSProvider:        &dnsProvider,
+			TTL:                0,
+			PropagationTimeout: 0,
+			Resolvers:          []string{},
+		}
+	}
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
