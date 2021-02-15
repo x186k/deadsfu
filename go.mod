@@ -10,7 +10,7 @@ require (
 	github.com/libdns/cloudflare v0.0.0-20200528144945-97886e7873b1
 	github.com/libdns/duckdns v0.0.0-20201229185916-cd405ff644b9
 	github.com/mholt/acmez v0.1.2 // indirect
-	github.com/miekg/dns v1.1.35 // indirect
+	github.com/miekg/dns v1.1.38
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/pion/rtcp v1.2.6
 	github.com/pion/rtp v1.6.2
@@ -19,6 +19,7 @@ require (
 	github.com/pkg/browser v0.0.0-20210115035449-ce105d075bb4
 	github.com/pkg/profile v1.5.0
 	github.com/stretchr/testify v1.7.0
+	github.com/x186k/dynamicdns v0.0.0-20210209094553-08838551f0e5
 	github.com/x186k/sfu1net v0.0.0-20210210034117-b289919e46ab
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect

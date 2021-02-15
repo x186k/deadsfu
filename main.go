@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"log"
 	"runtime"
+	"strconv"
 
 	mrand "math/rand"
 	"net"
@@ -23,14 +24,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/duckdns"
-	"github.com/x186k/sfu1net"
+	"github.com/miekg/dns"
 
-	"github.com/caddyserver/certmagic"
-
-	"github.com/pkg/browser"
+	//"github.com/pkg/browser"
 	"github.com/pkg/profile"
+	"github.com/x186k/dynamicdns"
 	"github.com/x186k/sfu1/rtpsplice"
 	"golang.org/x/sync/semaphore"
 
@@ -46,6 +47,8 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
+
+	"github.com/x186k/sfu1net"
 )
 
 // content is our static web server content.
@@ -58,7 +61,7 @@ var idleScreenH264Pcapng []byte
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
 		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
+			URLs: []string{"stun:" + *stunServer},
 		},
 	},
 }
@@ -96,15 +99,15 @@ type Subscriber struct {
 	xsource      rtpsplice.RtpSource
 }
 
-func checkPanic(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
 func checkFatal(err error) {
 	if err != nil {
 		elog.Fatal(err)
+	}
+}
+
+func checkPanic(err error) {
+	if err != nil {
+		panic(err)
 	}
 }
 
@@ -137,15 +140,25 @@ var logSplicer = flag.Bool("log-splicer", false, "log rrp splicing debug info")
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
-var dialIngressURL = flag.String("dial-ingress", "", "do not take http WHIP for ingress, dial for ingress")
+var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
 var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
-var listenHTTPS = flag.String("https", "", "HTTPS listener address of the form \"host:port\", details: Go:net.Dial()")
-var listenHTTP = flag.String("http", "", "HTTP listener address of the form \"host:port\", details: Go:net.Dial()")
-var domain = flag.String("domain", "", "Explicit override domain name to use for Let's Encrypt certificate")
-var openTab = flag.Bool("opentab", false, "Open a browser tab to the pub/sub panel")
-var cloudflareDDNS = flag.Bool("ddns-cloudflare", false, "Use Cloudflare for Dynamic DNS. env token in CLOUDFLARE_TOKEN")
-var duckdnsDDNS = flag.Bool("ddns-duckdns", false, "Use Duckdns for Dynamic DNS. env token in DUCKDNS_TOKEN")
-var sfu1netDDNS = flag.Bool("ddns-sfu1net", false, "Use sfu1.net for Dynamic DNS. env token in SFU1NET_TOKEN")
+var useHTTPS = flag.Bool("https-auto", true, "Use HTTPS, with automatic DDNS hostname and certificate")
+var useHTTP = flag.Bool("http", false, "Use HTTP, not HTTPS for the web server")
+
+var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS Acme/Let's encrypt")
+var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
+//var acmeFlag = flag.Bool("acme-domain", false, "Use -domain <name> to get HTTPS/Acme/Let's-encrypt certificate")
+
+var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
+
+var port = flag.Int("port", 0, "The port to bind the web server")
+var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
+
+var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
+
+var useCloudflare = flag.Bool("cloudflare", false, "Use Cloudflare.com for ACME and/or Dynamic DNS. env token in CLOUDFLARE_TOKEN")
+var useDuckdns = flag.Bool("duckdns", false, "Use Duckdns.org for ACME and/or Dynamic DNS. env token in DUCKDNS_TOKEN")
+var useSfu1net = flag.Bool("sfu1net", true, "Use sfu1.net for ACME and/or Dynamic DNS. env token in SFU1NET_TOKEN")
 
 var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
@@ -222,55 +235,86 @@ func main() {
 
 	var ln net.Listener
 	httpType := ""
-	host := ""
-	port := ""
+	laddr := *interfaceAddr + ":" + strconv.Itoa(*port)
 
-	if *listenHTTPS != "" {
-		host, port, err = net.SplitHostPort(*listenHTTPS)
-		checkFatal(err)
+	if *useDuckdns || *useCloudflare || *useSfu1net {
+		if *useDuckdns || *useCloudflare {
+			*useSfu1net = false
+		}
+		if *useDuckdns {
+			configureACMEAndDDNSProvider(duckdnsConfigure())
+		}
+		if *useSfu1net {
+			configureACMEAndDDNSProvider(sfu1netConfigure())
+		}
+		if *useCloudflare {
+			configureACMEAndDDNSProvider(cloudflareConfigure())
+		}
+	}
 
+	if *useHTTP {
+		elog.Println("Using HTTP, not HTTPS")
+		*useHTTPS = false
+	}
+
+	if *useHTTPS {
+		if *domain == "" {
+			elog.Fatal("Must use -domain <name> with -https flag, only Let's Encrypt supoorted")
+		}
 		//certmagic.DefaultACME.Agreed = true
 		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
 
-		if *cloudflareDDNS {
-			cloudflareConfigure()
-		}
-
-		if *duckdnsDDNS {
-			duckdnsConfigure()
-		}
-
-		if *sfu1netDDNS {
-			sfu1netConfigure()
-		}
-
-		if *domain != "" {
-			host = *domain
-		}
 		// We do NOT do port 80 redirection, as certmagic.HTTPS()
-		tlsConfig, err := certmagic.TLS([]string{host})
+		tlsConfig, err := certmagic.TLS([]string{*domain})
 		checkPanic(err)
-		/// XXX ro work with OBS studio for now
+		/// XXX to work with OBS studio for now
 		tlsConfig.MinVersion = 0
 
-		ln, err = tls.Listen("tcp", *listenHTTPS, tlsConfig)
+		ln, err = tls.Listen("tcp", laddr, tlsConfig)
 		checkPanic(err)
 		httpType = "https"
-	} else if *listenHTTP != "" {
-		host, port, err = net.SplitHostPort(*listenHTTP)
-		checkPanic(err)
 
-		ln, err = net.Listen("tcp", *listenHTTP)
+	} else if *useHTTP {
+
+		ln, err = net.Listen("tcp", laddr)
 		checkPanic(err)
 		httpType = "http"
 	}
+	if *port == 0 {
+		*port = ln.Addr().(*net.TCPAddr).Port
+	}
 
-	browserUrl := fmt.Sprintf("%s://%s:%s%s", httpType, host, port, "/")
+	if *domain != "" && *ddnsFlag {
+		var addrs []net.IP
+		if *interfaceAddr != "" {
+			addrs = []net.IP{net.ParseIP(*interfaceAddr)}
+		} else {
+			addrs = getInterfaceAddresses("google.com")
+		}
 
-	elog.Printf("Browser HTML URL: %v", browserUrl)
+		//timestr := strconv.FormatInt(time.Now().UnixNano(), 10)
+		// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
+		// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
+		for _, v := range addrs {
+			elog.Printf("ddns registering %v - %v", *domain, v.String())
+
+			if len(v) == 4 {
+				err = ddnsHelper.Present(context.Background(), *domain, v.String(), dns.TypeA)
+				checkFatal(err)
+			} else {
+				err = ddnsHelper.Present(context.Background(), *domain, v.String(), dns.TypeAAAA)
+				checkFatal(err)
+			}
+		}
+
+	}
+
+	// browserUrl := fmt.Sprintf("%s://%s:%s%s", httpType, host, port, "/")
+	// elog.Printf("Browser HTML URL: %v", browserUrl)
 
 	if *dialIngressURL == "" {
-		elog.Printf("Publisher API URL: %s://%s:%s%s", httpType, host, port, pubPath)
+
+		elog.Printf("Publisher API URL: %s://%s:%d%s", httpType, *domain, port, pubPath)
 		mux.HandleFunc(pubPath, pubHandler)
 	} else {
 		elog.Printf("Publisher API URL: none")
@@ -283,7 +327,7 @@ func main() {
 			}
 		}()
 	}
-	elog.Printf("Subscriber API URL: %s://%s:%s%s", httpType, host, port, subPath)
+	elog.Printf("Subscriber API URL: %s://%s:%d%s", httpType, *domain, port, subPath)
 	elog.Printf("Bound listener interface address: %s", ln.Addr().String())
 
 	go func() {
@@ -291,9 +335,9 @@ func main() {
 		panic(err)
 	}()
 
-	if *openTab {
-		_ = browser.OpenURL(browserUrl)
-	}
+	// if *openTab {
+	// 	_ = browser.OpenURL(browserUrl)
+	// }
 
 	if *cpuprofile == 0 {
 		select {}
@@ -308,59 +352,47 @@ func main() {
 	println("profiling done, exit")
 }
 
-func duckdnsConfigure() {
-	duckdnsToken := os.Getenv("DUCKDNS_TOKEN")
-	if duckdnsToken == "" {
-		elog.Fatal("DUCKDNS_TOKEN environment variable not found")
-	} else {
-		log.Printf("DUCKDNS_TOKEN environment variable found")
+var ddnsHelper *dynamicdns.DDNSHelper = nil
 
-		dnsProvider := duckdns.Provider{APIToken: duckdnsToken}
-
-		certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-			DNSProvider:        &dnsProvider,
-			TTL:                0,
-			PropagationTimeout: 0,
-			Resolvers:          []string{},
-		}
-	}
-}
-
-func cloudflareConfigure() {
-	cloudflareToken := os.Getenv("CLOUDFLARE_TOKEN")
-
-	if cloudflareToken == "" {
-		elog.Fatal("CLOUDFLARE_TOKEN environment variable not found")
-	} else {
-		log.Println("CLOUDFLARE_TOKEN environment variable found")
-
-		dnsProvider := cloudflare.Provider{APIToken: cloudflareToken}
-
-		certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-			DNSProvider:        &dnsProvider,
-			TTL:                0,
-			PropagationTimeout: 0,
-			Resolvers:          []string{},
-		}
-	}
-}
-
-func sfu1netConfigure() {
-	token := os.Getenv("SFU1NET_TOKEN")
-
+func getDDNSProviderToken(name string) string {
+	token := os.Getenv(name)
 	if token == "" {
-		elog.Fatal("SFU1NET_TOKEN environment variable not found")
-	} else {
-		log.Println("SFU1NET_TOKEN environment variable found")
+		elog.Fatalf("%s environment variable not found", name)
+	}
+	elog.Printf("%s environment variable found for DDNS/ACME", name)
+	return token
+}
 
-		dnsProvider := sfu1net.Provider{APIToken: token}
+func duckdnsConfigure() interface{} {
+	token := getDDNSProviderToken("DUCKDNS_TOKEN")
+	return duckdns.Provider{APIToken: token}
+}
+func cloudflareConfigure() interface{} {
+	token := getDDNSProviderToken("CLOUDFLARE_TOKEN")
+	return cloudflare.Provider{APIToken: token}
+}
+func sfu1netConfigure() interface{} {
+	token := getDDNSProviderToken("SFU1NET_TOKEN")
+	return sfu1net.Provider{APIToken: token}
+}
 
-		certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-			DNSProvider:        &dnsProvider,
-			TTL:                0,
-			PropagationTimeout: 0,
-			Resolvers:          []string{},
-		}
+func configureACMEAndDDNSProvider(provider interface{}) {
+
+	//dnsProvider := duckdns.Provider{APIToken: token}
+
+	//if foo, ok := bar.(dynamicdns.DDNSProvider); ok {
+	ddnsHelper = &dynamicdns.DDNSHelper{
+		Provider:           provider.(dynamicdns.DDNSProvider),
+		TTL:                0,
+		PropagationTimeout: 0,
+		Resolvers:          []string{},
+	}
+
+	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
+		DNSProvider:        provider.(certmagic.ACMEDNSProvider),
+		TTL:                0,
+		PropagationTimeout: 0,
+		Resolvers:          []string{},
 	}
 }
 
@@ -1272,4 +1304,23 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 			ingressSemaphore.Release(1)
 		}
 	})
+}
+
+func getInterfaceAddresses(stunserver string) (ipaddrs []net.IP) {
+
+	var c net.Conn
+
+	c, err := net.Dial("udp4", stunserver)
+	if err == nil {
+		addr := c.LocalAddr().(*net.UDPAddr).IP
+		ipaddrs = append(ipaddrs, addr)
+	}
+
+	c, err = net.Dial("udp6", stunserver)
+	if err == nil {
+		addr := c.LocalAddr().(*net.UDPAddr).IP
+		ipaddrs = append(ipaddrs, addr)
+	}
+
+	return
 }
