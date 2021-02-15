@@ -29,7 +29,7 @@ import (
 	"github.com/libdns/duckdns"
 	"github.com/miekg/dns"
 
-	//"github.com/pkg/browser"
+	"github.com/pkg/browser"
 	"github.com/pkg/profile"
 	"github.com/x186k/dynamicdns"
 	"github.com/x186k/sfu1/rtpsplice"
@@ -309,9 +309,6 @@ func main() {
 
 	}
 
-	// browserUrl := fmt.Sprintf("%s://%s:%s%s", httpType, host, port, "/")
-	// elog.Printf("Browser HTML URL: %v", browserUrl)
-
 	if *dialIngressURL == "" {
 
 		elog.Printf("Publisher API URL: %s://%s:%d%s", httpType, *domain, port, pubPath)
@@ -335,9 +332,15 @@ func main() {
 		panic(err)
 	}()
 
-	// if *openTab {
-	// 	_ = browser.OpenURL(browserUrl)
-	// }
+	if *openTab {
+		browserUrl := fmt.Sprintf("%s://%s:%d%s", httpType, *domain, port, "/")
+		elog.Printf("Browser HTML URL: %v", browserUrl)
+		err = browser.OpenURL(browserUrl)
+		if err != nil {
+			elog.Println(err)
+			// don't exit
+		}
+	}
 
 	if *cpuprofile == 0 {
 		select {}
