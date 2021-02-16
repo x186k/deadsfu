@@ -25,8 +25,6 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/libdns/cloudflare"
-	"github.com/libdns/duckdns"
 	"github.com/miekg/dns"
 
 	"github.com/pkg/browser"
@@ -133,32 +131,30 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
-var debug = flag.Bool("debug", false, "enable debug output")
-var cpuprofile = flag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
-var logPackets = flag.Bool("log-packets", false, "log packets for later use with text2pcap")
-var logSplicer = flag.Bool("log-splicer", false, "log rrp splicing debug info")
+var debug = flag.Bool("z-debug", false, "enable debug output")
+var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
+var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
+var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
 var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
-var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
-var useHTTPS = flag.Bool("https-auto", true, "Use HTTPS, with automatic DDNS hostname and certificate")
-var useHTTP = flag.Bool("http", false, "Use HTTP, not HTTPS for the web server")
+//var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
+var useHTTPS = flag.Bool("https-auto", false, "Use HTTPS for web server, and automatic DDNS hostname and certificate\nBest for testing and development.")
+var useHTTP = flag.Bool("http", false, "Use HTTP for web server\nBest behind load-balancers.")
+var helpAll = flag.Bool("all", false, "Show the full set of advanced flags")
 
 var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS Acme/Let's encrypt")
 var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
+
 //var acmeFlag = flag.Bool("acme-domain", false, "Use -domain <name> to get HTTPS/Acme/Let's-encrypt certificate")
 
 var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
-var port = flag.Int("port", 0, "The port to bind the web server")
+var port = flag.Int("port", 8080, "The port to bind the web server")
 var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
 var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
-
-var useCloudflare = flag.Bool("cloudflare", false, "Use Cloudflare.com for ACME and/or Dynamic DNS. env token in CLOUDFLARE_TOKEN")
-var useDuckdns = flag.Bool("duckdns", false, "Use Duckdns.org for ACME and/or Dynamic DNS. env token in DUCKDNS_TOKEN")
-var useSfu1net = flag.Bool("sfu1net", true, "Use sfu1.net for ACME and/or Dynamic DNS. env token in SFU1NET_TOKEN")
 
 var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
@@ -205,10 +201,21 @@ func oncePerSecond() {
 }
 
 func main() {
+	flag.Usage = Usage // my own usage handle
+	flag.Parse()
+
+	if !*useHTTP && !*useHTTPS {
+		fmt.Fprintf(flag.CommandLine.Output(), "\nError: Either -http or -https-auto must be specified!!\n\n")
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *helpAll {
+		flag.Usage()
+		os.Exit(0)
+	}
 
 	var err error
-
-	flag.Parse()
 
 	if *debug {
 		log.SetFlags(log.Lmicroseconds | log.LUTC)
@@ -237,20 +244,7 @@ func main() {
 	httpType := ""
 	laddr := *interfaceAddr + ":" + strconv.Itoa(*port)
 
-	if *useDuckdns || *useCloudflare || *useSfu1net {
-		if *useDuckdns || *useCloudflare {
-			*useSfu1net = false
-		}
-		if *useDuckdns {
-			configureACMEAndDDNSProvider(duckdnsConfigure())
-		}
-		if *useSfu1net {
-			configureACMEAndDDNSProvider(sfu1netConfigure())
-		}
-		if *useCloudflare {
-			configureACMEAndDDNSProvider(cloudflareConfigure())
-		}
-	}
+	configureACMEAndDDNSProvider(sfu1netConfigure())
 
 	if *useHTTP {
 		elog.Println("Using HTTP, not HTTPS")
@@ -357,26 +351,12 @@ func main() {
 
 var ddnsHelper *dynamicdns.DDNSHelper = nil
 
-func getDDNSProviderToken(name string) string {
-	token := os.Getenv(name)
-	if token == "" {
-		elog.Fatalf("%s environment variable not found", name)
-	}
-	elog.Printf("%s environment variable found for DDNS/ACME", name)
-	return token
-}
-
-func duckdnsConfigure() interface{} {
-	token := getDDNSProviderToken("DUCKDNS_TOKEN")
-	return duckdns.Provider{APIToken: token}
-}
-func cloudflareConfigure() interface{} {
-	token := getDDNSProviderToken("CLOUDFLARE_TOKEN")
-	return cloudflare.Provider{APIToken: token}
-}
 func sfu1netConfigure() interface{} {
-	token := getDDNSProviderToken("SFU1NET_TOKEN")
-	return sfu1net.Provider{APIToken: token}
+	//token:=os.getenv("SFU1NET_TOKEN")
+	//we don't use any tokens with sfu1.net for end-user ease of use
+	// it's a hassle to get tokens and put them in your .bashed
+	// the benefits should be high
+	return sfu1net.Provider{APIToken: ""}
 }
 
 func configureACMEAndDDNSProvider(provider interface{}) {
@@ -406,7 +386,8 @@ func newPeerConnection() *webrtc.PeerConnection {
 	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(&m))
 
 	//rtcApi = webrtc.NewAPI()
-	if *videoCodec == "h264" {
+	//if *videoCodec == "h264" {
+	if true {
 		err := RegisterH264AndOpusCodecs(&m)
 		checkPanic(err)
 	} else {
