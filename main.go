@@ -1306,20 +1306,32 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 	})
 }
 
-func getInterfaceAddresses(stunserver string) (ipaddrs []net.IP) {
 
-	var c net.Conn
 
-	c, err := net.Dial("udp4", stunserver)
+func getDefaultRouteInterfaceAddresses() (ipaddrs []net.IP) {
+
+	// we don't send a single packets to these hosts
+	// but we use their addresses to discover our interface to get to the Internet
+	// These addresses could be almost anything
+	googleDNSIPv4 := "8.8.8.8:8080"
+	googleDNSIPv6 := "[2001:4860:4860::8888]:8080"
+
+	c, err := net.Dial("udp4", googleDNSIPv4) // no internet activity
 	if err == nil {
+		defer c.Close()
 		addr := c.LocalAddr().(*net.UDPAddr).IP
 		ipaddrs = append(ipaddrs, addr)
 	}
 
-	c, err = net.Dial("udp6", stunserver)
+	cc, err := net.Dial("udp6", googleDNSIPv6) // no internet activity
 	if err == nil {
-		addr := c.LocalAddr().(*net.UDPAddr).IP
+		defer cc.Close()
+		addr := cc.LocalAddr().(*net.UDPAddr).IP
 		ipaddrs = append(ipaddrs, addr)
+	}
+
+	if len(ipaddrs) == 0 {
+		elog.Fatal("cant find any IP addresses")
 	}
 
 	return
