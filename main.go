@@ -819,6 +819,7 @@ func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableTrack) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
+	mrand.Seed(time.Now().UnixNano())
 	seq := uint16(mrand.Uint32())
 	ts := mrand.Uint32()
 
