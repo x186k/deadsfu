@@ -243,7 +243,7 @@ func main() {
 	httpType := ""
 	laddr := *interfaceAddr + ":" + strconv.Itoa(*port)
 
-	configureACMEAndDDNSProvider(sfu1netConfigure())
+	configureACMEAndDDNSProvider(ddns5Configure())
 
 	if *useHTTP {
 		elog.Println("Using HTTP, not HTTPS")
@@ -367,12 +367,12 @@ func registerDDNSDomain(domain string) {
 
 var ddnsHelper *dynamicdns.DDNSHelper = nil
 
-func sfu1netConfigure() interface{} {
+func ddns5Configure() interface{} {
 	//token:=os.getenv("SFU1NET_TOKEN")
 	//we don't use any tokens with sfu1.net for end-user ease of use
 	// it's a hassle to get tokens and put them in your .bashed
 	// the benefits should be high
-	return sfu1net.Provider{APIToken: ""}
+	return ddns5libdns.Provider{APIToken: ""}
 }
 
 func configureACMEAndDDNSProvider(provider interface{}) {
