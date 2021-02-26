@@ -46,7 +46,7 @@ import (
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
 
-	"github.com/x186k/sfu1net"
+	"github.com/x186k/ddns5libdns"
 )
 
 // content is our static web server content.
