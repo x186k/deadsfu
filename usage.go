@@ -9,7 +9,7 @@ import (
 )
 
 // order not important
-var minimumHelpFlags = []string{"http", "https-auto", "all", "port"}
+var minmalUsage = []string{"http", "https", "http-https", "all", "port"}
 
 var Usage = func() {
 	fmt.Fprintf(xflag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -49,7 +49,7 @@ func basicFlags(f *xflag.FlagSet) map[string]bool {
 
 	m := make(map[string]bool)
 
-	for _, v := range minimumHelpFlags {
+	for _, v := range minmalUsage {
 		if f.Lookup(v) == nil {
 			panic(fmt.Errorf("Invalid basic flag name %s", v))
 		}
