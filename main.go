@@ -338,6 +338,33 @@ func main() {
 	println("profiling done, exit")
 }
 
+func registerDDNSDomain(domain string) {
+	var addrs []net.IP
+	if *interfaceAddr != "" {
+		addrs = []net.IP{net.ParseIP(*interfaceAddr)}
+	} else {
+		addrs = getDefaultRouteInterfaceAddresses()
+	}
+
+	//timestr := strconv.FormatInt(time.Now().UnixNano(), 10)
+	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
+	// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
+	for _, v := range addrs {
+		elog.Printf("DDNS registering %v - %v", domain, v.String())
+
+		if len(v) == 4 {
+			err := ddnsHelper.Present(context.Background(), domain, v.String(), dns.TypeA)
+			checkFatal(err)
+		} else if len(v) == 16 {
+			err := ddnsHelper.Present(context.Background(), domain, v.String(), dns.TypeAAAA)
+			checkFatal(err)
+		} else {
+			panic(fmt.Errorf("bad ip len %d", len(v)))
+		}
+	}
+
+}
+
 var ddnsHelper *dynamicdns.DDNSHelper = nil
 
 func sfu1netConfigure() interface{} {
