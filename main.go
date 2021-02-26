@@ -247,13 +247,15 @@ func main() {
 
 	if *useHTTP {
 		elog.Println("Using HTTP, not HTTPS")
-		*useHTTPS = false
-	}
 
-	if *useHTTPS {
-		if *domain == "" {
-			elog.Fatal("Must use -domain <name> with -https flag, only Let's Encrypt supoorted")
-		}
+		ln, err = net.Listen("tcp", laddr)
+		checkPanic(err)
+		httpType = "http"
+	} else if *useHTTPS {
+		elog.Println("Using HTTPS, not HTTP")
+
+		registerDDNSDomain(*domain)
+
 		//certmagic.DefaultACME.Agreed = true
 		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
 
@@ -267,39 +269,11 @@ func main() {
 		checkPanic(err)
 		httpType = "https"
 
-	} else if *useHTTP {
-
-		ln, err = net.Listen("tcp", laddr)
-		checkPanic(err)
-		httpType = "http"
 	}
+
+	//the user can specify zero for port, and Linux/etc will choose a port
 	if *port == 0 {
 		*port = ln.Addr().(*net.TCPAddr).Port
-	}
-
-	if *domain != "" && *ddnsFlag {
-		var addrs []net.IP
-		if *interfaceAddr != "" {
-			addrs = []net.IP{net.ParseIP(*interfaceAddr)}
-		} else {
-			addrs = getInterfaceAddresses("google.com")
-		}
-
-		//timestr := strconv.FormatInt(time.Now().UnixNano(), 10)
-		// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
-		// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
-		for _, v := range addrs {
-			elog.Printf("ddns registering %v - %v", *domain, v.String())
-
-			if len(v) == 4 {
-				err = ddnsHelper.Present(context.Background(), *domain, v.String(), dns.TypeA)
-				checkFatal(err)
-			} else {
-				err = ddnsHelper.Present(context.Background(), *domain, v.String(), dns.TypeAAAA)
-				checkFatal(err)
-			}
-		}
-
 	}
 
 	if *dialIngressURL == "" {
