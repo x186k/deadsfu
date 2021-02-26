@@ -823,13 +823,13 @@ func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableTrack) {
 	ts := mrand.Uint32()
 
 	if tracks[0].track == nil {
-		panic(888)
+		panic("track[0] nil")
 	}
 	if tracks[1].track == nil {
-		panic(888)
+		panic("track[1] nil")
 	}
 	if tracks[2].track == nil {
-		panic(888)
+		panic("track[2] nil")
 	}
 
 	for {
