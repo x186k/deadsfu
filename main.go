@@ -27,7 +27,6 @@ import (
 	"github.com/caddyserver/certmagic"
 	"github.com/miekg/dns"
 
-	"github.com/pkg/browser"
 	"github.com/pkg/profile"
 	"github.com/x186k/dynamicdns"
 	"github.com/x186k/sfu1/rtpsplice"
@@ -154,7 +153,7 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 var port = flag.Int("port", 8080, "The port to bind the web server")
 var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
-var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
+//var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
 var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
@@ -325,16 +324,6 @@ func main() {
 		err = http.Serve(ln, mux)
 		panic(err)
 	}()
-
-	if *openTab {
-		browserUrl := fmt.Sprintf("%s://%s:%d%s", httpType, *domain, port, "/")
-		elog.Printf("Browser HTML URL: %v", browserUrl)
-		err = browser.OpenURL(browserUrl)
-		if err != nil {
-			elog.Println(err)
-			// don't exit
-		}
-	}
 
 	if *cpuprofile == 0 {
 		select {}
