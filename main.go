@@ -143,8 +143,7 @@ var useHTTPS = flag.Bool("https-auto", false, "Use HTTPS for web server, and aut
 var useHTTP = flag.Bool("http", false, "Use HTTP for web server\nBest behind load-balancers.")
 var helpAll = flag.Bool("all", false, "Show the full set of advanced flags")
 
-var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS Acme/Let's encrypt")
-var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
+//var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
 
 //var acmeFlag = flag.Bool("acme-domain", false, "Use -domain <name> to get HTTPS/Acme/Let's-encrypt certificate")
 
@@ -200,11 +199,15 @@ func oncePerSecond() {
 }
 
 func main() {
+	var err error
+
+	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS Acme/Let's encrypt")
+
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
 
-	if !*useHTTP && !*useHTTPS {
-		fmt.Fprintf(flag.CommandLine.Output(), "\nError: Either -http or -https-auto must be specified!!\n\n")
+	if (!*useHTTP && !*useHTTPS) || (*useHTTP && *useHTTPS) {
+		fmt.Fprintf(flag.CommandLine.Output(), "\nError: Either -http or -https-auto must be specified (not both)!\n\n")
 		flag.Usage()
 		os.Exit(0)
 	}
@@ -213,8 +216,6 @@ func main() {
 		flag.Usage()
 		os.Exit(0)
 	}
-
-	var err error
 
 	if *debug {
 		log.SetFlags(log.Lmicroseconds | log.LUTC)
