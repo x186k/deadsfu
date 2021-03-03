@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	//"github.com/libdns/duckdns"
 	"github.com/miekg/dns"
 
 	"github.com/pkg/profile"
@@ -136,21 +137,19 @@ var logPackets = flag.Bool("z-log-packets", false, "log packets for later use wi
 var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
-var nohtml = flag.Bool("no-html", false, "do not serve any html files, only do WHIP")
+var nohtml = flag.Bool("no-html", false, "do not serve any html files, only allow pub/sub API")
 var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
+
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
-var useHTTPS = flag.Bool("https-auto", false, "Use HTTPS for web server, and automatic DDNS hostname and certificate\nBest for testing and development.")
+var useHTTPS = flag.Bool("https", false, "Use HTTPS for web server\nmust use -domain <name>\nBest for testing and development.")
+var useHTTPHTTPS = flag.Bool("http-https", false, "HTTP on 80, HTTPS on 443\nmust use -domain <name>\nBest for public server.")
 var useHTTP = flag.Bool("http", false, "Use HTTP for web server\nBest behind load-balancers.")
+
 var helpAll = flag.Bool("all", false, "Show the full set of advanced flags")
 
 //var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
 
 //var acmeFlag = flag.Bool("acme-domain", false, "Use -domain <name> to get HTTPS/Acme/Let's-encrypt certificate")
-
-var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
-
-var port = flag.Int("port", 8080, "The port to bind the web server")
-var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
 //var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
@@ -198,18 +197,40 @@ func oncePerSecond() {
 	}
 }
 
+var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
+
 func main() {
 	var err error
 
 	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS Acme/Let's encrypt")
+	const defaultPort = 8080
+	var port = flag.Int("port", defaultPort, "The port to bind the web server")
+	var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
 
-	if (!*useHTTP && !*useHTTPS) || (*useHTTP && *useHTTPS) {
-		fmt.Fprintf(flag.CommandLine.Output(), "\nError: Either -http or -https-auto must be specified (not both)!\n\n")
+	numhttpflags := 0
+
+	if *useHTTP {
+		numhttpflags++
+	}
+	if *useHTTPS {
+		numhttpflags++
+	}
+	if *useHTTPHTTPS {
+		numhttpflags++
+		if *port != defaultPort {
+			fmt.Fprintf(flag.CommandLine.Output(), "\nError: Cannot mix -httphttps and -port.\n\n")
+			flag.Usage()
+			os.Exit(1)
+		}
+	}
+
+	if numhttpflags != 1 {
+		fmt.Fprintf(flag.CommandLine.Output(), "\nError: Exactly one of -http, -https, or -httphttps must be specified.\n\n")
 		flag.Usage()
-		os.Exit(0)
+		os.Exit(1)
 	}
 
 	if *helpAll {
@@ -240,25 +261,32 @@ func main() {
 	}
 	mux.HandleFunc(subPath, subHandler)
 
+	if *useHTTPS || *useHTTPHTTPS {
+		if *domain == "" {
+			elog.Fatal("-domain flag must be used with -https or -httpshttp")
+		}
+		ddnsConfigureProvider(ddns5Provider())
+		acmeConfigureProvider(ddns5Provider())
+		ddnsRegisterIPAddresses(*domain, *interfaceAddr)
+	}
+
 	var ln net.Listener
-	httpType := ""
+
 	laddr := *interfaceAddr + ":" + strconv.Itoa(*port)
 
-	configureACMEAndDDNSProvider(ddns5Configure())
-
 	if *useHTTP {
-		elog.Println("Using HTTP, not HTTPS")
 
 		ln, err = net.Listen("tcp", laddr)
 		checkPanic(err)
-		httpType = "http"
+
+		urlPort := ln.Addr().(*net.TCPAddr).Port
+
+		if *dialIngressURL == "" {
+			reportURL("Publisher Ingress API URL", "http", *interfaceAddr, urlPort, pubPath)
+		}
+		reportURL("Subscriber Egress API URL", "http", *interfaceAddr, urlPort, subPath)
+
 	} else if *useHTTPS {
-		elog.Println("Using HTTPS, not HTTP")
-
-		registerDDNSDomain(*domain)
-
-		//certmagic.DefaultACME.Agreed = true
-		//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA // XXXXXXXXXXX
 
 		// We do NOT do port 80 redirection, as certmagic.HTTPS()
 		tlsConfig, err := certmagic.TLS([]string{*domain})
@@ -268,21 +296,23 @@ func main() {
 
 		ln, err = tls.Listen("tcp", laddr, tlsConfig)
 		checkPanic(err)
-		httpType = "https"
 
+		printStderrURLs("https", *domain, ln.Addr().(*net.TCPAddr).Port, pubPath, subPath)
+
+	} else if *useHTTPHTTPS {
+		printStderrURLs("https", *domain, 443, pubPath, subPath)
+		reportURL("Redirect HTTP:80->HTTPS:443", "http", *domain, 80, "/*")
+	}
+	if *interfaceAddr != "" {
+		elog.Printf("Bound listener interface address: %s", ln.Addr().String())
 	}
 
 	//the user can specify zero for port, and Linux/etc will choose a port
-	if *port == 0 {
-		*port = ln.Addr().(*net.TCPAddr).Port
-	}
 
 	if *dialIngressURL == "" {
-
-		elog.Printf("Publisher API URL: %s://%s:%d%s", httpType, *domain, port, pubPath)
 		mux.HandleFunc(pubPath, pubHandler)
 	} else {
-		elog.Printf("Publisher API URL: none")
+		elog.Printf("Publisher Ingress API URL: none (using dial)")
 		go func() {
 			for {
 				err = ingressSemaphore.Acquire(context.Background(), 1)
@@ -292,12 +322,17 @@ func main() {
 			}
 		}()
 	}
-	elog.Printf("Subscriber API URL: %s://%s:%d%s", httpType, *domain, port, subPath)
-	elog.Printf("Bound listener interface address: %s", ln.Addr().String())
 
 	go func() {
-		err = http.Serve(ln, mux)
-		panic(err)
+		if *useHTTP || *useHTTPS {
+			err := http.Serve(ln, mux)
+			panic(err)
+		} else if *useHTTPHTTPS {
+			obscompat := true
+			err := HTTPS([]string{*domain}, mux, obscompat)
+			checkPanic(err)
+		}
+
 	}()
 
 	if *cpuprofile == 0 {
@@ -313,10 +348,33 @@ func main() {
 	println("profiling done, exit")
 }
 
-func registerDDNSDomain(domain string) {
+func printStderrURLs(protocol string, hostname string, urlPort int, pubPath string, subPath string) {
+	if *dialIngressURL == "" {
+		reportURL("Publisher Ingress API URL", protocol, hostname, urlPort, pubPath)
+	}
+	reportURL("Subscriber Egress API URL", protocol, hostname, urlPort, subPath)
+	reportURL("User HTML control panel URL", protocol, hostname, urlPort, "/")
+}
+
+func reportURL(description string, protocol string, hostname string, port int, path string) {
+	// we want something like:
+	//"Publisher Ingress API URL: http://foo.bar/pub"
+
+	portstr := ":" + strconv.Itoa(port)
+	if hostname != "" && port == 443 && protocol == "https" {
+		portstr = ""
+	}
+	if hostname != "" && port == 80 && protocol == "http" {
+		portstr = ""
+	}
+
+	elog.Printf("%s: %s://%s%s%s", description, protocol, hostname, portstr, path)
+}
+
+func ddnsRegisterIPAddresses(domain string, interfaceAddr string) {
 	var addrs []net.IP
-	if *interfaceAddr != "" {
-		addrs = []net.IP{net.ParseIP(*interfaceAddr)}
+	if interfaceAddr != "" {
+		addrs = []net.IP{net.ParseIP(interfaceAddr)}
 	} else {
 		addrs = getDefaultRouteInterfaceAddresses()
 	}
@@ -342,28 +400,88 @@ func registerDDNSDomain(domain string) {
 
 var ddnsHelper *dynamicdns.DDNSHelper = nil
 
-func ddns5Configure() interface{} {
-	//token:=os.getenv("SFU1NET_TOKEN")
-	//we don't use any tokens with sfu1.net for end-user ease of use
-	// it's a hassle to get tokens and put them in your .bashed
-	// the benefits should be high
-	return ddns5libdns.Provider{APIToken: ""}
+func ddns5Token() string {
+	token := os.Getenv("DDNS5_TOKEN")
+	if len(token) == 32 {
+		log.Println("Got 32 byte token for ddns5.com from env: DDNS5_TOKEN ")
+		return token
+	}
+	if len(token) > 0 {
+		elog.Println("ignoring token from env: DDNS5_TOKEN ")
+	}
+
+	const ddns5tokenPath = "/tmp/ddns5.txt"
+	f, err := os.OpenFile(ddns5tokenPath, os.O_CREATE|os.O_RDWR, 0666)
+	checkPanic(err)
+	defer f.Close()
+
+	raw, err := ioutil.ReadAll(f)
+	checkPanic(err)
+
+	if len(raw) == 32 {
+		log.Println("Got 32 byte token for ddns5.com from file ", ddns5tokenPath)
+		return string(raw)
+	}
+
+	log.Println("Saving new 32 byte token for ddns5.com -> ", ddns5tokenPath)
+
+	hex32, err := randomHex(16)
+	checkPanic(err)
+	if len(hex32) != 32 {
+		panic("bad hex32")
+	}
+	// off,err:=f.Seek(0,io.SeekStart)
+	// checkPanic(err)
+	// if off!=0{
+	// 	panic("bad off")
+	// }
+	n, err := f.WriteAt([]byte(hex32), 0)
+	checkPanic(err)
+	if n != 32 {
+		panic("bad write")
+	}
+
+	return hex32
 }
 
-func configureACMEAndDDNSProvider(provider interface{}) {
+func ddns5Provider() interface{} {
+	token := ddns5Token()
+	//we must use tokens, unfortunatly.
+	//why?
+	// if our ddns provider just did A,AAAA records and no TXT
+	// records, we could allow write-once A,AAAA records.
+	// But! by supporting TXT records we CANNOT allow
+	// TXT records to be created in a FQDN by anyone BUT
+	// the creator of the A and AAAA record for that FQDN
 
-	//dnsProvider := duckdns.Provider{APIToken: token}
+	// So, its a security issue, we CANNOT allow Bob to
+	// Create bob.ddns5.com/A/192.168.1.1
+	// and then allow Alice to create bob.ddns5.com/TXT/xxxxxxxxx
+	// if we did, Alice could get a cert for bob.ddns5.com
 
+	return &ddns5libdns.Provider{APIToken: token}
+}
+
+func ddnsConfigureProvider(provider interface{}) {
+	//duckduck := duckdns.Provider{APIToken: ""}
+	//foo1:=ddns5libdns.Provider{APIToken: ""}
 	//if foo, ok := bar.(dynamicdns.DDNSProvider); ok {
+	foo := provider.(dynamicdns.DDNSProvider)
+
 	ddnsHelper = &dynamicdns.DDNSHelper{
-		Provider:           provider.(dynamicdns.DDNSProvider),
+		Provider:           foo,
 		TTL:                0,
 		PropagationTimeout: 0,
 		Resolvers:          []string{},
 	}
+}
+
+func acmeConfigureProvider(provider interface{}) {
+	foo := provider.(certmagic.ACMEDNSProvider)
 
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-		DNSProvider:        provider.(certmagic.ACMEDNSProvider),
+		//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
+		DNSProvider:        foo,
 		TTL:                0,
 		PropagationTimeout: 0,
 		Resolvers:          []string{},
@@ -1281,8 +1399,6 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 		}
 	})
 }
-
-
 
 func getDefaultRouteInterfaceAddresses() (ipaddrs []net.IP) {
 
