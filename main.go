@@ -269,8 +269,8 @@ func main() {
 			xdomain := randomHex(4) + ".ddns5.com"
 			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
 		}
-		ddnsConfigureProvider(ddns5Provider())
-		acmeConfigureProvider(ddns5Provider())
+		ddnsConfigureProvider(ddns5com_Provider())
+		acmeConfigureProvider(ddns5com_Provider())
 		ddnsRegisterIPAddresses(*domain, *interfaceAddr)
 	}
 
@@ -448,7 +448,7 @@ func ddns5Token() string {
 	return hex32
 }
 
-func ddns5Provider() interface{} {
+func ddns5com_Provider() interface{} {
 	token := ddns5Token()
 	//we must use tokens, unfortunatly.
 	//why?
