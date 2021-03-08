@@ -71,7 +71,10 @@ var myMetrics struct {
 // https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
-const mediaStreamId = "x186k"
+const (
+	docsurl = "https://sfu1.com/docs"
+	mediaStreamId = "x186k"
+)
 
 var (
 	h264IdleRtpPackets           []rtp.Packet           // concurrent okay
@@ -263,7 +266,8 @@ func main() {
 
 	if *useHTTPS || *useHTTPHTTPS {
 		if *domain == "" {
-			elog.Fatal("-domain flag must be used with -https or -httpshttp")
+			xdomain := randomHex(4) + ".ddns5.com"
+			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
 		}
 		ddnsConfigureProvider(ddns5Provider())
 		acmeConfigureProvider(ddns5Provider())
