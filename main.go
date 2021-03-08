@@ -425,8 +425,8 @@ func ddns5Token() string {
 
 	log.Println("Saving new 32 byte token for ddns5.com -> ", ddns5tokenPath)
 
-	hex32, err := randomHex(16)
-	checkPanic(err)
+	hex32 := randomHex(16)
+
 	if len(hex32) != 32 {
 		panic("bad hex32")
 	}
@@ -846,12 +846,11 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 	log.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
 }
 
-func randomHex(n int) (string, error) {
+func randomHex(n int) string {
 	bytes := make([]byte, n)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+	_, err := rand.Read(bytes)
+	checkPanic(err)
+	return hex.EncodeToString(bytes)
 }
 
 func ingressVideoIsHappy() bool {
@@ -960,8 +959,8 @@ func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableTrack) {
 
 func dialUpstream(baseurl string) {
 
-	txid, err := randomHex(10)
-	checkPanic(err)
+	txid := randomHex(10)
+
 	dialurl := baseurl + "?issfu=1&txid=" + txid
 
 	log.Println("dialUpstream url:", dialurl)
@@ -978,7 +977,7 @@ func dialUpstream(baseurl string) {
 
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
+	_, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
 	checkPanic(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
 	checkPanic(err)
