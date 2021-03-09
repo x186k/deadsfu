@@ -10,15 +10,15 @@ import (
 
 func TestDDNS5TokenMaker(t *testing.T) {
 
-	k := ddns5Token()
+	k := ddns5com_Token()
 	require.Equal(t, 32, len(k))
 
-	kk := ddns5Token()
+	kk := ddns5com_Token()
 	require.Equal(t,k,kk)
 
 	_=os.Remove( "/tmp/ddns5.txt")
 
-	kkk:= ddns5Token()
+	kkk:= ddns5com_Token()
 	require.Equal(t, 32, len(kkk))
 
 	require.NotEqual(t,k,kkk)

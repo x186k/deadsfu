@@ -25,7 +25,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	//"github.com/libdns/duckdns"
+	"github.com/libdns/cloudflare"
+	"github.com/libdns/duckdns"
 	"github.com/miekg/dns"
 
 	"github.com/pkg/profile"
@@ -72,8 +73,9 @@ var myMetrics struct {
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	docsurl = "https://sfu1.com/docs"
-	mediaStreamId = "x186k"
+	docsurl        = "https://sfu1.com/docs"
+	mediaStreamId  = "x186k"
+	ddns5tokenPath = "/tmp/ddns5.txt"
 )
 
 var (
@@ -205,7 +207,8 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 func main() {
 	var err error
 
-	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS Acme/Let's encrypt")
+	var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
+	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
 	const defaultPort = 8080
 	var port = flag.Int("port", defaultPort, "The port to bind the web server")
 	var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
@@ -268,9 +271,22 @@ func main() {
 		if *domain == "" {
 			xdomain := randomHex(4) + ".ddns5.com"
 			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
+		} else if strings.HasSuffix(*domain, ".ddns5.com") {
+			ddnsConfigureProvider(ddns5com_Provider())
+			acmeConfigureProvider(ddns5com_Provider())
+		} else if strings.HasSuffix(*domain, ".duckdns.org") {
+			ddnsConfigureProvider(duckdnsorg_Provider())
+			acmeConfigureProvider(duckdnsorg_Provider())
+		} else if *cloudflareDDNS {
+			ddnsConfigureProvider(cloudflare_Provider())
+			acmeConfigureProvider(cloudflare_Provider())
+		} else {
+			elog.Printf("We assume you have pointed the IP for domain: %s to this machine.", *domain)
+			elog.Printf("And adjusted your firewall")
+			elog.Printf("Also, LetsEncrypt certificates will only work if port 80/443 are reachable from the Internet")
+
 		}
-		ddnsConfigureProvider(ddns5com_Provider())
-		acmeConfigureProvider(ddns5com_Provider())
+
 		ddnsRegisterIPAddresses(*domain, *interfaceAddr)
 	}
 
@@ -404,7 +420,7 @@ func ddnsRegisterIPAddresses(domain string, interfaceAddr string) {
 
 var ddnsHelper *dynamicdns.DDNSHelper = nil
 
-func ddns5Token() string {
+func ddns5com_Token() string {
 	token := os.Getenv("DDNS5_TOKEN")
 	if len(token) == 32 {
 		log.Println("Got 32 byte token for ddns5.com from env: DDNS5_TOKEN ")
@@ -414,7 +430,6 @@ func ddns5Token() string {
 		elog.Println("ignoring token from env: DDNS5_TOKEN ")
 	}
 
-	const ddns5tokenPath = "/tmp/ddns5.txt"
 	f, err := os.OpenFile(ddns5tokenPath, os.O_CREATE|os.O_RDWR, 0666)
 	checkPanic(err)
 	defer f.Close()
@@ -448,8 +463,30 @@ func ddns5Token() string {
 	return hex32
 }
 
+func duckdnsorg_Token() string {
+	token := os.Getenv("DUCKDNS_TOKEN")
+	if len(token) > 0 {
+		log.Println("Got Duckdns token from env: DUCKDNS_TOKEN ")
+		return token
+	}
+
+	elog.Fatal("You must set the environment variable: DDNS5_TOKEN to use Duckdns.org")
+	panic("no")
+}
+
+func cloudflare_Token() string {
+	token := os.Getenv("CLOUDFLARE_TOKEN")
+	if len(token) > 0 {
+		log.Println("Got Cloudflare token from env: CLOUDFLARE_TOKEN ")
+		return token
+	}
+
+	elog.Fatal("You must set the environment variable: CLOUDFLARE_TOKEN in order to use Cloudflare for DDNS or ACME")
+	panic("no2")
+}
+
 func ddns5com_Provider() interface{} {
-	token := ddns5Token()
+	token := ddns5com_Token()
 	//we must use tokens, unfortunatly.
 	//why?
 	// if our ddns provider just did A,AAAA records and no TXT
@@ -464,6 +501,16 @@ func ddns5com_Provider() interface{} {
 	// if we did, Alice could get a cert for bob.ddns5.com
 
 	return &ddns5libdns.Provider{APIToken: token}
+}
+
+func duckdnsorg_Provider() interface{} {
+	token := duckdnsorg_Token()
+	return &duckdns.Provider{APIToken: token}
+}
+
+func cloudflare_Provider() interface{} {
+	token := cloudflare_Token()
+	return &cloudflare.Provider{APIToken: token}
 }
 
 func ddnsConfigureProvider(provider interface{}) {
