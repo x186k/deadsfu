@@ -271,23 +271,41 @@ func main() {
 		if *domain == "" {
 			xdomain := randomHex(4) + ".ddns5.com"
 			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
-		} else if strings.HasSuffix(*domain, ".ddns5.com") {
-			ddnsConfigureProvider(ddns5com_Provider())
-			acmeConfigureProvider(ddns5com_Provider())
-		} else if strings.HasSuffix(*domain, ".duckdns.org") {
-			ddnsConfigureProvider(duckdnsorg_Provider())
-			acmeConfigureProvider(duckdnsorg_Provider())
+		} else if strings.HasSuffix(*domain, ddns5Suffix) {
+			token := ddns5com_Token()
+			zone := string(ddns5Suffix[1:])
+			subname := strings.TrimSuffix(*domain, ddns5Suffix)
+
+			ddnsConfigureProvider(ddns5com_Provider(token))
+			ddnsRegisterIPAddresses(zone, subname, *interfaceAddr)
+
+			acmeConfigureProvider(ddns5com_Provider(token))
+		} else if strings.HasSuffix(*domain, duckdnsSuffix) {
+			token := duckdnsorg_Token()
+			zone := string(duckdnsSuffix[1:])
+			subname := strings.TrimSuffix(*domain, duckdnsSuffix)
+
+			ddnsConfigureProvider(duckdnsorg_Provider(token))
+			ddnsRegisterIPAddresses(zone, subname, *interfaceAddr)
+
+			acmeConfigureProvider(duckdnsorg_Provider(token))
 		} else if *cloudflareDDNS {
-			ddnsConfigureProvider(cloudflare_Provider())
-			acmeConfigureProvider(cloudflare_Provider())
+			//cloudflare can have any zone, not just duckdns.org
+			token := cloudflare_Token()
+
+			split := dns.SplitDomainName(*domain)
+			zone := strings.Join(split[len(split)-2:], ".")
+			subname := strings.TrimSuffix(*domain, "."+zone)
+
+			ddnsConfigureProvider(cloudflare_Provider(token))
+			ddnsRegisterIPAddresses(zone, subname, *interfaceAddr)
+
+			acmeConfigureProvider(cloudflare_Provider(token))
 		} else {
 			elog.Printf("We assume you have pointed the IP for domain: %s to this machine.", *domain)
 			elog.Printf("And adjusted your firewall")
 			elog.Printf("Also, LetsEncrypt certificates will only work if port 80/443 are reachable from the Internet")
-
 		}
-
-		ddnsRegisterIPAddresses(*domain, *interfaceAddr)
 	}
 
 	var ln net.Listener
