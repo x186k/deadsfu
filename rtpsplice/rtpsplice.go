@@ -171,7 +171,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 		s.tsOffset = o.Timestamp - (s.lastTS + uint32(td))
 		s.snOffset = o.SequenceNumber - s.lastSN - 1
 
-		log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
+		//log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
 		// old approach/abandoned
 		// timestamp := unixnano * rtphz / int64(time.Second)
 		// s.addTS = uint32(timestamp)
