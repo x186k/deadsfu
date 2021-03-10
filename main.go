@@ -275,32 +275,32 @@ func main() {
 			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
 		} else if strings.HasSuffix(*domain, ddns5Suffix) {
 			token := ddns5com_Token()
-			zone := string(ddns5Suffix[1:])
-			subname := strings.TrimSuffix(*domain, ddns5Suffix)
+			// zone := string(ddns5Suffix[1:])
+			// subname := strings.TrimSuffix(*domain, ddns5Suffix)
 
 			ddnsConfigureProvider(ddns5com_Provider(token))
-			ddnsRegisterIPAddresses(zone, subname, *interfaceAddr)
+			ddnsRegisterIPAddresses(*domain, *interfaceAddr)
 
 			acmeConfigureProvider(ddns5com_Provider(token))
 		} else if strings.HasSuffix(*domain, duckdnsSuffix) {
 			token := duckdnsorg_Token()
-			zone := string(duckdnsSuffix[1:])
-			subname := strings.TrimSuffix(*domain, duckdnsSuffix)
+			// zone := string(duckdnsSuffix[1:])
+			// subname := strings.TrimSuffix(*domain, duckdnsSuffix)
 
 			ddnsConfigureProvider(duckdnsorg_Provider(token))
-			ddnsRegisterIPAddresses(zone, subname, *interfaceAddr)
+			ddnsRegisterIPAddresses(*domain, *interfaceAddr)
 
 			acmeConfigureProvider(duckdnsorg_Provider(token))
 		} else if *cloudflareDDNS {
 			//cloudflare can have any zone, not just duckdns.org
 			token := cloudflare_Token()
 
-			split := dns.SplitDomainName(*domain)
-			zone := strings.Join(split[len(split)-2:], ".")
-			subname := strings.TrimSuffix(*domain, "."+zone)
+			// split := dns.SplitDomainName(*domain)
+			// zone := strings.Join(split[len(split)-2:], ".")
+			// subname := strings.TrimSuffix(*domain, "."+zone)
 
 			ddnsConfigureProvider(cloudflare_Provider(token))
-			ddnsRegisterIPAddresses(zone, subname, *interfaceAddr)
+			ddnsRegisterIPAddresses(*domain, *interfaceAddr)
 
 			acmeConfigureProvider(cloudflare_Provider(token))
 		} else {
@@ -423,7 +423,7 @@ func reportURL(description string, protocol string, hostname string, port int, p
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
 // zone might be duckdns.org
 // subname might be server01
-func ddnsRegisterIPAddresses(zone string, subname string, interfaceAddr string) {
+func ddnsRegisterIPAddresses(fqdn string, interfaceAddr string) {
 	var addrs []net.IP
 	if interfaceAddr != "" {
 		addrs = []net.IP{net.ParseIP(interfaceAddr)}
@@ -435,7 +435,7 @@ func ddnsRegisterIPAddresses(zone string, subname string, interfaceAddr string) 
 	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
 	// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
 	for _, v := range addrs {
-		elog.Println("DDNS registering ", subname, zone, v.String())
+		elog.Println("DDNS registering ", fqdn, v.String())
 
 		var dnstype uint16
 
@@ -447,7 +447,7 @@ func ddnsRegisterIPAddresses(zone string, subname string, interfaceAddr string) 
 			panic(fmt.Errorf("bad ip len %d", len(v)))
 		}
 
-		err := ddnsHelper.Present(context.Background(), subname, zone, v.String(), dnstype)
+		err := ddnsHelper.Present(context.Background(), fqdn, v.String(), dnstype)
 		checkFatal(err)
 
 	}
