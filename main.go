@@ -391,7 +391,10 @@ func reportURL(description string, protocol string, hostname string, port int, p
 	elog.Printf("%s: %s://%s%s%s", description, protocol, hostname, portstr, path)
 }
 
-func ddnsRegisterIPAddresses(domain string, interfaceAddr string) {
+// ddnsRegisterIPAddresses will register IP addresses to hostnames
+// zone might be duckdns.org
+// subname might be server01
+func ddnsRegisterIPAddresses(zone string, subname string, interfaceAddr string) {
 	var addrs []net.IP
 	if interfaceAddr != "" {
 		addrs = []net.IP{net.ParseIP(interfaceAddr)}
@@ -403,17 +406,21 @@ func ddnsRegisterIPAddresses(domain string, interfaceAddr string) {
 	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
 	// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
 	for _, v := range addrs {
-		elog.Printf("DDNS registering %v - %v", domain, v.String())
+		elog.Println("DDNS registering ", subname, zone, v.String())
+
+		var dnstype uint16
 
 		if len(v) == 4 {
-			err := ddnsHelper.Present(context.Background(), domain, v.String(), dns.TypeA)
-			checkFatal(err)
+			dnstype = dns.TypeA
 		} else if len(v) == 16 {
-			err := ddnsHelper.Present(context.Background(), domain, v.String(), dns.TypeAAAA)
-			checkFatal(err)
+			dnstype = dns.TypeAAAA
 		} else {
 			panic(fmt.Errorf("bad ip len %d", len(v)))
 		}
+
+		err := ddnsHelper.Present(context.Background(), subname, zone, v.String(), dnstype)
+		checkFatal(err)
+
 	}
 
 }
