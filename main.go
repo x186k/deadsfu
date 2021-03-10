@@ -76,6 +76,8 @@ const (
 	docsurl        = "https://sfu1.com/docs"
 	mediaStreamId  = "x186k"
 	ddns5tokenPath = "/tmp/ddns5.txt"
+	ddns5Suffix    = ".ddns5.com"
+	duckdnsSuffix  = ".duckdns.org"
 )
 
 var (
@@ -366,6 +368,15 @@ func main() {
 			err := http.Serve(ln, mux)
 			panic(err)
 		} else if *useHTTPHTTPS {
+			
+
+			// XXXXXXXXX
+			// XXXXXXXXX
+			// XXXXXXXXX
+
+			//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
+			//err := certmagic.HTTPS([]string{*domain}, mux)
+			
 			obscompat := true
 			err := HTTPS([]string{*domain}, mux, obscompat)
 			checkPanic(err)
@@ -510,8 +521,8 @@ func cloudflare_Token() string {
 	panic("no2")
 }
 
-func ddns5com_Provider() interface{} {
-	token := ddns5com_Token()
+func ddns5com_Provider(token string) interface{} {
+
 	//we must use tokens, unfortunatly.
 	//why?
 	// if our ddns provider just did A,AAAA records and no TXT
@@ -528,13 +539,11 @@ func ddns5com_Provider() interface{} {
 	return &ddns5libdns.Provider{APIToken: token}
 }
 
-func duckdnsorg_Provider() interface{} {
-	token := duckdnsorg_Token()
+func duckdnsorg_Provider(token string) interface{} {
 	return &duckdns.Provider{APIToken: token}
 }
 
-func cloudflare_Provider() interface{} {
-	token := cloudflare_Token()
+func cloudflare_Provider(token string) interface{} {
 	return &cloudflare.Provider{APIToken: token}
 }
 
