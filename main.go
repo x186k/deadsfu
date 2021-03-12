@@ -30,7 +30,8 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/pkg/profile"
-	"github.com/x186k/dynamicdns"
+	//"github.com/x186k/dynamicdns"
+
 	"github.com/x186k/sfu1/rtpsplice"
 	"golang.org/x/sync/semaphore"
 
@@ -165,8 +166,9 @@ var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 
-func init() {
+func initializeSFU() {
 	var err error
+
 
 	audio = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "audio"}}
 	video1 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid1"}}
@@ -208,6 +210,8 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 
 func main() {
 	var err error
+
+	initializeSFU()
 
 	var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
 	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
@@ -274,35 +278,36 @@ func main() {
 			xdomain := randomHex(4) + ".ddns5.com"
 			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
 		} else if strings.HasSuffix(*domain, ddns5Suffix) {
-			token := ddns5com_Token()
 			// zone := string(ddns5Suffix[1:])
 			// subname := strings.TrimSuffix(*domain, ddns5Suffix)
 
-			ddnsConfigureProvider(ddns5com_Provider(token))
-			ddnsRegisterIPAddresses(*domain, *interfaceAddr)
+			token := ddns5com_Token()
+			ddnsProvider := &ddns5libdns.Provider{APIToken: token}
+			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
 
-			acmeConfigureProvider(ddns5com_Provider(token))
+			acmeConfigureProvider(ddnsProvider)
 		} else if strings.HasSuffix(*domain, duckdnsSuffix) {
 			token := duckdnsorg_Token()
 			// zone := string(duckdnsSuffix[1:])
 			// subname := strings.TrimSuffix(*domain, duckdnsSuffix)
 
-			ddnsConfigureProvider(duckdnsorg_Provider(token))
-			ddnsRegisterIPAddresses(*domain, *interfaceAddr)
+			ddnsProvider := &duckdns.Provider{APIToken: token}
+			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
 
-			acmeConfigureProvider(duckdnsorg_Provider(token))
+			acmeConfigureProvider(ddnsProvider)
 		} else if *cloudflareDDNS {
 			//cloudflare can have any zone, not just duckdns.org
 			token := cloudflare_Token()
 
+			
 			// split := dns.SplitDomainName(*domain)
 			// zone := strings.Join(split[len(split)-2:], ".")
 			// subname := strings.TrimSuffix(*domain, "."+zone)
 
-			ddnsConfigureProvider(cloudflare_Provider(token))
-			ddnsRegisterIPAddresses(*domain, *interfaceAddr)
+			ddnsProvider := &cloudflare.Provider{APIToken: token}
+			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
 
-			acmeConfigureProvider(cloudflare_Provider(token))
+			acmeConfigureProvider(ddnsProvider)
 		} else {
 			elog.Printf("We assume you have pointed the IP for domain: %s to this machine.", *domain)
 			elog.Printf("And adjusted your firewall")
@@ -368,17 +373,16 @@ func main() {
 			err := http.Serve(ln, mux)
 			panic(err)
 		} else if *useHTTPHTTPS {
-			
 
 			// XXXXXXXXX
 			// XXXXXXXXX
 			// XXXXXXXXX
 
 			//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
-			//err := certmagic.HTTPS([]string{*domain}, mux)
-			
-			obscompat := true
-			err := HTTPS([]string{*domain}, mux, obscompat)
+			err := certmagic.HTTPS([]string{*domain}, mux)
+
+			//obscompat := true
+			//err := HTTPS([]string{*domain}, mux, obscompat)
 			checkPanic(err)
 		}
 
@@ -423,7 +427,7 @@ func reportURL(description string, protocol string, hostname string, port int, p
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
 // zone might be duckdns.org
 // subname might be server01
-func ddnsRegisterIPAddresses(fqdn string, interfaceAddr string) {
+func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int, interfaceAddr string) {
 	var addrs []net.IP
 	if interfaceAddr != "" {
 		addrs = []net.IP{net.ParseIP(interfaceAddr)}
@@ -435,7 +439,6 @@ func ddnsRegisterIPAddresses(fqdn string, interfaceAddr string) {
 	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
 	// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
 	for _, v := range addrs {
-		elog.Println("DDNS registering ", fqdn, v.String())
 
 		var dnstype uint16
 
@@ -447,14 +450,21 @@ func ddnsRegisterIPAddresses(fqdn string, interfaceAddr string) {
 			panic(fmt.Errorf("bad ip len %d", len(v)))
 		}
 
-		err := ddnsHelper.Present(context.Background(), fqdn, v.String(), dnstype)
+		normalip:= NormalizeIP(v.String(), dnstype)
+
+		elog.Println("DDNS setting", fqdn, suffixCount, normalip)
+		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
+
+		elog.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip)
+		err = ddnsWaitUntilSet(context.Background(), provider, fqdn, normalip, dnstype)
+		checkFatal(err)
+
+		elog.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
 
 	}
 
 }
-
-var ddnsHelper *dynamicdns.DDNSHelper = nil
 
 func ddns5com_Token() string {
 	token := os.Getenv("DDNS5_TOKEN")
@@ -521,45 +531,19 @@ func cloudflare_Token() string {
 	panic("no2")
 }
 
-func ddns5com_Provider(token string) interface{} {
+//why ddns5 uses tokens
+//we must use tokens, unfortunatly.
+//why?
+// if our ddns provider just did A,AAAA records and no TXT
+// records, we could allow write-once A,AAAA records.
+// But! by supporting TXT records we CANNOT allow
+// TXT records to be created in a FQDN by anyone BUT
+// the creator of the A and AAAA record for that FQDN
 
-	//we must use tokens, unfortunatly.
-	//why?
-	// if our ddns provider just did A,AAAA records and no TXT
-	// records, we could allow write-once A,AAAA records.
-	// But! by supporting TXT records we CANNOT allow
-	// TXT records to be created in a FQDN by anyone BUT
-	// the creator of the A and AAAA record for that FQDN
-
-	// So, its a security issue, we CANNOT allow Bob to
-	// Create bob.ddns5.com/A/192.168.1.1
-	// and then allow Alice to create bob.ddns5.com/TXT/xxxxxxxxx
-	// if we did, Alice could get a cert for bob.ddns5.com
-
-	return &ddns5libdns.Provider{APIToken: token}
-}
-
-func duckdnsorg_Provider(token string) interface{} {
-	return &duckdns.Provider{APIToken: token}
-}
-
-func cloudflare_Provider(token string) interface{} {
-	return &cloudflare.Provider{APIToken: token}
-}
-
-func ddnsConfigureProvider(provider interface{}) {
-	//duckduck := duckdns.Provider{APIToken: ""}
-	//foo1:=ddns5libdns.Provider{APIToken: ""}
-	//if foo, ok := bar.(dynamicdns.DDNSProvider); ok {
-	foo := provider.(dynamicdns.DDNSProvider)
-
-	ddnsHelper = &dynamicdns.DDNSHelper{
-		Provider:           foo,
-		TTL:                0,
-		PropagationTimeout: 0,
-		Resolvers:          []string{},
-	}
-}
+// So, its a security issue, we CANNOT allow Bob to
+// Create bob.ddns5.com/A/192.168.1.1
+// and then allow Alice to create bob.ddns5.com/TXT/xxxxxxxxx
+// if we did, Alice could get a cert for bob.ddns5.com
 
 func acmeConfigureProvider(provider interface{}) {
 	foo := provider.(certmagic.ACMEDNSProvider)
