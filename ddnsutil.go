@@ -170,11 +170,9 @@ func ddnsRemoveAddrs(ctx context.Context, provider DDNSProvider, fqdn string, su
 	recstr := dnstype2String(dnstype)
 	prefix, zone := splitFQDN(fqdn, suffixCount)
 
-	println(99, prefix, zone)
-
 	rec := libdns.Record{
 		Type: recstr,
-		Name: fqdn,
+		Name: prefix,
 		//Value: dnsVal,
 		TTL: time.Second * 0,
 	}
