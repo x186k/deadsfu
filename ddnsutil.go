@@ -46,7 +46,7 @@ type DDNSProvider interface {
 // ddnsWaitUntilSet blocks until the  record created in Present() appears in
 // authoritative lookups, i.e. until it has propagated, or until
 // timeout, whichever is first.
-func ddnsWaitUntilSet(ctx context.Context, provider DDNSProvider, dnsName string, dnsVal string, dnstype uint16) error {
+func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstype uint16) error {
 	// dnsName := challenge.DNS01TXTRecordName()
 	// keyAuth := challenge.DNS01KeyAuthorization()
 
@@ -152,7 +152,7 @@ func dnstype2String(dnstype uint16) string {
 }
 
 // ddnsFindAddrs checks once, and returns true if found, false if not
-func ddnsFindAddrs(ctx context.Context, dnsName string, dnstype uint16) (string, error) {
+func ddnsFindAddrs(dnsName string, dnstype uint16) (string, error) {
 	// dnsName := challenge.DNS01TXTRecordName()
 	// keyAuth := challenge.DNS01KeyAuthorization()
 
