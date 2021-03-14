@@ -74,11 +74,10 @@ var myMetrics struct {
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	docsurl        = "https://sfu1.com/docs"
-	mediaStreamId  = "x186k"
-	ddns5tokenPath = "/tmp/ddns5.txt"
-	ddns5Suffix    = ".ddns5.com"
-	duckdnsSuffix  = ".duckdns.org"
+	docsurl       = "https://sfu1.com/docs"
+	mediaStreamId = "x186k"
+	ddns5Suffix   = ".ddns5.com"
+	duckdnsSuffix = ".duckdns.org"
 )
 
 var (
@@ -91,6 +90,7 @@ var (
 	audio                        *SplicableTrack
 	ingressSemaphore             = semaphore.NewWeighted(int64(1)) // concurrent okay
 	lastTimeIngressVideoReceived int64                             // concurrent okay
+	ddns5tokenPath               = os.TempDir() + "/ddns5token.txt"
 )
 
 type SplicableTrack struct {
@@ -168,7 +168,6 @@ var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 
 func initializeSFU() {
 	var err error
-
 
 	audio = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "audio"}}
 	video1 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid1"}}
@@ -299,7 +298,6 @@ func main() {
 			//cloudflare can have any zone, not just duckdns.org
 			token := cloudflare_Token()
 
-			
 			// split := dns.SplitDomainName(*domain)
 			// zone := strings.Join(split[len(split)-2:], ".")
 			// subname := strings.TrimSuffix(*domain, "."+zone)
@@ -450,14 +448,14 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 			panic(fmt.Errorf("bad ip len %d", len(v)))
 		}
 
-		normalip:= NormalizeIP(v.String(), dnstype)
+		normalip := NormalizeIP(v.String(), dnstype)
 
 		elog.Println("DDNS setting", fqdn, suffixCount, normalip)
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
 		elog.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip)
-		err = ddnsWaitUntilSet(context.Background(), provider, fqdn, normalip, dnstype)
+		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
 		elog.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
@@ -467,6 +465,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 }
 
 func ddns5com_Token() string {
+
 	token := os.Getenv("DDNS5_TOKEN")
 	if len(token) == 32 {
 		log.Println("Got 32 byte token for ddns5.com from env: DDNS5_TOKEN ")
@@ -476,6 +475,7 @@ func ddns5com_Token() string {
 		elog.Println("ignoring token from env: DDNS5_TOKEN ")
 	}
 
+	ddns5tokenPath := os.TempDir() + "/ddns5_token.txt"
 	f, err := os.OpenFile(ddns5tokenPath, os.O_CREATE|os.O_RDWR, 0666)
 	checkPanic(err)
 	defer f.Close()
@@ -1147,6 +1147,7 @@ func logPacket(log *log.Logger, packet *rtp.Packet) {
 // }
 
 func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	_ = receiver //silence warnings
 
 	mimetype := track.Codec().MimeType
 	log.Println("OnTrack codec:", mimetype)
