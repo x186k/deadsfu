@@ -28,6 +28,10 @@ import (
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+var (
+	ddnsutilDebug = false
+)
+
 // DDNSProvider defines the set of operations required for
 // ACME challenges. A DNS provider must be able to append and
 // delete records in order to solve ACME challenges. Find one
@@ -72,7 +76,9 @@ func ddnsWaitUntilSet(ctx context.Context, provider DDNSProvider, dnsName string
 			return fmt.Errorf("checking DNS propagation of %s: %w", dnsName, err)
 		}
 
-		log.Println("DDNS testing got/wanting", val, dnsVal)
+		if ddnsutilDebug {
+			log.Println("DDNS testing got/wanting", val, dnsVal)
+		}
 
 		if val == dnsVal {
 			return nil
