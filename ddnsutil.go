@@ -135,7 +135,6 @@ func ddnsSetRecord(ctx context.Context, provider DDNSProvider, fqdn string, suff
 }
 
 func dnstype2String(dnstype uint16) string {
-	_ = ddnsFindAddrs // hack to hide warning messages for unused ddnsFindAddrs()
 
 	recstr := ""
 	switch dnstype {
@@ -151,16 +150,7 @@ func dnstype2String(dnstype uint16) string {
 	return recstr
 }
 
-// ddnsFindAddrs checks once, and returns true if found, false if not
-func ddnsFindAddrs(dnsName string, dnstype uint16) (string, error) {
-	// dnsName := challenge.DNS01TXTRecordName()
-	// keyAuth := challenge.DNS01KeyAuthorization()
 
-	resolvers := recursiveNameservers([]string{})
-
-	return checkDNSPropagationNotLego(dnsName, resolvers, dnstype)
-
-}
 
 // ddnsRemoveAddrs deletes the DNS record created in Present().
 func ddnsRemoveAddrs(ctx context.Context, provider DDNSProvider, fqdn string, suffixCount int, dnstype uint16) error {
