@@ -74,10 +74,11 @@ var myMetrics struct {
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	docsurl       = "https://sfu1.com/docs"
-	mediaStreamId = "x186k"
-	ddns5Suffix   = ".ddns5.com"
-	duckdnsSuffix = ".duckdns.org"
+	docsurl           = "https://sfu1.com/docs"
+	mediaStreamId     = "x186k"
+	ddns5Suffix       = ".ddns5.com"
+	duckdnsSuffix     = ".duckdns.org"
+	ddns5EnvTokenName = "DDNS5_TOKEN"
 )
 
 var (
@@ -466,7 +467,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 
 func ddns5com_Token() string {
 
-	token := os.Getenv("DDNS5_TOKEN")
+	token := os.Getenv(ddns5EnvTokenName)
 	if len(token) == 32 {
 		log.Println("Got 32 byte token for ddns5.com from env: DDNS5_TOKEN ")
 		return token
@@ -475,7 +476,6 @@ func ddns5com_Token() string {
 		elog.Println("ignoring token from env: DDNS5_TOKEN ")
 	}
 
-	ddns5tokenPath := os.TempDir() + "/ddns5_token.txt"
 	f, err := os.OpenFile(ddns5tokenPath, os.O_CREATE|os.O_RDWR, 0666)
 	checkPanic(err)
 	defer f.Close()
