@@ -71,7 +71,7 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 			return ctx.Err()
 		}
 		var val string
-		val, err = checkDNSPropagation(dnsName, resolvers, dnstype)
+		val, err = checkDNSPropagationNotLego(dnsName, resolvers, dnstype)
 		if err != nil {
 			return fmt.Errorf("checking DNS propagation of %s: %w", dnsName, err)
 		}
@@ -158,7 +158,7 @@ func ddnsFindAddrs(dnsName string, dnstype uint16) (string, error) {
 
 	resolvers := recursiveNameservers([]string{})
 
-	return checkDNSPropagation(dnsName, resolvers, dnstype)
+	return checkDNSPropagationNotLego(dnsName, resolvers, dnstype)
 
 }
 
@@ -203,4 +203,8 @@ func NormalizeIP(ipstr string, dnstype uint16) string {
 	default:
 		panic("A or AAAA only")
 	}
+}
+
+func checkDNSPropagationNotLego(fqdn string, resolvers []string, dnstype uint16) (string, error) {
+	return "",nil
 }
