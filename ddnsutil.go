@@ -77,7 +77,7 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 		}
 
 		if ddnsutilDebug {
-			log.Println("DDNS testing got/wanting", val, dnsVal)
+			log.Println("// DDNS testing got/wanting", val, dnsVal)
 		}
 
 		if val == dnsVal {
