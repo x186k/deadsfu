@@ -223,6 +223,9 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 
 	// Initial attempt to resolve at the recursive NS
 	r, err := dnsQuery(fqdn, dnstype, resolvers, true)
+	if ddnsutilDebug {
+		fmt.Println("// dnsQuery result", fqdn, dns.TypeToString[dnstype], err, r.Rcode)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -241,7 +244,13 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 		return "", err
 	}
 
-	return checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
+	xx,err:= checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
+	if ddnsutilDebug {
+		fmt.Println("// checkAuthoritativeNss result", fqdn, dns.TypeToString[dnstype], err, xx)
+	}
+
+	return xx,err
+
 }
 
 // checkAuthoritativeNss queries each of the given nameservers for the expected TXT record.
