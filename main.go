@@ -281,8 +281,8 @@ func main() {
 			// zone := string(ddns5Suffix[1:])
 			// subname := strings.TrimSuffix(*domain, ddns5Suffix)
 
-			token := ddns5com_Token()
-			ddnsProvider := &ddns5libdns.Provider{APIToken: token}
+			//token := ddns5com_Token()
+			ddnsProvider := &ddns5libdns.Provider{}
 			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
 
 			acmeConfigureProvider(ddnsProvider)
@@ -465,49 +465,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 
 }
 
-func ddns5com_Token() string {
 
-	token := os.Getenv(ddns5EnvTokenName)
-	if len(token) == 32 {
-		log.Println("Got 32 byte token for ddns5.com from env: DDNS5_TOKEN ")
-		return token
-	}
-	if len(token) > 0 {
-		elog.Println("ignoring token from env: DDNS5_TOKEN ")
-	}
-
-	f, err := os.OpenFile(ddns5tokenPath, os.O_CREATE|os.O_RDWR, 0666)
-	checkPanic(err)
-	defer f.Close()
-
-	raw, err := ioutil.ReadAll(f)
-	checkPanic(err)
-
-	if len(raw) == 32 {
-		log.Println("Got 32 byte token for ddns5.com from file ", ddns5tokenPath)
-		return string(raw)
-	}
-
-	log.Println("Saving new 32 byte token for ddns5.com -> ", ddns5tokenPath)
-
-	hex32 := randomHex(16)
-
-	if len(hex32) != 32 {
-		panic("bad hex32")
-	}
-	// off,err:=f.Seek(0,io.SeekStart)
-	// checkPanic(err)
-	// if off!=0{
-	// 	panic("bad off")
-	// }
-	n, err := f.WriteAt([]byte(hex32), 0)
-	checkPanic(err)
-	if n != 32 {
-		panic("bad write")
-	}
-
-	return hex32
-}
 
 func duckdnsorg_Token() string {
 	token := os.Getenv("DUCKDNS_TOKEN")
