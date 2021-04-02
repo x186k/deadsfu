@@ -46,13 +46,11 @@ github.com/libdns/cloudflare v0.1.0 h1:93WkJaGaiXCe353LHEP36kAWCUw0YjFqwhkBkU2/i
 github.com/libdns/cloudflare v0.1.0/go.mod h1:a44IP6J1YH6nvcNl1PverfJviADgXUnsozR3a7vBKN8=
 github.com/libdns/duckdns v0.1.1 h1:wkgu98DkwpjduH2fxC2YkCiNkNnfQiHaYskMkEyRZ28=
 github.com/libdns/duckdns v0.1.1/go.mod h1:jCQ/7+qvhLK39+28qXvKEYGBBvmHBCmIwNqdJTCUmVs=
-github.com/libdns/libdns v0.0.0-20200430163404-ee2c42449104/go.mod h1:yQCXzk1lEZmmCPa857bnk4TsOiqYasqpyOEeSObbb40=
 github.com/libdns/libdns v0.2.0 h1:ewg3ByWrdUrxrje8ChPVMBNcotg7H9LQYg+u5De2RzI=
 github.com/libdns/libdns v0.2.0/go.mod h1:yQCXzk1lEZmmCPa857bnk4TsOiqYasqpyOEeSObbb40=
 github.com/mholt/acmez v0.1.3 h1:J7MmNIk4Qf9b8mAGqAh4XkNeowv3f1zW816yf4zt7Qk=
 github.com/mholt/acmez v0.1.3/go.mod h1:8qnn8QA/Ewx8E3ZSsmscqsIjhhpxuy9vqdgbX2ceceM=
 github.com/miekg/dns v1.1.30/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
-github.com/miekg/dns v1.1.31/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
 github.com/miekg/dns v1.1.40 h1:pyyPFfGMnciYUk/mXpKkVmeMQjfXqt3FAJ2hy7tPiLA=
 github.com/miekg/dns v1.1.40/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e h1:fD57ERR4JtEqsWbfPhv4DMiApHyliiK5xCTNVSPiaAs=
@@ -121,8 +119,8 @@ github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5
 github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
-github.com/x186k/ddns5libdns v0.0.0-20210226014652-bb305912e632 h1:glv+gDXWXbvHWoJPgTZavyzet5i8dxS84NlPO6j8KsE=
-github.com/x186k/ddns5libdns v0.0.0-20210226014652-bb305912e632/go.mod h1:frnPOTNf5oQYsYVwctC9EI43e254ikHi6fb384cpHiE=
+github.com/x186k/ddns5libdns v0.0.0-20210329015635-0863cd9aa3bb h1:GDnXY9kD10+WpIRuGNKz8JcLFCCDPE8OIgsxGEIkoBI=
+github.com/x186k/ddns5libdns v0.0.0-20210329015635-0863cd9aa3bb/go.mod h1:9FAoj8bfSg+cVEoDIyMfI+4GAtFllfDfLOW20S74JsM=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.uber.org/atomic v1.6.0/go.mod h1:sABNBOSYdrvTF6hTgEIbc7YasKWGhgEQZyfxyTvoXHQ=
 go.uber.org/atomic v1.7.0 h1:ADUqmZGgLDDfbSL9ZmPxKTybcoEYHgpYfELNoN+7hsw=
