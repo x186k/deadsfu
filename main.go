@@ -441,12 +441,10 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 
 		var dnstype uint16
 
-		if len(v) == 4 {
+		if v.To4() != nil {
 			dnstype = dns.TypeA
-		} else if len(v) == 16 {
-			dnstype = dns.TypeAAAA
 		} else {
-			panic(fmt.Errorf("bad ip len %d", len(v)))
+			dnstype = dns.TypeAAAA
 		}
 
 		normalip := NormalizeIP(v.String(), dnstype)
