@@ -78,7 +78,6 @@ const (
 	mediaStreamId     = "x186k"
 	ddns5Suffix       = ".ddns5.com"
 	duckdnsSuffix     = ".duckdns.org"
-	ddns5EnvTokenName = "DDNS5_TOKEN"
 )
 
 var (
@@ -91,7 +90,6 @@ var (
 	audio                        *SplicableTrack
 	ingressSemaphore             = semaphore.NewWeighted(int64(1)) // concurrent okay
 	lastTimeIngressVideoReceived int64                             // concurrent okay
-	ddns5tokenPath               = os.TempDir() + "/ddns5token.txt"
 )
 
 type SplicableTrack struct {
