@@ -74,10 +74,10 @@ var myMetrics struct {
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	docsurl           = "https://sfu1.com/docs"
-	mediaStreamId     = "x186k"
-	ddns5Suffix       = ".ddns5.com"
-	duckdnsSuffix     = ".duckdns.org"
+	docsurl       = "https://sfu1.com/docs"
+	mediaStreamId = "x186k"
+	ddns5Suffix   = ".ddns5.com"
+	duckdnsSuffix = ".duckdns.org"
 )
 
 var (
@@ -156,11 +156,31 @@ var nohtml = flag.Bool("no-html", false, "do not serve any html files, only allo
 var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
-var useHTTPS = flag.Bool("https", false, "Use HTTPS for web server\nmust use -domain <name>\nBest for testing and development.")
-var useHTTPHTTPS = flag.Bool("http-https", false, "HTTP on 80, HTTPS on 443\nmust use -domain <name>\nBest for public server.")
-var useHTTP = flag.Bool("http", false, "Use HTTP for web server\nBest behind load-balancers.")
 
-var helpAll = flag.Bool("all", false, "Show the full set of advanced flags")
+const httpPortMsg = `
+Port number to bind/listen for HTTP requests.
+May both: serve HTML and/or perform WebRTC signalling.
+If https-port also used, HTTP will redirect to HTTPS.
+HTTP is preferred when using in conjunction with a front-end load balancer.
+Common choices are 80 or 8080, or 0.
+Default is zero (0), which means do not enable/bind/listen for HTTP.
+`
+
+var httpPort = flag.Int("http-port", 0, httpPortMsg)
+
+const httpsPortMsg = `
+Port number to bind/listen for HTTPS requests.
+May both: serve HTML and/or perform WebRTC signalling.
+Must use -domain when using HTTPS
+Common choices are 443 or 8443, or 0.
+Default is zero (0), which means do not enable/bind/listen for HTTPS.
+`
+
+var httpsPort = flag.Int("https-port", 0, httpsPortMsg)
+
+var obsStudio = flag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
+
+var helpAll = flag.Bool("all", false, "Show the full set of advanced flags\n")
 
 //var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
 
@@ -221,32 +241,14 @@ func main() {
 
 	var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
 	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
-	const defaultPort = 8080
-	var port = flag.Int("port", defaultPort, "The port to bind the web server")
 	var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
 
-	numhttpflags := 0
+	if *httpPort == 0 && *httpsPort == 0 {
 
-	if *useHTTP {
-		numhttpflags++
-	}
-	if *useHTTPS {
-		numhttpflags++
-	}
-	if *useHTTPHTTPS {
-		numhttpflags++
-		if *port != defaultPort {
-			fmt.Fprintf(flag.CommandLine.Output(), "\nError: Cannot mix -httphttps and -port.\n\n")
-			flag.Usage()
-			os.Exit(1)
-		}
-	}
-
-	if numhttpflags != 1 {
-		fmt.Fprintf(flag.CommandLine.Output(), "\nError: Exactly one of -http, -https, or -httphttps must be specified.\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "\nError: either -http-port or -https-port must be used.\n\n")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -269,20 +271,22 @@ func main() {
 	}
 	log.Println("NumGoroutine", runtime.NumGoroutine())
 
+	// MUX setup
 	mux := http.NewServeMux()
-
 	pubPath := "/pub"
 	subPath := "/sub" // 2nd slash important
-
 	if !*nohtml {
 		mux.HandleFunc("/", slashHandler)
 	}
 	mux.HandleFunc(subPath, subHandler)
+	if *dialIngressURL == "" {
+		mux.HandleFunc(pubPath, pubHandler)
+	}
 
-	if *useHTTPS || *useHTTPHTTPS {
+	if *httpsPort != 0 {
 		if *domain == "" {
 			xdomain := randomHex(4) + ".ddns5.com"
-			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nYou could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
+			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nFor example, you could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
 		} else if strings.HasSuffix(*domain, ddns5Suffix) {
 			// zone := string(ddns5Suffix[1:])
 			// subname := strings.TrimSuffix(*domain, ddns5Suffix)
@@ -320,48 +324,50 @@ func main() {
 		}
 	}
 
-	var ln net.Listener
+	if *interfaceAddr == "::" {
+		*interfaceAddr = ""
+	}
 
-	laddr := *interfaceAddr + ":" + strconv.Itoa(*port)
+	if *httpPort != 0 {
 
-	if *useHTTP {
+		laddr := *interfaceAddr + ":" + strconv.Itoa(*httpPort)
+		// httpLn, err := net.Listen("tcp", laddr)
+		// checkPanic(err)
+		// hostport := httpLn.Addr().String()
 
-		ln, err = net.Listen("tcp", laddr)
-		checkPanic(err)
+		printStderrURLs("http", laddr, pubPath, subPath)
 
-		urlPort := ln.Addr().(*net.TCPAddr).Port
-
-		if *dialIngressURL == "" {
-			reportURL("Publisher Ingress API URL", "http", *interfaceAddr, urlPort, pubPath)
-		}
-		reportURL("Subscriber Egress API URL", "http", *interfaceAddr, urlPort, subPath)
-
-	} else if *useHTTPS {
+		go func() {
+			err := http.ListenAndServe(laddr, certmagic.DefaultACME.HTTPChallengeHandler(mux))
+			panic(err)
+		}()
+		elog.Printf("HTTP listener started")
+	}
+	if *httpsPort != 0 {
 
 		// We do NOT do port 80 redirection, as certmagic.HTTPS()
-		tlsConfig, err := certmagic.TLS([]string{*domain})
-		checkPanic(err)
+		tlsConfig := certmagic.NewDefault().TLSConfig()
+		//checkPanic(err)
 		/// XXX to work with OBS studio for now
-		tlsConfig.MinVersion = 0
+		if *obsStudio {
+			tlsConfig.MinVersion = 0
+		}
+		laddr := *interfaceAddr + ":" + strconv.Itoa(*httpsPort)
 
-		ln, err = tls.Listen("tcp", laddr, tlsConfig)
+		httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
 		checkPanic(err)
 
-		printStderrURLs("https", *domain, ln.Addr().(*net.TCPAddr).Port, pubPath, subPath)
+		printStderrURLs("https", laddr, pubPath, subPath)
 
-	} else if *useHTTPHTTPS {
-		printStderrURLs("https", *domain, 443, pubPath, subPath)
-		reportURL("Redirect HTTP:80->HTTPS:443", "http", *domain, 80, "/*")
-	}
-	if *interfaceAddr != "" {
-		elog.Printf("Bound listener interface address: %s", ln.Addr().String())
+		go func() {
+			panic(http.Serve(httpsLn, mux))
+		}()
+		elog.Printf("HTTPS listener started")
 	}
 
 	//the user can specify zero for port, and Linux/etc will choose a port
 
-	if *dialIngressURL == "" {
-		mux.HandleFunc(pubPath, pubHandler)
-	} else {
+	if *dialIngressURL != "" {
 		elog.Printf("Publisher Ingress API URL: none (using dial)")
 		go func() {
 			for {
@@ -373,26 +379,7 @@ func main() {
 		}()
 	}
 
-	go func() {
-		if *useHTTP || *useHTTPS {
-			err := http.Serve(ln, mux)
-			panic(err)
-		} else if *useHTTPHTTPS {
-
-			// XXXXXXXXX
-			// XXXXXXXXX
-			// XXXXXXXXX
-
-			//certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
-			err := certmagic.HTTPS([]string{*domain}, mux)
-
-			//obscompat := true
-			//err := HTTPS([]string{*domain}, mux, obscompat)
-			checkPanic(err)
-		}
-
-	}()
-
+	// block here
 	if *cpuprofile == 0 {
 		select {}
 	}
@@ -406,27 +393,28 @@ func main() {
 	println("profiling done, exit")
 }
 
-func printStderrURLs(protocol string, hostname string, urlPort int, pubPath string, subPath string) {
+func printStderrURLs(protocol string, hostport string, pubPath string, subPath string) {
+	reportURL("End-user HTML control panel URL", protocol, hostport, "/")
+
 	if *dialIngressURL == "" {
-		reportURL("Publisher Ingress API URL", protocol, hostname, urlPort, pubPath)
+		reportURL("Publisher Ingress API URL", protocol, hostport, pubPath)
 	}
-	reportURL("Subscriber Egress API URL", protocol, hostname, urlPort, subPath)
-	reportURL("User HTML control panel URL", protocol, hostname, urlPort, "/")
+	reportURL("Subscriber Egress API URL", protocol, hostport, subPath)
+
 }
 
-func reportURL(description string, protocol string, hostname string, port int, path string) {
+func reportURL(description string, protocol string, hostport string, path string) {
 	// we want something like:
 	//"Publisher Ingress API URL: http://foo.bar/pub"
 
-	portstr := ":" + strconv.Itoa(port)
-	if hostname != "" && port == 443 && protocol == "https" {
-		portstr = ""
+	if protocol == "https" {
+		hostport = strings.TrimSuffix(hostport, ":443")
 	}
-	if hostname != "" && port == 80 && protocol == "http" {
-		portstr = ""
+	if protocol == "http" {
+		hostport = strings.TrimSuffix(hostport, ":80")
 	}
 
-	elog.Printf("%s: %s://%s%s%s", description, protocol, hostname, portstr, path)
+	elog.Printf("%s: %s://%s%s", description, protocol, hostport, path)
 }
 
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
@@ -468,8 +456,6 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 	}
 
 }
-
-
 
 func duckdnsorg_Token() string {
 	token := os.Getenv("DUCKDNS_TOKEN")

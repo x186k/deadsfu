@@ -9,7 +9,7 @@ import (
 )
 
 // order not important
-var minmalUsage = []string{"http", "https", "http-https", "all", "port"}
+var minmalUsage = []string{"http-port", "https-port", "all",}
 
 var Usage = func() {
 	fmt.Fprintf(xflag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
