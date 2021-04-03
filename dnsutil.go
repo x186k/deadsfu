@@ -244,12 +244,12 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 		return "", err
 	}
 
-	xx,err:= checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
+	xx, err := checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
 	if ddnsutilDebug {
 		fmt.Println("// checkAuthoritativeNss result", fqdn, dns.TypeToString[dnstype], err, xx)
 	}
 
-	return xx,err
+	return xx, err
 
 }
 
