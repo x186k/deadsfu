@@ -116,11 +116,19 @@ func checkPanic(err error) {
 	}
 }
 
-func slashHandler(res http.ResponseWriter, req *http.Request) {
-	res.Header().Set("Content-Type", "text/html")
+func slashHandler(w http.ResponseWriter, r *http.Request) {
 
-	if req.URL.Path != "/" {
-		http.Error(res, "404 - page not found", http.StatusNotFound)
+	if *httpsPort != 0 {
+		uri := "https://" + r.Host + ":" + strconv.Itoa(*httpsPort) + r.RequestURI
+		log.Println("Redirecting HTTP req to ", uri)
+		http.Redirect(w, r, uri, http.StatusMovedPermanently)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+
+	if r.URL.Path != "/" {
+		http.Error(w, "404 - page not found", http.StatusNotFound)
 		return
 	}
 
@@ -128,12 +136,12 @@ func slashHandler(res http.ResponseWriter, req *http.Request) {
 	if true || len(indexHtml) == 0 {
 		buf, err := ioutil.ReadFile("html/index.html")
 		if err != nil {
-			http.Error(res, "can't open index.html", http.StatusInternalServerError)
+			http.Error(w, "can't open index.html", http.StatusInternalServerError)
 			return
 		}
-		_, _ = res.Write(buf)
+		_, _ = w.Write(buf)
 	} else {
-		_, _ = res.Write(indexHtml)
+		_, _ = w.Write(indexHtml)
 	}
 }
 
