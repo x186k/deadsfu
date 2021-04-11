@@ -108,7 +108,7 @@ func testProvider(t *testing.T, provider DDNSProvider, fqdn string) {
 
 	testRemoveSetWaitFindRemoveFind(t, provider, zone, fqdn, randIPv4(), dns.TypeA)
 	testRemoveSetWaitFindRemoveFind(t, provider, zone, fqdn, randIPv6(), dns.TypeAAAA)
-	testRemoveSetWaitFindRemoveFind(t, provider, zone, fqdn, randomHex(10), dns.TypeTXT)
+	testRemoveSetWaitFindRemoveFind(t, provider, zone, "_acme-challenge."+fqdn, randomHex(10), dns.TypeTXT)
 }
 
 func testRemoveSetWaitFindRemoveFind(t *testing.T, provider DDNSProvider, zone string, fqdn string, val string, dnstype uint16) {
