@@ -123,7 +123,7 @@ func checkPanic(err error) {
 
 func slashHandler(w http.ResponseWriter, r *http.Request) {
 
-	if *httpsPort != 0 {
+	if r.URL.Scheme == "http" && *httpsPort != 0 {
 		uri := "https://" + r.Host + ":" + strconv.Itoa(*httpsPort) + r.RequestURI
 		log.Println("Redirecting HTTP req to ", uri)
 		http.Redirect(w, r, uri, http.StatusMovedPermanently)
