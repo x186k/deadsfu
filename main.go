@@ -1417,25 +1417,21 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 	})
 }
 
-func getDefaultRouteInterfaceAddresses() (ipaddrs []net.IP) {
+func getDefaultRouteInterfaceAddresses() []net.IP {
 
 	// we don't send a single packets to these hosts
 	// but we use their addresses to discover our interface to get to the Internet
 	// These addresses could be almost anything
-	googleDNSIPv4 := "8.8.8.8:8080"
-	googleDNSIPv6 := "[2001:4860:4860::8888]:8080"
 
-	c, err := net.Dial("udp4", googleDNSIPv4) // no internet activity
-	if err == nil {
-		defer c.Close()
-		addr := c.LocalAddr().(*net.UDPAddr).IP
+	var ipaddrs []net.IP
+
+	addr := getDefRouteIntfAddrIPv4()
+	if addr != nil {
 		ipaddrs = append(ipaddrs, addr)
 	}
 
-	cc, err := net.Dial("udp6", googleDNSIPv6) // no internet activity
-	if err == nil {
-		defer cc.Close()
-		addr := cc.LocalAddr().(*net.UDPAddr).IP
+	addr = getDefRouteIntfAddrIPv6()
+	if addr != nil {
 		ipaddrs = append(ipaddrs, addr)
 	}
 
@@ -1443,5 +1439,25 @@ func getDefaultRouteInterfaceAddresses() (ipaddrs []net.IP) {
 		elog.Fatal("cant find any IP addresses")
 	}
 
-	return
+	return ipaddrs
+}
+
+func getDefRouteIntfAddrIPv6() net.IP {
+	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080"
+	cc, err := net.Dial("udp6", googleDNSIPv6)
+	if err == nil {
+		defer cc.Close()
+		return cc.LocalAddr().(*net.UDPAddr).IP
+	}
+	return nil
+}
+
+func getDefRouteIntfAddrIPv4() net.IP {
+	const googleDNSIPv4 = "8.8.8.8:8080"
+	cc, err := net.Dial("udp4", googleDNSIPv4)
+	if err == nil {
+		defer cc.Close()
+		return cc.LocalAddr().(*net.UDPAddr).IP
+	}
+	return nil
 }
