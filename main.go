@@ -358,22 +358,22 @@ func main() {
 		elog.Printf("HTTP listener started")
 	}
 	if *httpsPort != 0 {
+		//tlsConfig := certmagic.NewDefault().TLSConfig()
+		tlsConfig, err := certmagic.TLS([]string{*domain})
+		checkPanic(err)
 
-		// We do NOT do port 80 redirection, as certmagic.HTTPS()
-		tlsConfig := certmagic.NewDefault().TLSConfig()
-		//checkPanic(err)
 		/// XXX to work with OBS studio for now
 		if *obsStudio {
 			tlsConfig.MinVersion = 0
 		}
-		laddr := *interfaceAddr + ":" + strconv.Itoa(*httpsPort)
+		port := strconv.Itoa(*httpsPort)
 
-		httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
-		checkPanic(err)
-
-		printStderrURLs("https", laddr, pubPath, subPath)
+		printURLS("https", *domain, port)
 
 		go func() {
+			laddr := *interfaceAddr + ":" + port
+			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
+			checkPanic(err)
 			panic(http.Serve(httpsLn, mux))
 		}()
 		elog.Printf("HTTPS listener started")
