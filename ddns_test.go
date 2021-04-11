@@ -69,7 +69,7 @@ func TestDDNS5API(t *testing.T) {
 	ddnsutilDebug = true
 
 	//token := strings.Repeat("a", 32)
-	fqdn := "test99.ddns5.com"
+	fqdn := fmt.Sprintf("test%d.ddns5.com", rand.Intn(10))
 
 	provider := &ddns5libdns.Provider{APIToken: ""}
 
