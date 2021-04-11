@@ -330,14 +330,24 @@ func main() {
 
 	if *httpPort != 0 {
 
-		laddr := *interfaceAddr + ":" + strconv.Itoa(*httpPort)
 		// httpLn, err := net.Listen("tcp", laddr)
 		// checkPanic(err)
 		// hostport := httpLn.Addr().String()
 
-		printStderrURLs("http", laddr, pubPath, subPath)
+		port := strconv.Itoa(*httpPort)
+
+		if *interfaceAddr == "" {
+			if addr := getDefRouteIntfAddrIPv4(); addr != nil {
+				printURLS("http", addr.String(), port)
+			} else if addr := getDefRouteIntfAddrIPv6(); addr != nil {
+				printURLS("http", addr.String(), port)
+			}
+		} else {
+			printURLS("http", *interfaceAddr, port)
+		}
 
 		go func() {
+			laddr := *interfaceAddr + ":" + port
 			err := http.ListenAndServe(laddr, certmagic.DefaultACME.HTTPChallengeHandler(mux))
 			panic(err)
 		}()
