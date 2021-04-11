@@ -463,15 +463,15 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 
 		normalip := NormalizeIP(v.String(), dnstype)
 
-		elog.Println("DDNS setting", fqdn, suffixCount, normalip)
+		log.Println("DDNS setting", fqdn, suffixCount, normalip)
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
-		elog.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip)
+		log.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip)
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
-		elog.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
+		log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
 
 	}
 
