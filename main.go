@@ -407,14 +407,18 @@ func main() {
 	println("profiling done, exit")
 }
 
-func printStderrURLs(protocol string, hostport string, pubPath string, subPath string) {
-	reportURL("End-user HTML control panel URL", protocol, hostport, "/")
+func printURLS(proto string, host string, port string) {
+	hostport := net.JoinHostPort(host, port)
+	if host == "" {
+		elog.Println(proto, " is bound to ALL interfaces")
+	}
+
+	reportURL("URL for End-user HTML control panel", proto, hostport, "/")
 
 	if *dialIngressURL == "" {
-		reportURL("Publisher Ingress API URL", protocol, hostport, pubPath)
+		reportURL("URL for Publisher Ingress API ", proto, hostport, pubPath)
 	}
-	reportURL("Subscriber Egress API URL", protocol, hostport, subPath)
-
+	reportURL("URL for Subscriber Egress API", proto, hostport, subPath)
 }
 
 func reportURL(description string, protocol string, hostport string, path string) {
@@ -428,7 +432,9 @@ func reportURL(description string, protocol string, hostport string, path string
 		hostport = strings.TrimSuffix(hostport, ":80")
 	}
 
-	elog.Printf("%s: %s://%s%s", description, protocol, hostport, path)
+	url := fmt.Sprintf("%s://%s%s", protocol, hostport, path)
+
+	elog.Println(url, "   ==> ", description)
 }
 
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
