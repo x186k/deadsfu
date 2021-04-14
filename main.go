@@ -618,6 +618,7 @@ func numVideoMediaDesc(sdpsd *sdp.SessionDescription) (n int) {
 }
 
 // sfu egress setup
+// 041521 Decided checkPanic() is the correct way to handle errors in this func.
 func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	defer httpreq.Body.Close()
 
