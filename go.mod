@@ -36,5 +36,5 @@ require (
 //replace github.com/libdns/cloudflare => ../cloudflare
 
 // replace github.com/x186k/dynamicdns => ../dynamicdns
-replace github.com/pion/webrtc/v3 => ../webrtc
+//replace github.com/pion/webrtc/v3 => ../webrtc
 //replace github.com/pion/webrtc/v3 v3.0.4 => github.com/cameronelliott/webrtc/v3 v3.0.5
