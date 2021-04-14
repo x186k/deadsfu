@@ -31,10 +31,18 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
         <div class="navbar-nav">
-          <a class="nav-link active" aria-current="page" onclick="transmit()">TX</a>
-          <a class="nav-link" href="#">Features</a>
-          <a class="nav-link" href="#">Pricing</a>
-          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">Disabled</a>
+          <a class="nav-link active" aria-current="page" onclick="transmit()">Tx</a>
+          <a class="nav-link" onclick="receive()">Rx</a>
+          <a class="nav-link" href="#">
+            <!-- <span class="icon has-text-warning">
+              <i class="fas fa-external-link-alt"></i>
+            </span> -->
+            <span>New RX Tab</span>
+          </a>
+          <a class="nav-link" onclick="level('video0')" href="">A</a>
+          <a class="nav-link" onclick="level('video1')" href="">B</a>
+          <a class="nav-link" onclick="level('video2')" href="">C</a>
+          <!-- <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">Disabled</a> -->
         </div>
       </div>
     </div>
@@ -42,19 +50,17 @@
 
 
   <div class="container">
-    
-      <figure class="image is-16by9 text-center">
-        <!-- removing muted means Safari (maybe others will be black/worn autoplay) -->
-        <!-- you should keep muted attribute present-->
-        <!-- controls helps user turn on audio -->
 
-        <video id="video1" autoplay controls muted class="has-ratio" width="1024" frameborder="2"
-          poster="https://x186k.org/x186k.png" allowfullscreen
-          style="background-color: rgb(187, 64, 64);"
-          >
-        </video>
-      </figure>
-  
+    <figure class="image is-16by9 text-center">
+      <!-- removing muted means Safari (maybe others will be black/worn autoplay) -->
+      <!-- you should keep muted attribute present-->
+      <!-- controls helps user turn on audio -->
+
+      <video id="video1" autoplay controls muted class="has-ratio" width="1024" frameborder="2"
+        poster="https://x186k.org/x186k.png" allowfullscreen style="background-color: rgb(187, 64, 64);">
+      </video>
+    </figure>
+
   </div>
 
 
