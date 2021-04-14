@@ -22,7 +22,7 @@
 </head>
 
 <body>
-  <nav class="navbar navbar-expand-lg navbar-light bg-light">
+  <nav class="navbar sticky-top navbar-expand-lg navbar-light bg-light">
     <div class="container-fluid">
       <a class="navbar-brand" href="#">Navbar</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup"
@@ -39,14 +39,28 @@
             </span> -->
             <span>New RX Tab</span>
           </a>
-          <a class="nav-link" onclick="level('video0')" href="">A</a>
-          <a class="nav-link" onclick="level('video1')" href="">B</a>
-          <a class="nav-link" onclick="level('video2')" href="">C</a>
+          <a class="nav-link" onclick="level('video0')">A</a>
+          <a class="nav-link" onclick="level('video1')">B</a>
+          <a class="nav-link" onclick="level('video2')">C</a>
+          <a class="nav-link" href="#collapseExample" data-bs-toggle="collapse" aria-expanded="false"
+            aria-controls="collapseExample">
+            Stats
+          </a>
           <!-- <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">Disabled</a> -->
         </div>
       </div>
     </div>
   </nav>
+
+
+  <!-- collapsible stats -->
+  <div class="collapse show" id="collapseExample">
+    <div class="card">
+      <div class="card-body py-1">
+        <span id="rxtx"> 0/0 rx/tx kbps </span>
+      </div>
+    </div>
+  </div>
 
 
   <div class="container">
