@@ -834,7 +834,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		logSdpReport("sub-answer", *ansrtcsd)
 
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(ansrtcsd.SDP))
+		_, err = w.Write([]byte(ansrtcsd.SDP))
+		if err != nil {
+			elog.Println(fmt.Errorf("sub sdp write failed:%f", err))
+			return
+		}
 
 		subMapMutex.Lock()
 		subMap[txid] = sub
