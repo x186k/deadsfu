@@ -16,9 +16,6 @@ type RtpSource byte // make a byte, so everything is atomic! Yay mom!
 
 const (
 	NoSource RtpSource = iota
-	Video1
-	Video2
-	Video3
 	Audio = 50
 	Idle  = 100
 )
@@ -32,7 +29,7 @@ const (
 
 type RtpSplicer struct {
 	mu               sync.Mutex
-	Name             string
+	TrackNum         int
 	lastSSRC         uint32
 	lastSN           uint16
 	lastTS           uint32
@@ -118,9 +115,9 @@ func (s *RtpSplicer) IsActiveOrPending(src RtpSource) bool {
 // This grabs mutex after doing a fast, non-mutexed check for applicability
 func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtphz int64, keytype KeyFrameType) *rtp.Packet {
 
-		// take mutex before changing stuff, or accessing >byte size
-		s.mu.Lock()
-		defer s.mu.Unlock()
+	// take mutex before changing stuff, or accessing >byte size
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	//do not mutex this, it's okay
 	isactive := s.Active == src
@@ -129,9 +126,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 		return nil
 	}
 
-
-
-	foo:=false
+	foo := false
 	if ispending {
 		iskeyframe := true
 
@@ -146,11 +141,11 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 			return nil
 		}
 
-		log.Printf("SpliceRTP: %v: keyframe on pending source %v", s.Name, src)
+		log.Printf("SpliceRTP: %v: keyframe on pending source %v", s.TrackNum, src)
 
 		s.Active = src
 		s.Pending = NoSource
-		foo=true
+		foo = true
 	}
 
 	copy := *o
@@ -158,7 +153,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
 	if o.SSRC != s.lastSSRC || foo {
-		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.Name, o.SSRC, s.lastSSRC)
+		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.TrackNum, o.SSRC, s.lastSSRC)
 
 		td := unixnano - s.lastUnixnanosNow // nanos
 		if td < 0 {
@@ -187,7 +182,6 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 
 	// we don't want to change original packet, it gets
 	// passed into this routine many times for many subscribers
-
 
 	copy.Timestamp -= s.tsOffset
 	copy.SequenceNumber -= s.snOffset
