@@ -222,7 +222,7 @@ func initializeSFU() {
 	go idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
 	go pollingVideoSourceController()
 	go oncePerSecond()
-	go trackLocalWriter()
+	go senderLoop()
 
 }
 
@@ -1212,15 +1212,15 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 	}()
 
-	var rxTrackNum int
-	switch trackname {
-	case "video0":
-		rxTrackNum = int(rtpsplice.Video1)
-	case "video1":
-		rxTrackNum = int(rtpsplice.Video2)
-	case "video2":
-		rxTrackNum = int(rtpsplice.Video3)
+	if !strings.HasPrefix(trackname, "video") {
+		panic("invalid trackname:" + trackname)
 	}
+
+	rxTrackNum, err := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
+	if err != nil {
+		checkPanic(fmt.Errorf("invalid trackname:%s", trackname))
+	}
+	rxTrackNum += 1
 
 	var splicable *SplicableTrack
 	switch trackname {
@@ -1264,7 +1264,7 @@ func remoteTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int, sharedSFUTxT
 	}
 }
 
-func trackLocalWriter() {
+func senderLoop() {
 
 	for rxPacket := range rxChan {
 		atomic.StoreInt64(&lastTimeIngressVideoReceived, time.Now().UnixNano())
