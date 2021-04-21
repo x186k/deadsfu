@@ -222,6 +222,7 @@ func initializeSFU() {
 	go idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
 	go pollingVideoSourceController()
 	go oncePerSecond()
+	go trackLocalWriter()
 
 }
 
@@ -1211,14 +1212,14 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 	}()
 
-	var rtpsource rtpsplice.RtpSource
+	var rxTrackNum int
 	switch trackname {
 	case "video0":
-		rtpsource = rtpsplice.Video1
+		rxTrackNum = int(rtpsplice.Video1)
 	case "video1":
-		rtpsource = rtpsplice.Video2
+		rxTrackNum = int(rtpsplice.Video2)
 	case "video2":
-		rtpsource = rtpsplice.Video3
+		rxTrackNum = int(rtpsplice.Video3)
 	}
 
 	var splicable *SplicableTrack
@@ -1238,39 +1239,58 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
+	remoteTrackReader(track, rxTrackNum, splicable)
+
+}
+
+type RxPacket struct {
+	rxTrackNum int
+	packet     *rtp.Packet
+}
+
+var rxChan chan RxPacket = make(chan RxPacket)
+
+func remoteTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int, sharedSFUTxTrack *SplicableTrack) {
+
 	for {
-		// Read RTP packets being sent to Pion
-		//fmt.Println(99,rid)
-		packet, _, err := track.ReadRTP()
+
+		p, _, err := rxTrack.ReadRTP()
 		if err == io.EOF {
 			return
 		}
 		checkPanic(err)
 
-		// if lastts != packet.Timestamp && trackname == "a" {
-		// 	log.Println("xts", packet.Timestamp-lastts)
-		// 	lastts = packet.Timestamp
-		// }
+		rxChan <- RxPacket{rxTrackNum: rxTrackNum, packet: p}
+	}
+}
 
+func trackLocalWriter() {
+
+	for rxPacket := range rxChan {
 		atomic.StoreInt64(&lastTimeIngressVideoReceived, time.Now().UnixNano())
 
 		if *logPackets {
-			logPacket(logPacketIn, packet)
+			logPacket(logPacketIn, rxPacket.packet)
 		}
 
-		if splicable.splicer.IsActiveOrPending(rtpsource) {
-			pprime := splicable.splicer.SpliceRTP(packet, rtpsource, time.Now().UnixNano(), int64(track.Codec().ClockRate), rtpsplice.H264)
-			if pprime != nil {
-				err := LogAndWriteRTP(pprime, packet, splicable)
-				if err == io.ErrClosedPipe {
-					return
-				}
-				checkPanic(err)
-			}
-		}
+		//XXXX
+		/// Disable shared SFU local tracks for now
+		// 4 20 2021
+		//
+		// if sharedSFUTxTrack.splicer.IsActiveOrPending(rtpsource) {
+		// 	pprime := sharedSFUTxTrack.splicer.SpliceRTP(p, rtpsource, time.Now().UnixNano(), int64(rxTrack.Codec().ClockRate), rtpsplice.H264)
+		// 	if pprime != nil {
+		// 		err := LogAndWriteRTP(pprime, p, sharedSFUTxTrack)
+		// 		if err == io.ErrClosedPipe {
+		// 			return
+		// 		}
+		// 		checkPanic(err)
+		// 	}
+		// }
 
-		// send video to subscribing Browsers
-		sendRTPToEachSubscriber(packet, rtpsource)
+		rtpsource := rtpsplice.RtpSource(rxPacket.rxTrackNum)
+
+		sendRTPToEachSubscriber(rxPacket.packet, rtpsource)
 
 	}
 }
