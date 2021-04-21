@@ -16,8 +16,8 @@ type RtpSource byte // make a byte, so everything is atomic! Yay mom!
 
 const (
 	NoSource RtpSource = iota
-	Audio = 50
-	Idle  = 100
+	Audio              = 50
+	Idle               = 100
 )
 
 type KeyFrameType int
@@ -36,6 +36,7 @@ type RtpSplicer struct {
 	lastUnixnanosNow int64
 	snOffset         uint16
 	tsOffset         uint32
+	Xsource          RtpSource //actual, non-idle source
 	Active           RtpSource // Never set this directly, even though it is exported
 	Pending          RtpSource // This is the one to set
 	//tsFrequencyDelta []FrequencyPair

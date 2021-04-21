@@ -106,7 +106,6 @@ type SplicableTrack struct {
 type Subscriber struct {
 	conn         *webrtc.PeerConnection // peerconnection
 	browserVideo *SplicableTrack        // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
-	xsource      rtpsplice.RtpSource
 }
 
 func checkFatal(err error) {
@@ -662,7 +661,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			return
 		}
 
-		sub.xsource = rtpsplice.RtpSource(rxTrackNum + 1)
+		sub.browserVideo.splicer.Xsource = rtpsplice.RtpSource(rxTrackNum + 1)
 
 		if sub.browserVideo == nil {
 			teeErrorStderrHttp(w, fmt.Errorf("rid param not meaningful for SFU"))
@@ -765,10 +764,10 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			checkPanic(err)
 
 			if ingressVideoIsHappy() {
-				sub.xsource = 1
+				sub.browserVideo.splicer.Xsource = 1
 				sub.browserVideo.splicer.Pending = 1 //video1
 			} else {
-				sub.xsource = rtpsplice.Idle
+				sub.browserVideo.splicer.Xsource = rtpsplice.Idle
 				sub.browserVideo.splicer.Pending = rtpsplice.Idle
 			}
 
@@ -923,7 +922,7 @@ func pollingVideoSourceController() {
 
 			if sub.browserVideo != nil {
 				if ingressVideoIsHappy() {
-					changeSourceIfNeeded(sub.browserVideo, sub.xsource)
+					changeSourceIfNeeded(sub.browserVideo, sub.browserVideo.splicer.Xsource)
 				} else {
 					//not happy
 					changeSourceIfNeeded(sub.browserVideo, rtpsplice.Idle)

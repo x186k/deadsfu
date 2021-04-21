@@ -70,6 +70,8 @@ must have multiple sendGR per RX
 
 - there are two kinds of TX tracks: switchable and non-switchable
 
+## 4/21/21
+
 
 
 
