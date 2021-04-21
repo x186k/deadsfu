@@ -91,7 +91,7 @@ var (
 	audioMimeType                string                 = "audio/opus"
 	subMap                       map[string]*Subscriber = make(map[string]*Subscriber) // concurrent okay 013121
 	subMapMutex                  sync.Mutex                                            // concurrent okay 013121	//audioTrack                   *webrtc.TrackLocalStaticRTP                                      // concurrent okay 013121
-	video1, video2, video3       *SplicableTrack                                       // Downstream SFU shared tracks
+	sharedVidTracks              []*SplicableTrack                                     // Downstream SFU shared tracks
 	audio                        *SplicableTrack
 	ingressSemaphore             = semaphore.NewWeighted(int64(1)) // concurrent okay
 	lastTimeIngressVideoReceived int64                             // concurrent okay
@@ -201,25 +201,26 @@ var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 func initializeSFU() {
 	var err error
 
-	audio = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "audio"}}
-	video1 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid1"}}
-	video2 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid2"}}
-	video3 = &SplicableTrack{splicer: rtpsplice.RtpSplicer{Name: "vid3"}}
+	audio = &SplicableTrack{splicer: rtpsplice.RtpSplicer{TrackNum: -10}}
+
+	const numSharedVid = 3
+	sharedVidTracks = make([]*SplicableTrack, numSharedVid)
+	for i := range sharedVidTracks {
+		t := &SplicableTrack{splicer: rtpsplice.RtpSplicer{TrackNum: i}}
+		name := fmt.Sprintf("video%d", i)
+		t.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, name, mediaStreamId)
+		checkPanic(err)
+		sharedVidTracks[i] = t
+	}
 
 	// Create a audio track
 	audio.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
-	checkPanic(err)
-	video1.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video0", mediaStreamId)
-	checkPanic(err)
-	video2.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video1", mediaStreamId)
-	checkPanic(err)
-	video3.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video2", mediaStreamId)
 	checkPanic(err)
 
 	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkPanic(err)
 
-	go idleLoopPlayer(h264IdleRtpPackets, video1, video2, video3)
+	go idleLoopPlayer(h264IdleRtpPackets, sharedVidTracks)
 	go pollingVideoSourceController()
 	go oncePerSecond()
 	go senderLoop()
@@ -642,9 +643,15 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
-		if rid != "video0" && rid != "video1" && rid != "video2" {
-			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video-a,video-b,video-c are valid"))
+		rxTrackNum, err := parseTrackname(rid)
+		if err != nil {
+			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video<N> are allowed"))
 			return
+		}
+
+		// XXX fixme
+		if rxTrackNum > 1000 {
+			panic("too large")
 		}
 
 		subMapMutex.Lock()
@@ -655,18 +662,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			return
 		}
 
+		sub.xsource = rtpsplice.RtpSource(rxTrackNum + 1)
+
 		if sub.browserVideo == nil {
 			teeErrorStderrHttp(w, fmt.Errorf("rid param not meaningful for SFU"))
 			return
-		}
-
-		switch rid {
-		case "video0":
-			sub.xsource = rtpsplice.Video1
-		case "video1":
-			sub.xsource = rtpsplice.Video2
-		case "video2":
-			sub.xsource = rtpsplice.Video3
 		}
 
 		// XXX
@@ -765,8 +765,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			checkPanic(err)
 
 			if ingressVideoIsHappy() {
-				sub.xsource = rtpsplice.Video1
-				sub.browserVideo.splicer.Pending = rtpsplice.Video1
+				sub.xsource = 1
+				sub.browserVideo.splicer.Pending = 1 //video1
 			} else {
 				sub.xsource = rtpsplice.Idle
 				sub.browserVideo.splicer.Pending = rtpsplice.Idle
@@ -805,20 +805,12 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			checkPanic(err)
 			go processRTCP(rtpSender)
 
-			//will associate or create new tx/rtpsender in pc
-			rtpSender, err = sub.conn.AddTrack(video1.track)
-			checkPanic(err)
-			go processRTCP(rtpSender)
-
-			//will associate or create new tx/rtpsender in pc
-			rtpSender, err = sub.conn.AddTrack(video2.track)
-			checkPanic(err)
-			go processRTCP(rtpSender)
-
-			//will associate or create new tx/rtpsender in pc
-			rtpSender, err = sub.conn.AddTrack(video3.track)
-			checkPanic(err)
-			go processRTCP(rtpSender)
+			for _, v := range sharedVidTracks {
+				//will associate or create new tx/rtpsender in pc
+				rtpSender, err = sub.conn.AddTrack(v.track)
+				checkPanic(err)
+				go processRTCP(rtpSender)
+			}
 		}
 
 		// Create answer
@@ -915,13 +907,13 @@ func pollingVideoSourceController() {
 		// downstream sfu business
 		if ingressVideoIsHappy() {
 			changeSourceIfNeeded(audio, rtpsplice.Audio)
-			changeSourceIfNeeded(video1, rtpsplice.Video1)
-			changeSourceIfNeeded(video2, rtpsplice.Video2)
-			changeSourceIfNeeded(video3, rtpsplice.Video3)
+			for i, v := range sharedVidTracks {
+				changeSourceIfNeeded(v, rtpsplice.RtpSource(i+1))
+			}
 		} else {
-			changeSourceIfNeeded(video1, rtpsplice.Idle)
-			changeSourceIfNeeded(video2, rtpsplice.Idle)
-			changeSourceIfNeeded(video3, rtpsplice.Idle)
+			for _, v := range sharedVidTracks {
+				changeSourceIfNeeded(v, rtpsplice.Idle)
+			}
 		}
 
 		// downstream browser business
@@ -946,7 +938,7 @@ func pollingVideoSourceController() {
 
 }
 
-func idleLoopPlayer(p []rtp.Packet, tracks ...*SplicableTrack) {
+func idleLoopPlayer(p []rtp.Packet, tracks []*SplicableTrack) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
@@ -1212,25 +1204,11 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 	}()
 
-	if !strings.HasPrefix(trackname, "video") {
-		panic("invalid trackname:" + trackname)
-	}
-
-	rxTrackNum, err := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
-	if err != nil {
-		checkPanic(fmt.Errorf("invalid trackname:%s", trackname))
-	}
+	rxTrackNum, err := parseTrackname(trackname)
+	checkPanic(err)
 	rxTrackNum += 1
 
-	var splicable *SplicableTrack
-	switch trackname {
-	case "video0":
-		splicable = video1
-	case "video1":
-		splicable = video2
-	case "video2":
-		splicable = video3
-	}
+	var splicable *SplicableTrack = sharedVidTracks[rxTrackNum]
 
 	// if *logPackets {
 	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
@@ -1241,6 +1219,19 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	// one per track (OnTrack above)
 	remoteTrackReader(track, rxTrackNum, splicable)
 
+}
+
+func parseTrackname(trackname string) (int, error) {
+	if !strings.HasPrefix(trackname, "video") {
+		return -1, fmt.Errorf("Invalid trackname")
+	}
+
+	tracknum, err := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
+	if err != nil {
+		return -1, fmt.Errorf("Invalid trackname")
+	}
+
+	return tracknum, nil
 }
 
 type RxPacket struct {
