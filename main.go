@@ -1208,8 +1208,6 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	checkPanic(err)
 	rxTrackNum += 1
 
-	var splicable *SplicableTrack = sharedVidTracks[rxTrackNum]
-
 	// if *logPackets {
 	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
 	// }
@@ -1217,7 +1215,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	remoteTrackReader(track, rxTrackNum, splicable)
+	remoteTrackReader(track, rxTrackNum)
 
 }
 
@@ -1235,13 +1233,14 @@ func parseTrackname(trackname string) (int, error) {
 }
 
 type RxPacket struct {
-	rxTrackNum int
-	packet     *rtp.Packet
+	rxTrackNum  int
+	rxClockRate uint32
+	packet      *rtp.Packet
 }
 
 var rxChan chan RxPacket = make(chan RxPacket)
 
-func remoteTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int, sharedSFUTxTrack *SplicableTrack) {
+func remoteTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int) {
 
 	for {
 
@@ -1251,37 +1250,38 @@ func remoteTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int, sharedSFUTxT
 		}
 		checkPanic(err)
 
-		rxChan <- RxPacket{rxTrackNum: rxTrackNum, packet: p}
+		rxChan <- RxPacket{rxTrackNum: rxTrackNum, packet: p, rxClockRate: rxTrack.Codec().ClockRate}
 	}
 }
 
 func senderLoop() {
 
-	for rxPacket := range rxChan {
+	for rxpkt := range rxChan {
 		atomic.StoreInt64(&lastTimeIngressVideoReceived, time.Now().UnixNano())
 
+		rtpsource := rtpsplice.RtpSource(rxpkt.rxTrackNum)
+
 		if *logPackets {
-			logPacket(logPacketIn, rxPacket.packet)
+			logPacket(logPacketIn, rxpkt.packet)
 		}
 
 		//XXXX
 		/// Disable shared SFU local tracks for now
 		// 4 20 2021
 		//
-		// if sharedSFUTxTrack.splicer.IsActiveOrPending(rtpsource) {
-		// 	pprime := sharedSFUTxTrack.splicer.SpliceRTP(p, rtpsource, time.Now().UnixNano(), int64(rxTrack.Codec().ClockRate), rtpsplice.H264)
-		// 	if pprime != nil {
-		// 		err := LogAndWriteRTP(pprime, p, sharedSFUTxTrack)
-		// 		if err == io.ErrClosedPipe {
-		// 			return
-		// 		}
-		// 		checkPanic(err)
-		// 	}
-		// }
+		var sharedSFUTxTrack *SplicableTrack = sharedVidTracks[rxpkt.rxTrackNum]
+		if sharedSFUTxTrack.splicer.IsActiveOrPending(rtpsource) {
+			pprime := sharedSFUTxTrack.splicer.SpliceRTP(rxpkt.packet, rtpsource, time.Now().UnixNano(), int64(rxpkt.rxClockRate), rtpsplice.H264)
+			if pprime != nil {
+				err := LogAndWriteRTP(pprime, rxpkt.packet, sharedSFUTxTrack)
+				if err == io.ErrClosedPipe {
+					return
+				}
+				checkPanic(err)
+			}
+		}
 
-		rtpsource := rtpsplice.RtpSource(rxPacket.rxTrackNum)
-
-		sendRTPToEachSubscriber(rxPacket.packet, rtpsource)
+		sendRTPToEachSubscriber(rxpkt.packet, rtpsource)
 
 	}
 }
