@@ -51,11 +51,6 @@ import (
 	"github.com/x186k/ddns5libdns"
 )
 
-const (
-	pubPath = "/pub"
-	subPath = "/sub" // 2nd slash important
-)
-
 // content is our static web server content.
 //go:embed html/index.html
 var indexHtml []byte
@@ -85,6 +80,8 @@ const (
 	duckdnsSuffix = ".duckdns.org"
 	videoMimeType = "video/h264"
 	audioMimeType = "audio/opus"
+	pubPath       = "/pub"
+	subPath       = "/sub" // 2nd slash important
 )
 
 var (
