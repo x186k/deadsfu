@@ -29,7 +29,7 @@ const (
 
 type RtpSplicer struct {
 	mu               sync.Mutex
-	TrackNum         int
+	debugName        string
 	lastSSRC         uint32
 	lastSN           uint16
 	lastTS           uint32
@@ -142,7 +142,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 			return nil
 		}
 
-		log.Printf("SpliceRTP: %v: keyframe on pending source %v", s.TrackNum, src)
+		log.Printf("SpliceRTP: %v: keyframe on pending source %v", s.debugName, src)
 
 		s.Active = src
 		s.Pending = NoSource
@@ -154,7 +154,7 @@ func (s *RtpSplicer) SpliceRTP(o *rtp.Packet, src RtpSource, unixnano int64, rtp
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
 	if o.SSRC != s.lastSSRC || foo {
-		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.TrackNum, o.SSRC, s.lastSSRC)
+		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.debugName, o.SSRC, s.lastSSRC)
 
 		td := unixnano - s.lastUnixnanosNow // nanos
 		if td < 0 {
