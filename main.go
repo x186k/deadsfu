@@ -993,7 +993,7 @@ func idleLoopPlayer(p []rtp.Packet, tracks []*SplicableTrack) {
 
 func dialUpstream(baseurl string) {
 
-	txid := randomHex(10)
+	txid := randomHex(8)
 
 	dialurl := baseurl + "?issfu=1&txid=" + txid
 
