@@ -83,12 +83,12 @@ const (
 	mediaStreamId = "x186k"
 	ddns5Suffix   = ".ddns5.com"
 	duckdnsSuffix = ".duckdns.org"
+	videoMimeType = "video/h264"
+	audioMimeType = "audio/opus"
 )
 
 var (
-	h264IdleRtpPackets           []rtp.Packet           // concurrent okay
-	videoMimeType                string                 = "video/h264"
-	audioMimeType                string                 = "audio/opus"
+	h264IdleRtpPackets []rtp.Packet // concurrent okay
 	subMap                       map[string]*Subscriber = make(map[string]*Subscriber) // concurrent okay 013121
 	subMapMutex                  sync.Mutex                                            // concurrent okay 013121	//audioTrack                   *webrtc.TrackLocalStaticRTP                                      // concurrent okay 013121
 	sharedVidTracks              []*SplicableTrack                                     // Downstream SFU shared tracks
