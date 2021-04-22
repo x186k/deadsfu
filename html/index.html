@@ -89,16 +89,16 @@
     // https://stackoverflow.com/a/52076280/86375
     // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
     //@ts-check
-    const txid = longRandomString()
+    const txid = rand64Hex()
 
     let suburl = location.origin + '/sub'        // output from sfu
     let puburl = location.origin + '/pub'          // input to sfu
 
 
-    function longRandomString() {
-      var buffer = new Uint8Array(10)
+    function rand64Hex() {
+      var buffer = new Uint8Array(8)
       window.crypto.getRandomValues(buffer)
-      return Array.prototype.map.call(new Uint8Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
+      return Array.prototype.map.call(new Uint8Array(buffer), x => ('0' + x.toString(16)).slice(-2)).join('');
     }
 
 
