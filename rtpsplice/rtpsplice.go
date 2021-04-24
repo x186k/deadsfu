@@ -10,6 +10,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v3"
 )
 
 type RtpSource byte // make a byte, so everything is atomic! Yay mom!
@@ -29,6 +30,7 @@ const (
 
 type RtpSplicer struct {
 	mu               sync.Mutex
+	Track            *webrtc.TrackLocalStaticRTP
 	debugName        string
 	lastSSRC         uint32
 	lastSN           uint16

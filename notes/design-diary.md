@@ -72,6 +72,34 @@ must have multiple sendGR per RX
 
 ## 4/21/21
 
+- observation about PC.AddTrack()
+- if you add a dozen, or 1000 tracks using PC.AddTrack(), and some of those PC's close/goaway. that track won't be writing to a dozen or 1000 PC-tracks, but something less. so if you need to know how many sub-writes a track.WriteRTP() will cause, tracking/predicting that becomes tricky. (you can somehome watch for closing PCs, but this will look gross IMO)
+- this may support creating a new track for each SFU track rather than using a 'shared' track
+
+
+## 4/21/21 redesign thoughts
+
+
+- txid is a 16 character random hex string (64 bits)
+- zero shared state between xmain and http handlers / no mutexes
+- zero shared tracks between Peerconns. no shared tracks: no shared audio, no shared video
+- downstream SFU and Browser share the same implementations for sending [wow!]
+- subHandler does NOT keep a subscriber map/array (wow) (channel-change goes straight to xmain)
+
+### xmain purpose and messages
+- xmain is a func/goroutine which accepts packets and forwards packets directly or to workers.
+- xmain does not call pion, ever, or other mysterious methods.
+- xmain might be thought of as the media controller gr/method
+- on new subscriber, subhandler sends txid+array of tracks to xmain
+- on track change, subHandler passes txid and new track integer to xmain to handle
+- idleloop sends packets to xmain
+
+# 4/22/21 working on: moving TXing off of RX goroutines
+- no more shared tracks, ie: peercon1.AddTrack(X)  peercon2.AddTrack(X)
+- no mutexes? well, just lightly contended mutexes. lol
+
+
+
 
 
 

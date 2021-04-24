@@ -14,13 +14,13 @@ import (
 	"log"
 	"runtime"
 	"strconv"
+	"sync"
 
 	mrand "math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -85,25 +85,28 @@ const (
 )
 
 var (
-	h264IdleRtpPackets []rtp.Packet // concurrent okay
-	subMap                       map[string]*Subscriber = make(map[string]*Subscriber) // concurrent okay 013121
-	subMapMutex                  sync.Mutex                                            // concurrent okay 013121	//audioTrack                   *webrtc.TrackLocalStaticRTP                                      // concurrent okay 013121
-	sharedVidTracks              []*SplicableTrack                                     // Downstream SFU shared tracks
-	audio                        *SplicableTrack
-	ingressSemaphore             = semaphore.NewWeighted(int64(1)) // concurrent okay
-	lastTimeIngressVideoReceived int64                             // concurrent okay
+	ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
+	txidMap          = make(map[uint64]struct{})       // no concurrent
+	txidMapMutex     sync.Mutex
 )
 
-type SplicableTrack struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer rtpsplice.RtpSplicer
+type MsgRxPacket struct {
+	rxTrackNum  int
+	isAudio     bool
+	rxClockRate uint32
+	packet      *rtp.Packet
 }
 
-//XXXXXXXX fixme add time & purge occasionally
-type Subscriber struct {
-	conn         *webrtc.PeerConnection // peerconnection
-	browserVideo *SplicableTrack        // will be nil for sfu, non-nil for browser, browser needs own seqno+ts for rtp, thus this
+type MsgSetRxTrack struct {
+	subid     uint64
+	txtrackid Trid                  // this is K: it tells the track number in 'track'
+	rxtrackid int                   // this is N: it tells where 'track' gets its input from
+	audio     bool                  // if true for audio, else for video
+	track     *rtpsplice.RtpSplicer // can be nil when just changing the channel
 }
+
+var rxChan chan MsgRxPacket = make(chan MsgRxPacket)
+var setRxChan chan MsgSetRxTrack = make(chan MsgSetRxTrack)
 
 func checkFatal(err error) {
 	if err != nil {
@@ -194,39 +197,10 @@ var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 
-func initializeSFU() {
-	var err error
-
-	audio = &SplicableTrack{splicer: rtpsplice.RtpSplicer{TrackNum: -10}}
-
-	const numSharedVid = 3
-	sharedVidTracks = make([]*SplicableTrack, numSharedVid)
-	for i := range sharedVidTracks {
-		t := &SplicableTrack{splicer: rtpsplice.RtpSplicer{TrackNum: i}}
-		name := fmt.Sprintf("video%d", i)
-		t.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, name, mediaStreamId)
-		checkPanic(err)
-		sharedVidTracks[i] = t
-	}
-
-	// Create a audio track
-	audio.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
-	checkPanic(err)
-
-	h264IdleRtpPackets, _, err = rtpsplice.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
-	checkPanic(err)
-
-	go idleLoopPlayer(h264IdleRtpPackets, sharedVidTracks)
-	go pollingVideoSourceController()
-	go oncePerSecond()
-	go senderLoop()
-
-}
-
-func oncePerSecond() {
+func logGoroutineCountToDebugLog() {
 	n := runtime.NumGoroutine()
 	for {
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 		nn := runtime.NumGoroutine()
 		if nn != n {
 			log.Println("NumGoroutine", nn)
@@ -240,7 +214,11 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 func main() {
 	var err error
 
-	initializeSFU()
+	go logGoroutineCountToDebugLog()
+
+	go idleLoopPlayer(idleScreenH264Pcapng)
+
+	go xloop()
 
 	var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
 	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
@@ -622,226 +600,204 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("subHandler request", httpreq.URL.String())
 
-	txid := httpreq.URL.Query().Get("txid")
-	if txid == "" {
+	rawtxid := httpreq.URL.Query().Get("txid")
+	if rawtxid == "" {
 		teeErrorStderrHttp(w, fmt.Errorf("txid missing"))
 		return
 	}
 
-	if len(txid) < 15 {
-		teeErrorStderrHttp(w, fmt.Errorf("txid value must be 15 chars or more"))
+	if len(rawtxid) != 16 {
+		teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars long"))
 		return
 	}
 
-	log.Println("txid is", txid)
+	txid, err := strconv.ParseUint(rawtxid, 16, 64)
+	if err != nil {
+		teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars only"))
+		return
+	}
+	log.Println("txid is", rawtxid, txid)
+
+	txidMapMutex.Lock()
+	_, foundTxid := txidMap[txid]
+	txidMapMutex.Unlock()
 
 	rid := httpreq.URL.Query().Get("level")
-	issfu := httpreq.URL.Query().Get("issfu") != ""
+	//issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
-		rxTrackNum, err := parseTrackname(rid)
+		trackNum, isAudio, err := parseTrackname(rid)
 		if err != nil {
-			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video<N> are allowed"))
+			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video<N>, audio<N> are okay"))
 			return
 		}
 
-		// XXX fixme
-		if rxTrackNum > 1000 {
-			panic("too large")
-		}
-
-		subMapMutex.Lock()
-		sub, ok := subMap[txid]
-		subMapMutex.Unlock()
-		if !ok {
+		// This isn't required.
+		// but nice to tell the HTTP requestor something if the operation can't be executed
+		if !foundTxid {
 			teeErrorStderrHttp(w, fmt.Errorf("no such sub"))
 			return
 		}
 
-		sub.browserVideo.splicer.Xsource = rtpsplice.RtpSource(rxTrackNum + 1)
-
-		if sub.browserVideo == nil {
-			teeErrorStderrHttp(w, fmt.Errorf("rid param not meaningful for SFU"))
-			return
+		setRxChan <- MsgSetRxTrack{
+			subid:     txid,
+			txtrackid: 0,        // this is K: almost alway zero, a browser only has one video track
+			rxtrackid: trackNum, // this is N: packets read from RX<N> go to TX<K>
+			audio:     isAudio,  //
+			track:     nil,      // this is just an update message, not a new track
 		}
 
-		// XXX
-		//sub.requestedRID = rid
 		w.WriteHeader(http.StatusAccepted)
 		return
-	} else {
-		// rx offer, tx answer
-
-		if httpreq.Method != "POST" {
-			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
-			return
-		}
-
-		// offer from browser
-		offersdpbytes, err := ioutil.ReadAll(httpreq.Body)
-		if err != nil {
-			teeErrorStderrHttp(w, err)
-			return
-		}
-
-		subMapMutex.Lock()
-		_, ok := subMap[txid]
-		subMapMutex.Unlock()
-		if ok {
-			teeErrorStderrHttp(w, fmt.Errorf("cannot re-use or re-nego subscriber"))
-			return
-		}
-
-		// Create a new PeerConnection
-		log.Println("created PC")
-		peerConnection := newPeerConnection()
-
-		logTransceivers("new-pc", peerConnection)
-
-		// NO!
-		// peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {...}
-		// Pion says:
-		// "OnTrack sets an event handler which is called when remote track arrives from a remote peer."
-		// the 'sub' side of our SFU just Pushes tracks, it can't receive them,
-		// so there is no OnTrack handler
-
-		peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-			log.Println("sub ICE Connection State has changed", icecs.String())
-		})
-		peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-			log.Println("subscriber Connection State has changed", cs.String())
-			switch cs {
-			case webrtc.PeerConnectionStateConnected:
-			case webrtc.PeerConnectionStateFailed:
-				peerConnection.Close()
-			case webrtc.PeerConnectionStateDisconnected:
-				peerConnection.Close()
-			case webrtc.PeerConnectionStateClosed:
-				subMapMutex.Lock()
-				delete(subMap, txid)
-				subMapMutex.Unlock()
-			}
-		})
-
-		offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdpbytes)}
-		logSdpReport("publisher", offer)
-
-		err = peerConnection.SetRemoteDescription(offer)
-		checkPanic(err)
-
-		logTransceivers("offer-added", peerConnection)
-
-		sdsdp, err := offer.Unmarshal()
-		checkPanic(err)
-
-		/* logic
-		when browser subscribes, we always give it one video track
-		and we just switch simulcast to that subscriber's RtpSender using replacetrack
-
-		when another sfu subscribes, we really want to add a track for each
-		track it has prepared an m=video section for
-
-		so, we count the number of m=video sections using numVideoMediaDesc()
-
-		this 'numvideo' logic should do that
-		*/
-
-		//should be 1 from browser sub
-		//should be 3 from x186k sfu
-		numvideo := numVideoMediaDesc(sdsdp)
-		log.Println("numvideo", numvideo)
-
-		sub := &Subscriber{}
-		sub.conn = peerConnection
-
-		if !issfu {
-			// browser path
-			sub.browserVideo = &SplicableTrack{}
-			sub.browserVideo.track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "subvideo", mediaStreamId)
-			checkPanic(err)
-
-			if ingressVideoIsHappy() {
-				sub.browserVideo.splicer.Xsource = 1
-				sub.browserVideo.splicer.Pending = 1 //video1
-			} else {
-				sub.browserVideo.splicer.Xsource = rtpsplice.Idle
-				sub.browserVideo.splicer.Pending = rtpsplice.Idle
-			}
-
-			// 020221 The transceivers should already be okay, no addtransceiver is needed.
-			//there should already be 2x recvonly transceivers (recv from offerer's perspective,not mine)
-
-			// We do need an add-track to associate the track with the pc/transceiver
-
-			// mdn: addTrack() adds a new media track to the set of
-			//   tracks which will be transmitted to the other peer.
-
-			// trans,err:=sub.conn.AddTransceiverFromTrack(audioTrack,webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
-			// checkPanic(err)
-			// go processRTCP(trans.Sender())
-
-			//will associate or create new tx/rtpsender in pc
-			rtpSender, err := sub.conn.AddTrack(audio.track)
-			checkPanic(err)
-			go processRTCP(rtpSender)
-
-			//will associate or create new tx/rtpsender in pc
-			rtpSender, err = sub.conn.AddTrack(sub.browserVideo.track)
-			checkPanic(err)
-			go processRTCP(rtpSender)
-
-			logTransceivers("tracksadd", peerConnection)
-
-		} else {
-			// sfu path
-			sub.browserVideo = nil
-
-			//will associate or create new tx/rtpsender in pc
-			rtpSender, err := sub.conn.AddTrack(audio.track)
-			checkPanic(err)
-			go processRTCP(rtpSender)
-
-			for _, v := range sharedVidTracks {
-				//will associate or create new tx/rtpsender in pc
-				rtpSender, err = sub.conn.AddTrack(v.track)
-				checkPanic(err)
-				go processRTCP(rtpSender)
-			}
-		}
-
-		// Create answer
-		sessdesc, err := peerConnection.CreateAnswer(nil)
-		checkPanic(err)
-
-		// Create channel that is blocked until ICE Gathering is complete
-		gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
-
-		// Sets the LocalDescription, and starts our UDP listeners
-		err = peerConnection.SetLocalDescription(sessdesc)
-		checkPanic(err)
-
-		// Block until ICE Gathering is complete, disabling trickle ICE
-		// we do this because we only can exchange one signaling message
-		// in a production application you should exchange ICE Candidates via OnICECandidate
-		<-gatherComplete
-
-		// Get the LocalDescription and take it to base64 so we can paste in browser
-		ansrtcsd := peerConnection.LocalDescription()
-
-		logSdpReport("sub-answer", *ansrtcsd)
-
-		w.WriteHeader(http.StatusAccepted)
-		_, err = w.Write([]byte(ansrtcsd.SDP))
-		if err != nil {
-			elog.Println(fmt.Errorf("sub sdp write failed:%f", err))
-			return
-		}
-
-		subMapMutex.Lock()
-		subMap[txid] = sub
-		subMapMutex.Unlock()
-
 	}
+
+	// got here: thus there was no rid=xxx param
+
+	// rx offer, tx answer
+
+	if httpreq.Method != "POST" {
+		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
+		return
+	}
+
+	// offer from browser
+	offersdpbytes, err := ioutil.ReadAll(httpreq.Body)
+	if err != nil {
+		teeErrorStderrHttp(w, err)
+		return
+	}
+
+	if foundTxid {
+		teeErrorStderrHttp(w, fmt.Errorf("cannot re-use txid for subscriber"))
+		return
+	}
+	txidMapMutex.Lock()
+	txidMap[txid] = struct{}{}
+	txidMapMutex.Unlock()
+
+	// Create a new PeerConnection
+	log.Println("created PC")
+	peerConnection := newPeerConnection()
+
+	logTransceivers("new-pc", peerConnection)
+
+	// NO!
+	// peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {...}
+	// Pion says:
+	// "OnTrack sets an event handler which is called when remote track arrives from a remote peer."
+	// the 'sub' side of our SFU just Pushes tracks, it can't receive them,
+	// so there is no OnTrack handler
+
+	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
+		log.Println("sub ICE Connection State has changed", icecs.String())
+	})
+	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+		log.Println("subscriber 0x%016x newstate: %s", txid, cs.String())
+		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+		case webrtc.PeerConnectionStateFailed:
+			peerConnection.Close()
+		case webrtc.PeerConnectionStateDisconnected:
+			peerConnection.Close()
+		case webrtc.PeerConnectionStateClosed:
+			//we do not delete txid from txidMap, you can't reuse the numbers/slots
+			//we hope that since it is closed and unreferenced it will just disappear,
+			// (from the heap), but I have my doubts
+			// XXX
+		}
+	})
+
+	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdpbytes)}
+	logSdpReport("publisher", offer)
+
+	err = peerConnection.SetRemoteDescription(offer)
+	checkPanic(err)
+
+	logTransceivers("offer-added", peerConnection)
+
+	sdsdp, err := offer.Unmarshal()
+	checkPanic(err)
+
+	/* logic
+	when browser subscribes, we always give it one video track
+	and we just switch simulcast to that subscriber's RtpSender using replacetrack
+
+	when another sfu subscribes, we really want to add a track for each
+	track it has prepared an m=video section for
+
+	so, we count the number of m=video sections using numVideoMediaDesc()
+
+	this 'numvideo' logic should do that
+	*/
+
+	//should be 1 from browser sub, almost always
+	//should be 3 from x186k sfu, typically
+	numvideo := numVideoMediaDesc(sdsdp)
+	log.Println("numvideo", numvideo)
+
+	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
+	checkPanic(err)
+	rtpSender, err := peerConnection.AddTrack(track)
+	checkPanic(err)
+	go processRTCP(rtpSender)
+
+	setRxChan <- MsgSetRxTrack{
+		subid:     txid,
+		txtrackid: 0,
+		rxtrackid: 0,
+		audio:     true,
+		track:     &rtpsplice.RtpSplicer{Track: track},
+	}
+
+	const numSharedVid = 3
+
+	for i := 0; i < numSharedVid; i++ {
+		name := fmt.Sprintf("video%d", i)
+		track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, name, mediaStreamId)
+		checkPanic(err)
+		rtpSender, err := peerConnection.AddTrack(track)
+		checkPanic(err)
+		go processRTCP(rtpSender)
+
+		setRxChan <- MsgSetRxTrack{
+			subid:     txid,
+			txtrackid: 0,
+			rxtrackid: 0,
+			audio:     false,
+			track:     &rtpsplice.RtpSplicer{Track: track},
+		}
+	}
+
+	logTransceivers("subHandler-tracksadded", peerConnection)
+
+	// Create answer
+	sessdesc, err := peerConnection.CreateAnswer(nil)
+	checkPanic(err)
+
+	// Create channel that is blocked until ICE Gathering is complete
+	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+
+	// Sets the LocalDescription, and starts our UDP listeners
+	err = peerConnection.SetLocalDescription(sessdesc)
+	checkPanic(err)
+
+	// Block until ICE Gathering is complete, disabling trickle ICE
+	// we do this because we only can exchange one signaling message
+	// in a production application you should exchange ICE Candidates via OnICECandidate
+	<-gatherComplete
+
+	// Get the LocalDescription and take it to base64 so we can paste in browser
+	ansrtcsd := peerConnection.LocalDescription()
+
+	logSdpReport("sub-answer", *ansrtcsd)
+
+	w.WriteHeader(http.StatusAccepted)
+	_, err = w.Write([]byte(ansrtcsd.SDP))
+	if err != nil {
+		elog.Println(fmt.Errorf("sub sdp write failed:%f", err))
+		return
+	}
+
 }
 
 func logTransceivers(tag string, pc *webrtc.PeerConnection) {
@@ -884,61 +840,11 @@ func randomHex(n int) string {
 	return hex.EncodeToString(bytes)
 }
 
-func ingressVideoIsHappy() bool {
-	const maxTimeNoVideo = int64(float64(time.Second) * 1.5)
-	t := atomic.LoadInt64(&lastTimeIngressVideoReceived)
-	happy := (time.Now().UnixNano() - t) < maxTimeNoVideo
-	return happy
-}
+func idleLoopPlayer(xxx []byte) {
 
-func changeSourceIfNeeded(spv *SplicableTrack, src rtpsplice.RtpSource) {
-	if spv.splicer.Active != src && spv.splicer.Pending != src {
-		spv.splicer.Pending = src
-	}
-}
+	p, _, err := rtpsplice.ReadPcap2RTP(bytes.NewReader(xxx))
+	checkPanic(err)
 
-func pollingVideoSourceController() {
-
-	changeSourceIfNeeded(audio, rtpsplice.Audio)
-
-	for {
-		time.Sleep(time.Millisecond * 100) // polling somewhere for lack of rx rtp is unavoidable
-
-		// downstream sfu business
-		if ingressVideoIsHappy() {
-			changeSourceIfNeeded(audio, rtpsplice.Audio)
-			for i, v := range sharedVidTracks {
-				changeSourceIfNeeded(v, rtpsplice.RtpSource(i+1))
-			}
-		} else {
-			for _, v := range sharedVidTracks {
-				changeSourceIfNeeded(v, rtpsplice.Idle)
-			}
-		}
-
-		// downstream browser business
-		subMapMutex.Lock()
-		for _, sub := range subMap {
-			subMapMutex.Unlock()
-
-			if sub.browserVideo != nil {
-				if ingressVideoIsHappy() {
-					changeSourceIfNeeded(sub.browserVideo, sub.browserVideo.splicer.Xsource)
-				} else {
-					//not happy
-					changeSourceIfNeeded(sub.browserVideo, rtpsplice.Idle)
-				}
-			}
-
-			subMapMutex.Lock()
-		}
-		subMapMutex.Unlock()
-
-	}
-
-}
-
-func idleLoopPlayer(p []rtp.Packet, tracks []*SplicableTrack) {
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
 	delta2 := uint32(90000 / n)
@@ -946,46 +852,21 @@ func idleLoopPlayer(p []rtp.Packet, tracks []*SplicableTrack) {
 	seq := uint16(mrand.Uint32())
 	ts := mrand.Uint32()
 
-	if tracks[0].track == nil {
-		panic("track[0] nil")
-	}
-	if tracks[1].track == nil {
-		panic("track[1] nil")
-	}
-	if tracks[2].track == nil {
-		panic("track[2] nil")
-	}
-
 	for {
 		for _, v := range p {
 			time.Sleep(delta1)
 			v.SequenceNumber = seq
 			seq++
 			v.Timestamp = ts
-			if *logPackets {
-				logPacket(logPacketIn, &v)
-			}
-			// subscribers
-			sendRTPToEachSubscriber(&v, rtpsplice.Idle)
+			// if *logPackets {
+			// 	logPacket(logPacketIn, &v)
+			// }
 
-			// sfus
-			for _, splicable := range tracks {
+			rxChan <- MsgRxPacket{rxTrackNum: -1, packet: &v, rxClockRate: 90000}
 
-				if splicable.splicer.IsActiveOrPending(rtpsplice.Idle) {
-					pprime := splicable.splicer.SpliceRTP(&v, rtpsplice.Idle, time.Now().UnixNano(), int64(90000), rtpsplice.H264)
-					if pprime != nil {
-						err := LogAndWriteRTP(pprime, &v, splicable)
-						if err == io.ErrClosedPipe {
-							return
-						}
-						checkPanic(err)
-					}
-				}
-			}
 		}
 		ts += delta2
 	}
-
 }
 
 func dialUpstream(baseurl string) {
@@ -1117,25 +998,11 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		log.Println("OnTrack audio", mimetype)
 
-		// forever loop
-		for {
-			p, _, err := track.ReadRTP()
-			if err == io.EOF {
-				return
-			}
-			checkPanic(err)
-
-			if audio.splicer.IsActiveOrPending(rtpsplice.Audio) {
-				pprime := audio.splicer.SpliceRTP(p, rtpsplice.Audio, time.Now().UnixNano(), int64(track.Codec().ClockRate), rtpsplice.Opus)
-				if pprime != nil {
-					err := LogAndWriteRTP(pprime, p, audio)
-					if err == io.ErrClosedPipe {
-						return
-					}
-					checkPanic(err)
-				}
-			}
-		}
+		tknum := 0
+		inboundTrackReader(track, tknum, true, track.Codec().ClockRate)
+		//here on error
+		log.Println("audio reader 0x%016x exited", track)
+		return
 	}
 
 	// audio callbacks never get here
@@ -1204,9 +1071,12 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 	}()
 
-	rxTrackNum, err := parseTrackname(trackname)
+	tknum, isAudio, err := parseTrackname(trackname)
 	checkPanic(err)
-	rxTrackNum += 1
+
+	if isAudio {
+		panic("bad trackname got audio, need video")
+	}
 
 	// if *logPackets {
 	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
@@ -1215,60 +1085,153 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	remoteTrackReader(track, rxTrackNum)
+	inboundTrackReader(track, tknum, false, track.Codec().ClockRate)
+	//here on error
+	log.Println("video reader 0x%016x exited", track)
 
 }
 
-func parseTrackname(trackname string) (int, error) {
-	if !strings.HasPrefix(trackname, "video") {
-		return -1, fmt.Errorf("Invalid trackname")
+func parseTrackname(trackname string) (tracknum int, isAudio bool, err error) {
+	if strings.HasPrefix(trackname, "video") {
+		tracknum, err = strconv.Atoi(strings.TrimPrefix(trackname, "video"))
+		if err != nil {
+			return -1, false, fmt.Errorf("Invalid trackname")
+		}
+		isAudio = false
+		return
 	}
 
-	tracknum, err := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
-	if err != nil {
-		return -1, fmt.Errorf("Invalid trackname")
+	if strings.HasPrefix(trackname, "audio") {
+		tracknum, err = strconv.Atoi(strings.TrimPrefix(trackname, "audio"))
+		if err != nil {
+			return -1, false, fmt.Errorf("Invalid trackname")
+		}
+		isAudio = true
+		return
 	}
 
-	return tracknum, nil
+	return -1, false, fmt.Errorf("Unparsable trackname")
 }
 
-type RxPacket struct {
-	rxTrackNum  int
-	rxClockRate uint32
-	packet      *rtp.Packet
-}
-
-var rxChan chan RxPacket = make(chan RxPacket)
-
-func remoteTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum int, isAudio bool, clockrate uint32) {
 
 	for {
-
 		p, _, err := rxTrack.ReadRTP()
 		if err == io.EOF {
 			return
 		}
 		checkPanic(err)
 
-		rxChan <- RxPacket{rxTrackNum: rxTrackNum, packet: p, rxClockRate: rxTrack.Codec().ClockRate}
+		rxChan <- MsgRxPacket{rxTrackNum: rxTrackNum, isAudio: isAudio, packet: p, rxClockRate: clockrate}
 	}
 }
 
-func senderLoop() {
+type OneTrack struct {
+	rxnum int
+	*rtpsplice.RtpSplicer
+}
+
+type Trid int
+
+var ticker = time.NewTicker(100 * time.Millisecond)
+
+type Txid uint64
+
+func xloop() {
+
+	//whats the bare minimum
+	var subid2Track map[Txid]map[Trid]*rtpsplice.RtpSplicer
+
+	var pendingTrackChange map[Trid][]*rtpsplice.RtpSplicer
+
+	var curTrack map[*rtpsplice.RtpSplicer]Trid
+
+	var txtracks map[Trid]map[*rtpsplice.RtpSplicer]struct{}
+
+	for {
+		select {
+		//media case
+		case m := <-rxChan:
+			//media
+			// find any pending tracks and change them
+
+			if val, ok := pendingTrackChange[Trid(m.rxTrackNum)]; ok {
+
+				// ignore if this packet is not a keyframe
+				if !m.isAudio {
+					if !rtpsplice.ContainSPS(m.packet.Payload) {
+						goto notkeyframe
+					}
+				}
+
+				for _, v := range val {
+					// we have a single track that is changing from
+					// one input source to another
+
+					//find the current TrackId
+					var currentTrack Trid = curTrack[v]
+
+					// remove this track from txtracks
+					delete(txtracks[currentTrack], v)
+
+					// add this track back to txtracks
+					txtracks[Trid(m.rxTrackNum)][v] = struct{}{}
+
+					//update the *track -> TrackId
+					curTrack[v] = Trid(m.rxTrackNum)
+
+				}
+				delete(pendingTrackChange, Trid(m.rxTrackNum)) // remove from pendingSwitch
+			}
+
+		notkeyframe:
+
+			//send the media
+			// to for each rtpwrite we need minimally:
+			// webrtc.TrackLocalStaticRTP or rtpsplice.RtpSplicer
+
+			//splicerList := []*rtpsplice.RtpSplicer{}
+			splicerList := txtracks[Trid(m.rxTrackNum)]
+
+			for k, v := range splicerList {
+				_ = v
+				k.SpliceRTP(m.packet, 0, 0, 0, 0)
+			}
+
+			// steps
+			// loop through tracks which this media is for
+
+		case m := <-setRxChan:
+			//new track or update
+			t := m.track
+			if t == nil {
+				t = subid2Track[Txid(m.subid)][m.txtrackid]
+			} else {
+				subid2Track[Txid(m.subid)][m.txtrackid] = t
+			}
+
+			if t.track == nil {
+
+				foo = t
+				// new track
+				ot := OneTrack{rxnum}
+				tracks = append(tracks, t.track)
+
+			} else {
+
+			}
+
+		case tk := <-ticker.C:
+			fmt.Println("Tick at", tk)
+		}
+	}
 
 	for rxpkt := range rxChan {
-		atomic.StoreInt64(&lastTimeIngressVideoReceived, time.Now().UnixNano())
 
 		rtpsource := rtpsplice.RtpSource(rxpkt.rxTrackNum)
 
-		if *logPackets {
-			logPacket(logPacketIn, rxpkt.packet)
-		}
+		debugLog(rxpkt)
 
-		//XXXX
-		/// Disable shared SFU local tracks for now
-		// 4 20 2021
-		//
 		var sharedSFUTxTrack *SplicableTrack = sharedVidTracks[rxpkt.rxTrackNum]
 		if sharedSFUTxTrack.splicer.IsActiveOrPending(rtpsource) {
 			pprime := sharedSFUTxTrack.splicer.SpliceRTP(rxpkt.packet, rtpsource, time.Now().UnixNano(), int64(rxpkt.rxClockRate), rtpsplice.H264)
@@ -1283,6 +1246,12 @@ func senderLoop() {
 
 		sendRTPToEachSubscriber(rxpkt.packet, rtpsource)
 
+	}
+}
+
+func debugLog(rxpkt MsgRxPacket) {
+	if *logPackets {
+		logPacket(logPacketIn, rxpkt.packet)
 	}
 }
 
