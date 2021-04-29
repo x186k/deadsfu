@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/x186k/sfu1/rtpsplice"
+	rtpstuff "github.com/x186k/sfu1/rtpstuff"
 )
 
 func checkPanic(err error) {
@@ -22,7 +22,7 @@ func sendUdp() {
 	con, err := net.Dial("udp", "127.0.0.1:4000")
 	checkPanic(err)
 
-	rtp, t, err := rtpsplice.ReadPcap2RTP(os.Stdin)
+	rtp, t, err := rtpstuff.ReadPcap2RTP(os.Stdin)
 	checkPanic(err)
 
 	tstart := time.Now()
@@ -59,7 +59,7 @@ func sendUdp() {
 }
 
 func spsCount() {
-	rtp, _, err := rtpsplice.ReadPcap2RTP(os.Stdin)
+	rtp, _, err := rtpstuff.ReadPcap2RTP(os.Stdin)
 	checkPanic(err)
 
 	ssrcorig := *ssrc
@@ -85,7 +85,7 @@ func spsCount() {
 			os.Exit(-1)
 		}
 
-		kf := rtpsplice.ContainSPS(v.Payload)
+		kf := rtpstuff.IsH264Keyframe(v.Payload)
 		if kf {
 			numkeyf++
 		}
@@ -93,7 +93,7 @@ func spsCount() {
 	fmt.Println(numkeyf)
 }
 func info() {
-	rtp, _, err := rtpsplice.ReadPcap2RTP(os.Stdin)
+	rtp, _, err := rtpstuff.ReadPcap2RTP(os.Stdin)
 	checkPanic(err)
 
 	ssrc := rtp[0].SSRC
@@ -116,7 +116,7 @@ func info() {
 		if i > 0 && v.Timestamp != rtp[i-1].Timestamp {
 			numDistinctTs++
 		}
-		kf := rtpsplice.ContainSPS(v.Payload)
+		kf := rtpstuff.IsH264Keyframe(v.Payload)
 		if kf {
 			numkeyf++
 		}
