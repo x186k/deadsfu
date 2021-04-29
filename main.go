@@ -32,7 +32,6 @@ import (
 	"github.com/pkg/profile"
 	//"github.com/x186k/dynamicdns"
 
-	"github.com/x186k/sfu1/rtpsplice"
 	"golang.org/x/sync/semaphore"
 
 	//"net/http/httputil"
@@ -49,6 +48,7 @@ import (
 	"github.com/pion/webrtc/v3"
 
 	"github.com/x186k/ddns5libdns"
+	"github.com/x186k/sfu1/rtpstuff"
 )
 
 // content is our static web server content.
@@ -623,7 +623,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		}
 
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
-			subid:     Txid(txid),
+			subid:     Subid(txid),
 			txtrackid: Video0, //in v1, we only allow switching of Video0, SFUs don't switch
 			rxtrackid: trackNum,
 		}
@@ -723,9 +723,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	go processRTCP(rtpSender)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		subid:     Txid(txid),
+		subid:     Subid(txid),
 		txtrackid: Audio0,
-		txtrack:   &rtpsplice.RtpSplicer{Track: track},
+		txtrack:   &TrackSplicer{track: track},
 	}
 
 	const numSharedVid = 3
@@ -739,9 +739,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		go processRTCP(rtpSender)
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
-			subid:     Txid(txid),
+			subid:     Subid(txid),
 			txtrackid: TrkId(i) + Video0,
-			txtrack:   &rtpsplice.RtpSplicer{Track: track},
+			txtrack:   &TrackSplicer{track: track},
 		}
 	}
 
@@ -819,7 +819,7 @@ func randomHex(n int) string {
 
 func idleLoopPlayer(xxx []byte) {
 
-	p, _, err := rtpsplice.ReadPcap2RTP(bytes.NewReader(xxx))
+	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(xxx))
 	checkPanic(err)
 
 	n := len(p)
@@ -1107,7 +1107,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum TrkId, isAudio b
 
 var ticker = time.NewTicker(100 * time.Millisecond)
 
-type Txid uint64
+type Subid uint64
 
 type MsgRxPacket struct {
 	rxTrackNum  TrkId
@@ -1127,15 +1127,15 @@ const (
 )
 
 type MsgSubscriberAddTrack struct {
-	subid     Txid
+	subid     Subid
 	txtrackid TrkId // subscriber's track number.
 	//rxtrackid int                   // this is N: it tells where 'track' gets its input from
 	//audio     bool                  // if true for audio, else for video
-	txtrack *rtpsplice.RtpSplicer // can be nil when just changing the channel
+	txtrack *TrackSplicer // can be nil when just changing the channel
 }
 
 type MsgSubscriberSwitchTrack struct {
-	subid     Txid
+	subid     Subid
 	txtrackid TrkId
 	rxtrackid TrkId
 }
@@ -1144,90 +1144,126 @@ var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack)
 var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack)
 
+// reviewed
+// RX-trackid to list of output/tx tracks
+var txtracks map[TrkId]map[*TrackSplicer]struct{} = make(map[TrkId]map[*TrackSplicer]struct{})
+
+// subscriber to list of output/tx tracks
+var subid2Track map[Subid]map[TrkId]*TrackSplicer = make(map[Subid]map[TrkId]*TrackSplicer)
+
+// output/tx track to RX-trackid
+var curTrack map[*TrackSplicer]TrkId = make(map[*TrackSplicer]TrkId)
+
+// list of txtracks waiting for a keyframe in order to switch input/rx
+var pendingTrackChange map[TrkId][]*TrackSplicer = make(map[TrkId][]*TrackSplicer)
+
 func xloop() {
 
-	//whats the bare minimum
-	var subid2Track map[Txid]map[TrkId]*rtpsplice.RtpSplicer = make(map[Txid]map[TrkId]*rtpsplice.RtpSplicer)
-
-	var curTrack map[*rtpsplice.RtpSplicer]TrkId = make(map[*rtpsplice.RtpSplicer]TrkId)
-
-	var txtracks map[TrkId]map[*rtpsplice.RtpSplicer]struct{} = make(map[TrkId]map[*rtpsplice.RtpSplicer]struct{})
-
-	var pendingTrackChange map[TrkId][]*rtpsplice.RtpSplicer = make(map[TrkId][]*rtpsplice.RtpSplicer)
-
 	for {
-		select {
-		//media case
-		case m := <-rxMediaCh:
-			//media
-			// find any pending tracks and change them
-
-			if val, ok := pendingTrackChange[TrkId(m.rxTrackNum)]; ok {
-
-				// ignore if this packet is not a keyframe
-				if !m.isAudio {
-					if !rtpsplice.ContainSPS(m.packet.Payload) {
-						goto notkeyframe
-					}
-				}
-
-				for _, v := range val {
-					// we have a single track that is changing from
-					// one input source to another
-
-					//find the current TrackId
-					var currentTrack TrkId = curTrack[v]
-
-					// remove this track from txtracks
-					delete(txtracks[currentTrack], v)
-
-					// add this track back to txtracks
-					txtracks[TrkId(m.rxTrackNum)][v] = struct{}{}
-
-					//update the *track -> TrackId
-					curTrack[v] = TrkId(m.rxTrackNum)
-
-				}
-				delete(pendingTrackChange, TrkId(m.rxTrackNum)) // remove from pendingSwitch
-			}
-
-		notkeyframe:
-
-			//send the media
-			// to for each rtpwrite we need minimally:
-			// webrtc.TrackLocalStaticRTP or rtpsplice.RtpSplicer
-
-			//splicerList := []*rtpsplice.RtpSplicer{}
-			splicerList := txtracks[TrkId(m.rxTrackNum)]
-
-			for k, v := range splicerList {
-				_ = v
-				k.SpliceRTP(m.packet, 0, 0, 0, 0)
-			}
-
-			// steps
-			// loop through tracks which this media is for
-
-		case m := <-subAddTrackCh:
-			//new track
-
-			if m.txtrack == nil {
-				panic("fail")
-			}
-
-			subid2Track[Txid(m.subid)][m.txtrackid] = m.txtrack
-			curTrack[m.txtrack] = m.txtrackid
-			txtracks[m.txtrackid][m.txtrack] = struct{}{}
-
-		case m := <-subSwitchTrackCh:
-
-			t := subid2Track[Txid(m.subid)][m.txtrackid]
-			pendingTrackChange[m.rxtrackid] = append(pendingTrackChange[m.rxtrackid], t)
-
-		case tk := <-ticker.C:
-			fmt.Println("Tick at", tk)
-		}
+		xonce()
 	}
+}
+
+func xonce() {
+	select {
+
+	case m := <-rxMediaCh:
+
+		if val, ok := pendingTrackChange[TrkId(m.rxTrackNum)]; ok {
+
+			if !m.isAudio {
+				if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
+					goto notkeyframe
+				}
+			}
+
+			for _, v := range val {
+
+				var currentTrack TrkId = curTrack[v]
+
+				delete(txtracks[currentTrack], v)
+
+				txtracks[TrkId(m.rxTrackNum)][v] = struct{}{}
+
+				curTrack[v] = TrkId(m.rxTrackNum)
+
+			}
+			delete(pendingTrackChange, TrkId(m.rxTrackNum))
+		}
+
+	notkeyframe:
+
+		splicerList := txtracks[TrkId(m.rxTrackNum)]
+
+		for k := range splicerList {
+			var packet *rtp.Packet = m.packet
+			var ipacket interface{}
+
+			if k.splicer != nil {
+
+				ipacket = rtpPacketPool.Get()
+				packet = ipacket.(*rtp.Packet)
+				*packet = *m.packet
+				SpliceRTP(k.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
+			}
+
+			if !test {
+				err := k.track.WriteRTP(packet)
+				if err == io.ErrClosedPipe {
+
+					_ = 0
+				}
+			}
+
+			if k.splicer != nil {
+
+				*packet = rtp.Packet{}
+				rtpPacketPool.Put(ipacket)
+			}
+		}
+
+	case m := <-subAddTrackCh:
+
+		if m.txtrack == nil {
+			panic("fail")
+		}
+
+		if _, ok := subid2Track[m.subid]; !ok {
+			subid2Track[m.subid] = make(map[TrkId]*TrackSplicer)
+		}
+
+		subid2Track[m.subid][m.txtrackid] = m.txtrack
+
+		rxtracknum := m.txtrackid
+
+		if _, ok := txtracks[rxtracknum]; !ok {
+			txtracks[rxtracknum] = make(map[*TrackSplicer]struct{})
+		}
+
+		txtracks[rxtracknum][m.txtrack] = struct{}{}
+		curTrack[m.txtrack] = rxtracknum
+
+	case m := <-subSwitchTrackCh:
+
+		if trackid2splicer, ok := subid2Track[m.subid]; ok {
+			splicer := trackid2splicer[m.txtrackid]
+			pendingTrackChange[m.rxtrackid] = append(pendingTrackChange[m.rxtrackid], splicer)
+		} else {
+			elog.Printf("bad: invalid subid 0x%x", m.subid)
+			_ = 0
+
+		}
+
+	case tk := <-ticker.C:
+		fmt.Println("Tick at", tk)
+	}
+}
+
+// nolint:gochecknoglobals
+var rtpPacketPool = sync.Pool{
+	New: func() interface{} {
+		return &rtp.Packet{}
+	},
 }
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
@@ -1381,4 +1417,81 @@ func getDefRouteIntfAddrIPv4() net.IP {
 		return cc.LocalAddr().(*net.UDPAddr).IP
 	}
 	return nil
+}
+
+type RtpSplicer struct {
+	debugName        string
+	lastSSRC         uint32
+	lastSN           uint16
+	lastTS           uint32
+	lastUnixnanosNow int64
+	snOffset         uint16
+	tsOffset         uint32
+}
+
+type TrackSplicer struct {
+	track   *webrtc.TrackLocalStaticRTP
+	splicer *RtpSplicer
+}
+
+// SpliceRTP
+// this is carefully handcrafted, be careful
+//
+// we may want to investigate adding seqno deltas onto a master counter
+// as a way of making seqno most consistent in the face of lots of switching,
+// and also more robust to seqno bug/jumps on input
+//
+// This grabs mutex after doing a fast, non-mutexed check for applicability
+func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.Packet {
+
+	forceKeyFrame := false
+
+	copy := *o
+	// credit to Orlando Co of ion-sfu
+	// for helping me decide to go this route and keep it simple
+	// code is modeled on code from ion-sfu
+	if o.SSRC != s.lastSSRC || forceKeyFrame {
+		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.debugName, o.SSRC, s.lastSSRC)
+
+		td := unixnano - s.lastUnixnanosNow // nanos
+		if td < 0 {
+			td = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
+		}
+		td *= rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
+		if td == 0 {
+			td = 1
+		}
+		s.tsOffset = o.Timestamp - (s.lastTS + uint32(td))
+		s.snOffset = o.SequenceNumber - s.lastSN - 1
+
+		//log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
+		// old approach/abandoned
+		// timestamp := unixnano * rtphz / int64(time.Second)
+		// s.addTS = uint32(timestamp)
+
+		//2970 is just a number that worked very with with chrome testing
+		// is it just a fallback
+		//clockDelta := s.findMostFrequentDelta(uint32(2970))
+
+		//s.tsFrequencyDelta = s.tsFrequencyDelta[:0] // reset frequency table
+
+		//s.addTS = s.lastSentTS + clockDelta
+	}
+
+	// we don't want to change original packet, it gets
+	// passed into this routine many times for many subscribers
+
+	copy.Timestamp -= s.tsOffset
+	copy.SequenceNumber -= s.snOffset
+	//	tsdelta := int64(copy.Timestamp) - int64(s.lastSentTS) // int64 avoids rollover issues
+	// if !ssrcChanged && tsdelta > 0 {              // Track+measure uint32 timestamp deltas
+	// 	s.trackTimestampDeltas(uint32(tsdelta))
+	// }
+
+	s.lastUnixnanosNow = unixnano
+	s.lastTS = copy.Timestamp
+	s.lastSN = copy.SequenceNumber
+	s.lastSSRC = copy.SSRC
+
+	return &copy
 }
