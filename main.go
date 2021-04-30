@@ -201,7 +201,7 @@ func main() {
 
 	go idleLoopPlayer(idleScreenH264Pcapng)
 
-	go xloop()
+	go msgLoop()
 
 	var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
 	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
@@ -623,9 +623,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		}
 
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
-			subid:     Subid(txid),
-			txtrackid: Video0, //in v1, we only allow switching of Video0, SFUs don't switch
-			rxtrackid: trackNum,
+			subid: Subid(txid),
+			txid:  Video0, //in v1, we only allow switching of Video0, SFUs don't switch
+			rxid:  trackNum,
 		}
 
 		w.WriteHeader(http.StatusAccepted)
@@ -723,9 +723,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	go processRTCP(rtpSender)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		subid:     Subid(txid),
-		txtrackid: Audio0,
-		txtrack:   &TrackSplicer{track: track},
+		subid:   Subid(txid),
+		txid:    Audio0,
+		txtrack: &Track{track: track},
 	}
 
 	const numSharedVid = 3
@@ -739,9 +739,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		go processRTCP(rtpSender)
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
-			subid:     Subid(txid),
-			txtrackid: TrkId(i) + Video0,
-			txtrack:   &TrackSplicer{track: track},
+			subid:   Subid(txid),
+			txid:    Txid(i) + Video0,
+			txtrack: &Track{track: track},
 		}
 	}
 
@@ -839,7 +839,7 @@ func idleLoopPlayer(xxx []byte) {
 			// 	logPacket(logPacketIn, &v)
 			// }
 
-			rxMediaCh <- MsgRxPacket{rxTrackNum: -1, packet: &v, rxClockRate: 90000}
+			rxMediaCh <- MsgRxPacket{rxid: -1, packet: &v, rxClockRate: 90000}
 
 		}
 		ts += delta2
@@ -979,7 +979,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		log.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, Audio0, true, track.Codec().ClockRate)
+		inboundTrackReader(track, Rxid(Audio0), track.Codec().ClockRate)
 		//here on error
 		log.Printf("audio reader %p exited", track)
 		return
@@ -1051,10 +1051,10 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 	}()
 
-	tknum, err := parseTrackname(trackname)
+	rxid, err := parseTrackname(trackname)
 	checkPanic(err)
 
-	if tknum >= Audio0 {
+	if rxid >= Rxid(Audio0) {
 		panic("bad trackname got audio, need video")
 	}
 
@@ -1065,20 +1065,20 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, tknum, false, track.Codec().ClockRate)
+	inboundTrackReader(track, rxid, track.Codec().ClockRate)
 	//here on error
 	log.Printf("video reader %p exited", track)
 
 }
 
-func parseTrackname(trackname string) (TrkId, error) {
+func parseTrackname(trackname string) (Rxid, error) {
 	if strings.HasPrefix(trackname, "video") {
 		i, err := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
 		if err != nil {
 			return -1, fmt.Errorf("bad number after video")
 		}
 
-		return TrkId(i) + Video0, nil
+		return Rxid(i) + Rxid(Video0), nil
 	}
 
 	if strings.HasPrefix(trackname, "audio") {
@@ -1086,13 +1086,13 @@ func parseTrackname(trackname string) (TrkId, error) {
 		if err != nil {
 			return -1, fmt.Errorf("bad number after audio")
 		}
-		return TrkId(i) + Audio0, nil
+		return Rxid(i) + Rxid(Audio0), nil
 	}
 
 	return -1, fmt.Errorf("need video<N> or audio<N> for track num")
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum TrkId, isAudio bool, clockrate uint32) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid Rxid, clockrate uint32) {
 
 	for {
 		p, _, err := rxTrack.ReadRTP()
@@ -1101,7 +1101,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxTrackNum TrkId, isAudio b
 		}
 		checkPanic(err)
 
-		rxMediaCh <- MsgRxPacket{rxTrackNum: rxTrackNum, isAudio: isAudio, packet: p, rxClockRate: clockrate}
+		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p, rxClockRate: clockrate}
 	}
 }
 
@@ -1110,90 +1110,107 @@ var ticker = time.NewTicker(100 * time.Millisecond)
 type Subid uint64
 
 type MsgRxPacket struct {
-	rxTrackNum  TrkId
-	isAudio     bool
+	rxid        Rxid
 	rxClockRate uint32
 	packet      *rtp.Packet
 }
 
-type TrkId int // 0 = video0, 1=video1, 10000=audio0 ...
+type Txid int // 0 = video0, 1=video1, 10000=audio0 ...
+type Rxid int // 0 = video0, 1=video1, 10000=audio0 ...
 
 // We don't define constants for Video2...Video9999 nor Audio 2...
 const (
-	Video0 TrkId = 0
+	Video0 Txid = 0
 	//Video1 TrkId = 1
-	Audio0 TrkId = 10000
+	Audio0 Txid = 10000
 	//Audio1 TrkId = 10001
 )
 
 type MsgSubscriberAddTrack struct {
-	subid     Subid
-	txtrackid TrkId // subscriber's track number.
-	//rxtrackid int                   // this is N: it tells where 'track' gets its input from
-	//audio     bool                  // if true for audio, else for video
-	txtrack *TrackSplicer // can be nil when just changing the channel
+	subid   Subid  // 64bit subscriber key
+	txid    Txid   // track number from subscriber's perspective
+	rxid    Rxid   // where txid will get it's input from
+	txtrack *Track // can be nil when just changing the channel
 }
 
 type MsgSubscriberSwitchTrack struct {
-	subid     Subid
-	txtrackid TrkId
-	rxtrackid TrkId
+	subid Subid // 64bit subscriber key
+	txid  Txid  // track number from subscriber's perspective
+	rxid  Rxid  // where txid will get it's input from
 }
 
-var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket)
-var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack)
-var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack)
+var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
+var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
+var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack, 10)
 
 // reviewed
-// RX-trackid to list of output/tx tracks
-var txtracks map[TrkId]map[*TrackSplicer]struct{} = make(map[TrkId]map[*TrackSplicer]struct{})
 
-// subscriber to list of output/tx tracks
-var subid2Track map[Subid]map[TrkId]*TrackSplicer = make(map[Subid]map[TrkId]*TrackSplicer)
+// subid to txid to track
+var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
-// output/tx track to RX-trackid
-var curTrack map[*TrackSplicer]TrkId = make(map[*TrackSplicer]TrkId)
+// rxid to list of txtrack
+var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
+
+// txtrack to rxid
+var track2rxid map[*Track]Rxid = make(map[*Track]Rxid)
 
 // list of txtracks waiting for a keyframe in order to switch input/rx
-var pendingTrackChange map[TrkId][]*TrackSplicer = make(map[TrkId][]*TrackSplicer)
+var pendingSwitch map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
-func xloop() {
-
+func msgLoop() {
 	for {
-		xonce()
+		msgOnce()
 	}
 }
 
-func xonce() {
+func msgOnce() {
+
 	select {
 
 	case m := <-rxMediaCh:
 
-		if val, ok := pendingTrackChange[TrkId(m.rxTrackNum)]; ok {
+		if trackList, ok := pendingSwitch[m.rxid]; ok {
 
-			if !m.isAudio {
+			isaudio := m.rxid > Rxid(Audio0)
+			if !isaudio {
 				if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
-					goto notkeyframe
+					goto not_keyframe
 				}
 			}
 
-			for _, v := range val {
+			for tr := range trackList {
 
-				var currentTrack TrkId = curTrack[v]
+				// does this track still want to switch to m.rxid ???
+				// a trigger happy user could queue many switches, but
+				// this makes sure only the last fires
+				if tr.soughtRxid != m.rxid {
+					//ignore
+					continue
+				}
 
-				delete(txtracks[currentTrack], v)
+				var currxid Rxid = track2rxid[tr]
 
-				txtracks[TrkId(m.rxTrackNum)][v] = struct{}{}
+				delete(rxid2track[currxid], tr)
 
-				curTrack[v] = TrkId(m.rxTrackNum)
+				if _, ok := rxid2track[m.rxid]; !ok {
+					rxid2track[m.rxid] = make(map[*Track]struct{})
+				}
+				rxid2track[m.rxid][tr] = struct{}{}
+
+				track2rxid[tr] = m.rxid //overwrite old value
 
 			}
-			delete(pendingTrackChange, TrkId(m.rxTrackNum))
+
+			//remove the set of tracks pending on m.rxid
+			for k := range pendingSwitch[m.rxid] { // optimized: https://golang.org/doc/go1.11#performance-compiler
+				delete(pendingSwitch[m.rxid], k)
+			}
+
 		}
 
-	notkeyframe:
+	not_keyframe:
 
-		splicerList := txtracks[TrkId(m.rxTrackNum)]
+		splicerList := rxid2track[m.rxid]
 
 		for k := range splicerList {
 			var packet *rtp.Packet = m.packet
@@ -1228,31 +1245,46 @@ func xonce() {
 			panic("fail")
 		}
 
-		if _, ok := subid2Track[m.subid]; !ok {
-			subid2Track[m.subid] = make(map[TrkId]*TrackSplicer)
+		if _, ok := sub2txid2track[m.subid]; !ok {
+			sub2txid2track[m.subid] = make(map[Txid]*Track)
 		}
 
-		subid2Track[m.subid][m.txtrackid] = m.txtrack
+		sub2txid2track[m.subid][m.txid] = m.txtrack
 
-		rxtracknum := m.txtrackid
-
-		if _, ok := txtracks[rxtracknum]; !ok {
-			txtracks[rxtracknum] = make(map[*TrackSplicer]struct{})
+		if _, ok := rxid2track[m.rxid]; !ok {
+			rxid2track[m.rxid] = make(map[*Track]struct{})
 		}
 
-		txtracks[rxtracknum][m.txtrack] = struct{}{}
-		curTrack[m.txtrack] = rxtracknum
+		rxid2track[m.rxid][m.txtrack] = struct{}{}
+		track2rxid[m.txtrack] = m.rxid
 
 	case m := <-subSwitchTrackCh:
 
-		if trackid2splicer, ok := subid2Track[m.subid]; ok {
-			splicer := trackid2splicer[m.txtrackid]
-			pendingTrackChange[m.rxtrackid] = append(pendingTrackChange[m.rxtrackid], splicer)
+		// state checklist, do not remove
+		_ = sub2txid2track // no change!
+		_ = rxid2track     // no change! this gets updated on new media
+		_ = track2rxid     // no change! this gets updated on new media
+		_ = pendingSwitch  // this gets new entry for switch
+
+		// pendingTrackChange
+		txid2track, ok := sub2txid2track[m.subid]
+		if ok {
+			track := txid2track[m.txid]
+			track.soughtRxid = m.rxid
+
+			if _, ok := pendingSwitch[m.rxid]; !ok {
+				pendingSwitch[m.rxid] = make(map[*Track]struct{})
+			}
+
+			pendingSwitch[m.rxid][track] = struct{}{}
+
 		} else {
 			elog.Printf("bad: invalid subid 0x%x", m.subid)
-			_ = 0
-
 		}
+
+		// txtrack/nochange
+		// subid2Track/nochange
+		// currentRxid/nochange
 
 	case tk := <-ticker.C:
 		fmt.Println("Tick at", tk)
@@ -1429,9 +1461,10 @@ type RtpSplicer struct {
 	tsOffset         uint32
 }
 
-type TrackSplicer struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer *RtpSplicer
+type Track struct {
+	track      *webrtc.TrackLocalStaticRTP
+	splicer    *RtpSplicer
+	soughtRxid Rxid
 }
 
 // SpliceRTP
