@@ -126,11 +126,10 @@
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
 
-        const track = stream.getVideoTracks()[0];
         //track.applyConstraints({ frameRate: { min: 30, max: 30 } });
         let simulcast = true
         if (simulcast) {
-          pc.addTransceiver(track, {
+          pc.addTransceiver(stream.getVideoTracks()[0], {
             //cam sendrecv will not fix rids Ontrack bug
             direction: 'sendonly',
             streams: [stream],
