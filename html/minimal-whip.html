@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+</head>
+
+<body>
+    <script>
+        //@ts-check
+        async function go() {
+            let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+            //let gum = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+            let gum = await navigator.mediaDevices.getDisplayMedia()
+            pc.addTransceiver(gum.getVideoTracks()[0], { 'direction': 'sendonly' })
+            pc.addTransceiver(gum.getAudioTracks()[0], { 'direction': 'sendonly' })
+            let ofr = await pc.createOffer()
+            await pc.setLocalDescription(ofr)
+            let opt = { method: 'POST', headers: { 'Content-Type': 'application/sdp', }, body: ofr.sdp }
+            let rsp = await fetch(location.origin + '/pub', opt)
+            if (rsp.status != 202) { throw 'bad http code=' + rsp.status }
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: await rsp.text() }))
+        }
+        go()
+    </script>
+</body>
+
+</html>
