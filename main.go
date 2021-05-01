@@ -1146,12 +1146,15 @@ var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwit
 // reviewed
 
 // subid to txid to track
+// used mainly to handle control messages from http handlers
 var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
 // rxid to list of txtrack
+// mainly for distributing received packets
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
 // txtrack to rxid
+// inverse of rxid2track, used to find entry in rxid2track from a track
 var track2rxid map[*Track]Rxid = make(map[*Track]Rxid)
 
 // list of txtracks waiting for a keyframe in order to switch input/rx
