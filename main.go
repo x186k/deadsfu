@@ -728,9 +728,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		txtrack: &Track{track: track},
 	}
 
-	const numSharedVid = 3
+	const videoTrackCount = 3
 
-	for i := 0; i < numSharedVid; i++ {
+	for i := 0; i < videoTrackCount; i++ {
 		name := fmt.Sprintf("video%d", i)
 		track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, name, mediaStreamId)
 		checkPanic(err)
