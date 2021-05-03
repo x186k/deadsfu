@@ -1162,6 +1162,7 @@ var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
 // rxid to list of txtrack
 // mainly for distributing received packets
+// XX maybe replace map[Rxid] with [], if we compress Rxid and kill Audio0
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
 // txtrack to rxid
@@ -1169,7 +1170,11 @@ var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 var track2rxid map[*Track]Rxid = make(map[*Track]Rxid)
 
 // list of txtracks waiting for a keyframe in order to switch input/rx
+// while this shares the same type as rxid2track, they cannot be joined
 var pendingSwitch map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
+
+// XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
+// if we compact down the rx track numbers (no audio=10000)
 
 func msgLoop() {
 	for {
