@@ -723,9 +723,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	go processRTCP(rtpSender)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		subid:   Subid(txid),
-		txid:    Audio0,
-		txtrack: &Track{track: track},
+		subid: Subid(txid),
+		txid:  Audio0,
+		txtrack: &Track{
+			track:       track,
+			splicer:     &RtpSplicer{},
+			rxid:        Rxid(Audio0),
+			pendingRxid: 0,
+		},
 	}
 
 	const videoTrackCount = 3
@@ -1129,7 +1134,6 @@ const (
 type MsgSubscriberAddTrack struct {
 	subid   Subid  // 64bit subscriber key
 	txid    Txid   // track number from subscriber's perspective
-	rxid    Rxid   // where txid will get it's input from
 	txtrack *Track // can be nil when just changing the channel
 }
 
@@ -1165,10 +1169,6 @@ var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 // XX maybe replace map[Rxid] with [], if we compress Rxid and kill Audio0
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
-// txtrack to rxid
-// inverse of rxid2track, used to find entry in rxid2track from a track
-var track2rxid map[*Track]Rxid = make(map[*Track]Rxid)
-
 // list of txtracks waiting for a keyframe in order to switch input/rx
 // while this shares the same type as rxid2track, they cannot be joined
 var pendingSwitch map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
@@ -1202,21 +1202,23 @@ func msgOnce() {
 				// does this track still want to switch to m.rxid ???
 				// a trigger happy user could queue many switches, but
 				// this makes sure only the last fires
-				if tr.soughtRxid != m.rxid {
+				if tr.pendingRxid != m.rxid {
 					//ignore
 					continue
 				}
 
-				var currxid Rxid = track2rxid[tr]
+				//remove the current entry
+				delete(rxid2track[tr.rxid], tr)
 
-				delete(rxid2track[currxid], tr)
-
+				//make a new entry
 				if _, ok := rxid2track[m.rxid]; !ok {
 					rxid2track[m.rxid] = make(map[*Track]struct{})
 				}
+				//make a new entryß
 				rxid2track[m.rxid][tr] = struct{}{}
 
-				track2rxid[tr] = m.rxid //overwrite old value
+				//update the track
+				tr.rxid = m.rxid //overwrite old value
 
 			}
 
@@ -1246,6 +1248,9 @@ func msgOnce() {
 			if !test {
 				err := k.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
+					//XXXX
+					//XXXXX
+					
 
 					_ = 0
 				}
@@ -1268,28 +1273,27 @@ func msgOnce() {
 			sub2txid2track[m.subid] = make(map[Txid]*Track)
 		}
 
-		sub2txid2track[m.subid][m.txid] = m.txtrack
+		tr := m.txtrack
+		sub2txid2track[m.subid][m.txid] = tr
 
-		if _, ok := rxid2track[m.rxid]; !ok {
-			rxid2track[m.rxid] = make(map[*Track]struct{})
+		if _, ok := rxid2track[tr.rxid]; !ok {
+			rxid2track[tr.rxid] = make(map[*Track]struct{})
 		}
 
-		rxid2track[m.rxid][m.txtrack] = struct{}{}
-		track2rxid[m.txtrack] = m.rxid
+		rxid2track[tr.rxid][m.txtrack] = struct{}{}
 
 	case m := <-subSwitchTrackCh:
 
 		// state checklist, do not remove
 		_ = sub2txid2track // no change!
 		_ = rxid2track     // no change! this gets updated on new media
-		_ = track2rxid     // no change! this gets updated on new media
 		_ = pendingSwitch  // this gets new entry for switch
 
 		// pendingTrackChange
 		txid2track, ok := sub2txid2track[m.subid]
 		if ok {
 			track := txid2track[m.txid]
-			track.soughtRxid = m.rxid
+			track.pendingRxid = m.rxid
 
 			if _, ok := pendingSwitch[m.rxid]; !ok {
 				pendingSwitch[m.rxid] = make(map[*Track]struct{})
@@ -1481,9 +1485,10 @@ type RtpSplicer struct {
 }
 
 type Track struct {
-	track      *webrtc.TrackLocalStaticRTP
-	splicer    *RtpSplicer
-	soughtRxid Rxid
+	track       *webrtc.TrackLocalStaticRTP
+	splicer     *RtpSplicer
+	rxid        Rxid
+	pendingRxid Rxid
 }
 
 // SpliceRTP

@@ -24,8 +24,10 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	var nextRxid Rxid = 7
 
 	tr := &Track{
-		track:   &webrtc.TrackLocalStaticRTP{},
-		splicer: &RtpSplicer{},
+		track:       &webrtc.TrackLocalStaticRTP{},
+		splicer:     &RtpSplicer{},
+		rxid:        startRxid,
+		pendingRxid: 0,
 	}
 
 	assert.Equal(t, 0, len(rxid2track[0]), "must have empty rx0")
@@ -33,7 +35,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		subid:   subid,
 		txid:    txid1,
-		rxid:    startRxid,
 		txtrack: tr,
 	}
 	msgOnce()
@@ -42,7 +43,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		//state checklist
 		_ = sub2txid2track
 		_ = rxid2track
-		_ = track2rxid
 		_ = pendingSwitch
 		assert.Equal(t, 1, len(sub2txid2track))
 		assert.Equal(t, 1, len(sub2txid2track[subid]))
@@ -50,8 +50,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		assert.Equal(t, 1, len(rxid2track))
 		assert.Equal(t, 1, len(rxid2track[startRxid]))
 		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, track2rxid[tr])
-		assert.Equal(t, 1, len(track2rxid))
+		assert.Equal(t, startRxid, tr.rxid)
 		assert.Equal(t, 0, len(pendingSwitch))
 	}
 
@@ -67,7 +66,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	{
 		_ = sub2txid2track
 		_ = rxid2track
-		_ = track2rxid
 		_ = pendingSwitch
 		assert.Equal(t, 1, len(sub2txid2track))
 		assert.Equal(t, 1, len(sub2txid2track[subid]))
@@ -75,8 +73,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		assert.Equal(t, 1, len(rxid2track))
 		assert.Equal(t, 1, len(rxid2track[startRxid]))
 		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, track2rxid[tr])
-		assert.Equal(t, 1, len(track2rxid))
+		assert.Equal(t, startRxid, tr.rxid)
 		assert.Equal(t, 1, len(pendingSwitch))
 		assert.Equal(t, struct{}{}, pendingSwitch[nextRxid][tr])
 	}
@@ -96,7 +93,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		//checklist
 		_ = sub2txid2track
 		_ = rxid2track
-		_ = track2rxid
 		_ = pendingSwitch
 		assert.Equal(t, 1, len(sub2txid2track))
 		assert.Equal(t, 1, len(sub2txid2track[subid]))
@@ -104,8 +100,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		assert.Equal(t, 1, len(rxid2track))
 		assert.Equal(t, 1, len(rxid2track[startRxid]))
 		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, track2rxid[tr])
-		assert.Equal(t, 1, len(track2rxid))
+		assert.Equal(t, startRxid, tr.rxid)
 		assert.Equal(t, 1, len(pendingSwitch))
 		assert.Equal(t, struct{}{}, pendingSwitch[nextRxid][tr])
 	}
@@ -125,7 +120,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		//checklist
 		_ = sub2txid2track
 		_ = rxid2track
-		_ = track2rxid
 		_ = pendingSwitch
 		assert.Equal(t, 1, len(sub2txid2track))
 		assert.Equal(t, 1, len(sub2txid2track[subid]))
@@ -134,8 +128,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		assert.Equal(t, 1, len(rxid2track))
 		assert.Equal(t, 1, len(rxid2track[startRxid]))
 		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, track2rxid[tr])
-		assert.Equal(t, 1, len(track2rxid))
+		assert.Equal(t, startRxid, tr.rxid)
 		assert.Equal(t, 1, len(pendingSwitch))
 		assert.Equal(t, struct{}{}, pendingSwitch[nextRxid][tr])
 	}
@@ -159,7 +152,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		//checklist
 		_ = sub2txid2track //no change
 		_ = rxid2track     // old removed. and new entry
-		_ = track2rxid     //entry updated
 		_ = pendingSwitch  //now empty
 		assert.Equal(t, 1, len(sub2txid2track))
 		assert.Equal(t, 1, len(sub2txid2track[subid]))
@@ -169,8 +161,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		assert.Equal(t, 1, len(rxid2track[nextRxid]))
 		assert.Equal(t, struct{}{}, rxid2track[nextRxid][tr])
 
-		assert.Equal(t, nextRxid, track2rxid[tr])
-		assert.Equal(t, 1, len(track2rxid))
+		assert.Equal(t, nextRxid, tr.rxid)
 
 		for _, v := range pendingSwitch {
 			assert.Equal(t, 0, len(v))
@@ -195,12 +186,6 @@ func resetState(t *testing.T) {
 		}
 	}
 	{
-		m := track2rxid
-		for k := range m {
-			delete(m, k)
-		}
-	}
-	{
 		m := pendingSwitch
 		for k := range m {
 			delete(m, k)
@@ -210,11 +195,9 @@ func resetState(t *testing.T) {
 	// development helper checklist, do not remove
 	_ = sub2txid2track
 	_ = rxid2track
-	_ = track2rxid
 	_ = pendingSwitch
 	assert.Equal(t, 0, len(sub2txid2track))
 	assert.Equal(t, 0, len(rxid2track))
-	assert.Equal(t, 0, len(track2rxid))
 	assert.Equal(t, 0, len(pendingSwitch))
 }
 
