@@ -1143,7 +1143,18 @@ var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack, 10)
 
+// type Subscriber struct {
+// 	txTracks []*Track
+// }
+// var zz map[Subid]Subscriber = make(map[Subid]Subscriber)
+
 // reviewed
+
+/*
+It has seemed at times that using arrays instead of maps
+would be simpler (and faster).
+The nice thing about maps, is the individual elements can be deleted.
+*/
 
 // subid to txid to track
 // used mainly to handle control messages from http handlers
