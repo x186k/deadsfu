@@ -713,8 +713,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	//should be 1 from browser sub, almost always
 	//should be 3 from x186k sfu, typically
-	numvideo := numVideoMediaDesc(sdsdp)
-	log.Println("numvideo", numvideo)
+	videoTrackCount := numVideoMediaDesc(sdsdp)
+	log.Println("videoTrackCount", videoTrackCount)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkPanic(err)
@@ -723,17 +723,15 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	go processRTCP(rtpSender)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		subid: Subid(txid),
-		txid:  Audio0,
+		txid: Audio0,
 		txtrack: &Track{
+			subid:       Subid(txid),
 			track:       track,
 			splicer:     &RtpSplicer{},
 			rxid:        Rxid(Audio0),
 			pendingRxid: 0,
 		},
 	}
-
-	const videoTrackCount = 3
 
 	for i := 0; i < videoTrackCount; i++ {
 		name := fmt.Sprintf("video%d", i)
@@ -744,9 +742,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		go processRTCP(rtpSender)
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
-			subid:   Subid(txid),
-			txid:    Txid(i) + Video0,
-			txtrack: &Track{track: track},
+			txid: Txid(i) + Video0,
+			txtrack: &Track{
+				subid:       Subid(txid),
+				track:       track,
+				splicer:     &RtpSplicer{},
+				rxid:        0,
+				pendingRxid: 0,
+			},
 		}
 	}
 
@@ -1132,7 +1135,6 @@ const (
 )
 
 type MsgSubscriberAddTrack struct {
-	subid   Subid  // 64bit subscriber key
 	txid    Txid   // track number from subscriber's perspective
 	txtrack *Track // can be nil when just changing the channel
 }
@@ -1250,7 +1252,6 @@ func msgOnce() {
 				if err == io.ErrClosedPipe {
 					//XXXX
 					//XXXXX
-					
 
 					_ = 0
 				}
@@ -1269,12 +1270,13 @@ func msgOnce() {
 			panic("fail")
 		}
 
-		if _, ok := sub2txid2track[m.subid]; !ok {
-			sub2txid2track[m.subid] = make(map[Txid]*Track)
+		tr := m.txtrack
+
+		if _, ok := sub2txid2track[tr.subid]; !ok {
+			sub2txid2track[tr.subid] = make(map[Txid]*Track)
 		}
 
-		tr := m.txtrack
-		sub2txid2track[m.subid][m.txid] = tr
+		sub2txid2track[tr.subid][m.txid] = tr
 
 		if _, ok := rxid2track[tr.rxid]; !ok {
 			rxid2track[tr.rxid] = make(map[*Track]struct{})
@@ -1485,6 +1487,7 @@ type RtpSplicer struct {
 }
 
 type Track struct {
+	subid       Subid // 64bit subscriber key
 	track       *webrtc.TrackLocalStaticRTP
 	splicer     *RtpSplicer
 	rxid        Rxid

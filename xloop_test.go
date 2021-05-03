@@ -13,7 +13,6 @@ import (
 
 var subid = Subid(100)
 
-
 func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	// state checklist, do not remove
 	resetState(t)
@@ -24,6 +23,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	var nextRxid Rxid = 7
 
 	tr := &Track{
+		subid:       subid,
 		track:       &webrtc.TrackLocalStaticRTP{},
 		splicer:     &RtpSplicer{},
 		rxid:        startRxid,
@@ -33,7 +33,6 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	assert.Equal(t, 0, len(rxid2track[0]), "must have empty rx0")
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		subid:   subid,
 		txid:    txid1,
 		txtrack: tr,
 	}
@@ -201,8 +200,6 @@ func resetState(t *testing.T) {
 	assert.Equal(t, 0, len(pendingSwitch))
 }
 
-
-
 func mustPanic(t *testing.T) {
 	if r := recover(); r == nil {
 		t.Errorf("The code did not panic")
@@ -218,7 +215,6 @@ func TestMsgBadAdd(t *testing.T) {
 	time.Sleep(time.Millisecond * 20)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		subid:   subid,
 		txid:    0,
 		txtrack: nil,
 	}
