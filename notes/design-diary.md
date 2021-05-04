@@ -99,6 +99,19 @@ must have multiple sendGR per RX
 - no mutexes? well, just lightly contended mutexes. lol
 
 
+## 5/1/21 idle handling
+
+- idle detection (when is an RX track missing/gone/idle) needs to be periodically done
+- it could be done on the RX media event, with support from a periodic timer 
+- seems cleaner to solely use a periodic timer to do the switching
+- but the marking of last RX time needs to happen on RX media, of course.
+- So on new media we update the time.
+
+## 5/3/21 fixing Track type cleanup
+
+## 5/3/21 The subscriber Browser or SFU controls the number of video+audio transcievers
+
+
 
 
 
