@@ -1185,7 +1185,7 @@ var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
 // rxid to list of txtrack
 // mainly for distributing received packets
-// XX maybe replace map[Rxid] with [], if we compress Rxid and kill Audio0
+// we could use array for first component if we compressed Rxid space
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
 // list of txtracks waiting for a keyframe in order to switch input/rx
