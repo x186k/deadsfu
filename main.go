@@ -213,7 +213,7 @@ func main() {
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
 
-	initRxid2track(*numVideoTracks, *numAudioTracks)
+	initMediaHandlerState(*numVideoTracks, *numAudioTracks)
 
 	if *httpPort == 0 && *httpsPort == 0 {
 
@@ -369,6 +369,21 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
+}
+
+func initMediaHandlerState(numvideo, numaudio int) {
+	log.Printf("Creating %v audio tracks", numaudio)
+	for i := 0; i < numaudio; i++ {
+		ii := Rxid(i) + Rxid(Audio0)
+		rxid2track[ii] = make(map[*Track]struct{})
+		pendingSwitch[ii] = make(map[*Track]struct{})
+	}
+	log.Printf("Creating %v video tracks", numvideo)
+	for i := 0; i < numvideo; i++ {
+		ii := Rxid(i) + Rxid(Video0)
+		rxid2track[ii] = make(map[*Track]struct{})
+		pendingSwitch[ii] = make(map[*Track]struct{})
+	}
 }
 
 func printURLS(proto string, host string, port string) {
