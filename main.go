@@ -131,6 +131,9 @@ func slashHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+var numVideoTracks = flag.Int("num-video", 6, "number of video tracks")
+var numAudioTracks = flag.Int("num-audio", 1, "number of audio tracks")
+
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("z-debug", false, "enable debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
@@ -209,6 +212,8 @@ func main() {
 
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
+
+	initRxid2track(*numVideoTracks, *numAudioTracks)
 
 	if *httpPort == 0 && *httpsPort == 0 {
 
@@ -1186,6 +1191,8 @@ var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 // rxid to list of txtrack
 // mainly for distributing received packets
 // we could use array for first component if we compressed Rxid space
+var _ = *numVideoTracks + *numAudioTracks // determines the max value for first component of type
+// someday?: var [Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
 // list of txtracks waiting for a keyframe in order to switch input/rx
