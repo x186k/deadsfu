@@ -745,11 +745,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txid: Audio0,
 		txtrack: &Track{
-			subid:       Subid(txid),
-			track:       track,
-			splicer:     &RtpSplicer{},
-			rxid:        Rxid(Audio0),
-			pendingRxid: 0,
+			subid:           Subid(txid),
+			track:           track,
+			splicer:         &RtpSplicer{},
+			rxid:            Rxid(Audio0),
+			rxidLastPending: 0,
 		},
 	}
 
@@ -764,11 +764,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		subAddTrackCh <- MsgSubscriberAddTrack{
 			txid: Txid(i) + Video0,
 			txtrack: &Track{
-				subid:       Subid(txid),
-				track:       track,
-				splicer:     &RtpSplicer{},
-				rxid:        0,
-				pendingRxid: 0,
+				subid:           Subid(txid),
+				track:           track,
+				splicer:         &RtpSplicer{},
+				rxid:            0,
+				rxidLastPending: 0,
 			},
 		}
 	}
@@ -1186,11 +1186,11 @@ type RtpSplicer struct {
 }
 
 type Track struct {
-	subid       Subid // 64bit subscriber key
-	track       *webrtc.TrackLocalStaticRTP
-	splicer     *RtpSplicer
-	rxid        Rxid
-	pendingRxid Rxid
+	subid           Subid // 64bit subscriber key
+	track           *webrtc.TrackLocalStaticRTP
+	splicer         *RtpSplicer
+	rxid            Rxid
+	rxidLastPending Rxid
 }
 
 /*
