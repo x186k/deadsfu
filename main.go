@@ -1235,21 +1235,23 @@ func msgOnce() {
 
 		splicerList := rxid2track[m.rxid]
 
-		for k := range splicerList {
+		for tr := range splicerList {
 			var packet *rtp.Packet = m.packet
 			var ipacket interface{}
 
-			if k.splicer != nil {
+			if tr.splicer != nil {
 
 				ipacket = rtpPacketPool.Get()
 				packet = ipacket.(*rtp.Packet)
 				*packet = *m.packet
-				SpliceRTP(k.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
+				SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
 			}
 
 			if !test {
-				err := k.track.WriteRTP(packet)
+				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
+					//oh fuck! we have to delete all refs to *Track
+					//delete(sub2txid2track[Subid(tr.rxid)], tr)
 					//XXXX
 					//XXXXX
 
@@ -1257,8 +1259,7 @@ func msgOnce() {
 				}
 			}
 
-			if k.splicer != nil {
-
+			if tr.splicer != nil {
 				*packet = rtp.Packet{}
 				rtpPacketPool.Put(ipacket)
 			}
