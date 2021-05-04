@@ -1219,7 +1219,7 @@ func msgOnce() {
 			isaudio := m.rxid > Rxid(Audio0)
 			if !isaudio {
 				if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
-					goto not_keyframe
+					goto finished_switches
 				}
 			}
 
@@ -1255,7 +1255,7 @@ func msgOnce() {
 
 		}
 
-	not_keyframe:
+	finished_switches:
 
 		splicerList := rxid2track[m.rxid]
 
