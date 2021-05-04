@@ -1225,22 +1225,17 @@ func msgOnce() {
 
 			for tr := range trackList {
 
-				// does this track still want to switch to m.rxid ???
-				// a trigger happy user could queue many switches, but
-				// this makes sure only the last fires
-				if tr.pendingRxid != m.rxid {
-					//ignore
-					continue
-				}
-
 				//remove the current entry
 				delete(rxid2track[tr.rxid], tr)
 
-				//make a new entry
+				// rxid2track[] entries get created after flag.parse()
+
 				if _, ok := rxid2track[m.rxid]; !ok {
-					rxid2track[m.rxid] = make(map[*Track]struct{})
+					//no	rxid2track[m.rxid] = make(map[*Track]struct{})
+					panic("bad index for rxid2track, should not be in pending list")
 				}
-				//make a new entryß
+
+				// save the track
 				rxid2track[m.rxid][tr] = struct{}{}
 
 				//update the track
