@@ -1155,6 +1155,23 @@ var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwit
 // var zz map[Subid]Subscriber = make(map[Subid]Subscriber)
 
 // reviewed
+type RtpSplicer struct {
+	debugName        string
+	lastSSRC         uint32
+	lastSN           uint16
+	lastTS           uint32
+	lastUnixnanosNow int64
+	snOffset         uint16
+	tsOffset         uint32
+}
+
+type Track struct {
+	subid       Subid // 64bit subscriber key
+	track       *webrtc.TrackLocalStaticRTP
+	splicer     *RtpSplicer
+	rxid        Rxid
+	pendingRxid Rxid
+}
 
 /*
 It has seemed at times that using arrays instead of maps
@@ -1475,24 +1492,6 @@ func getDefRouteIntfAddrIPv4() net.IP {
 		return cc.LocalAddr().(*net.UDPAddr).IP
 	}
 	return nil
-}
-
-type RtpSplicer struct {
-	debugName        string
-	lastSSRC         uint32
-	lastSN           uint16
-	lastTS           uint32
-	lastUnixnanosNow int64
-	snOffset         uint16
-	tsOffset         uint32
-}
-
-type Track struct {
-	subid       Subid // 64bit subscriber key
-	track       *webrtc.TrackLocalStaticRTP
-	splicer     *RtpSplicer
-	rxid        Rxid
-	pendingRxid Rxid
 }
 
 // SpliceRTP
