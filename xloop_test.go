@@ -11,160 +11,224 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var subid = Subid(100)
+const subid = Subid(100)
+
+// func TestMain(m *testing.M) {
+// 	//flag.Parse() // call flag.Parse() here if TestMain uses flags
+
+// 	os.Exit(m.Run())
+// }
 
 func TestMsgAddingSwitchingAndRTP(t *testing.T) {
+	var ok bool
+
 	// state checklist, do not remove
 	resetState(t)
+	initMediaHandlerState(3,1)
 	ticker.Stop()
 
-	var txid1 Txid = 2
-	var startRxid Rxid = 0
-	var nextRxid Rxid = 7
+	var t0, t1, t2 *Track
 
-	tr := &Track{
-		subid:       subid,
-		track:       &webrtc.TrackLocalStaticRTP{},
-		splicer:     &RtpSplicer{},
-		rxid:        startRxid,
-		pendingRxid: 0,
+	t0 = &Track{
+		subid:           subid,
+		track:           &webrtc.TrackLocalStaticRTP{},
+		splicer:         &RtpSplicer{},
+		rxid:            0,
+		rxidLastPending: 0,
 	}
-
-	assert.Equal(t, 0, len(rxid2track[0]), "must have empty rx0")
-
-	subAddTrackCh <- MsgSubscriberAddTrack{
-		txid:    txid1,
-		txtrack: tr,
-	}
-	msgOnce()
 
 	{
+		x := *t0
+		x.rxid = 1
+		t1 = &x
+		y := *t0
+		y.rxid = 2
+		t2 = &y
+	}
+
+	assert.NotEqual(t, t1, t0)
+	assert.NotEqual(t, t2, t0)
+	assert.NotEqual(t, t1, t2)
+
+	{
+
+		subAddTrackCh <- MsgSubscriberAddTrack{txid: 0, txtrack: t0}
+		msgOnce()
+		subAddTrackCh <- MsgSubscriberAddTrack{txid: 1, txtrack: t1}
+		msgOnce()
+		subAddTrackCh <- MsgSubscriberAddTrack{txid: 2, txtrack: t2}
+		msgOnce()
+
 		//state checklist
-		_ = sub2txid2track
-		_ = rxid2track
-		_ = pendingSwitch
-		assert.Equal(t, 1, len(sub2txid2track))
-		assert.Equal(t, 1, len(sub2txid2track[subid]))
-		assert.Equal(t, tr, sub2txid2track[subid][txid1])
-		assert.Equal(t, 1, len(rxid2track))
-		assert.Equal(t, 1, len(rxid2track[startRxid]))
-		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, tr.rxid)
-		assert.Equal(t, 0, len(pendingSwitch))
+		_ = sub2txid2track //affected
+		_ = rxid2track     //affected
+		_ = pendingSwitch  //no affect
+		assert.Equal(t, t0, sub2txid2track[subid][0])
+		assert.Equal(t, t1, sub2txid2track[subid][1])
+		assert.Equal(t, t2, sub2txid2track[subid][2])
+
+		//make sure setup is good
+		_, ok = rxid2track[0][t0]
+		assert.Equal(t, true, ok)
+		_, ok = rxid2track[1][t1]
+		assert.Equal(t, true, ok)
+		_, ok = rxid2track[2][t2]
+		assert.Equal(t, true, ok)
+
 	}
 
-	subSwitchTrackCh <- MsgSubscriberSwitchTrack{
-		subid: subid,
-		txid:  txid1,
-		rxid:  nextRxid,
-	}
-	msgOnce()
-
-	// switch sent:
-	// state checklist
+	// SWITCH to rxid/1
 	{
-		_ = sub2txid2track
-		_ = rxid2track
-		_ = pendingSwitch
-		assert.Equal(t, 1, len(sub2txid2track))
-		assert.Equal(t, 1, len(sub2txid2track[subid]))
-		assert.Equal(t, tr, sub2txid2track[subid][txid1])
-		assert.Equal(t, 1, len(rxid2track))
-		assert.Equal(t, 1, len(rxid2track[startRxid]))
-		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, tr.rxid)
-		assert.Equal(t, 1, len(pendingSwitch))
-		assert.Equal(t, struct{}{}, pendingSwitch[nextRxid][tr])
+		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
+			subid: subid,
+			txid:  0,
+			rxid:  1, //was zero
+		}
+		msgOnce()
+
+		// switch sent:
+		// state checklist
+		_ = sub2txid2track //no affect
+		_ = rxid2track     //n/a
+		_ = pendingSwitch  //affected
+
+		//should not have moved
+		_, ok = rxid2track[0][t0]
+		assert.Equal(t, true, ok)
+
+		//should be pending entry
+		_, ok = pendingSwitch[1][t0]
+		assert.Equal(t, true, ok)
+		assert.Equal(t, Rxid(1), t0.rxidLastPending)
+	}
+
+	// SWITCH to rxid/2
+	{
+		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
+			subid: subid,
+			txid:  0,
+			rxid:  2,
+		}
+		msgOnce()
+
+		// switch sent:
+		// state checklist
+		//state checklist
+		_ = sub2txid2track //affected
+		_ = rxid2track     //no affect, since not keyframe
+		_ = pendingSwitch  //no affect
+
+		//should not have moved
+		_, ok = rxid2track[0][t0]
+		assert.Equal(t, true, ok)
+
+		// not longer pending on 1
+		_, ok = pendingSwitch[1][t0]
+		assert.Equal(t, false, ok)
+
+		// now  pending on 2
+		_, ok = pendingSwitch[2][t0]
+		assert.Equal(t, true, ok)
+		assert.Equal(t, Rxid(2), t0.rxidLastPending)
+
 	}
 
 	/*
-		send media on rxid WITHOUT pending switch
-		BUT! this should not cause a switch, cause this rxid is not pending a switch
+		new media on rxid/0 (not pending)
+		not a keyframe
 	*/
-	rxMediaCh <- MsgRxPacket{
-		rxid:        startRxid,
-		rxClockRate: 0,
-		packet:      &rtp.Packet{},
-	}
-	msgOnce()
-
 	{
+		rxMediaCh <- MsgRxPacket{
+			rxid:        0,
+			rxClockRate: 0,
+			packet:      &rtp.Packet{},
+		}
+		msgOnce()
+
 		//checklist
 		_ = sub2txid2track
 		_ = rxid2track
 		_ = pendingSwitch
-		assert.Equal(t, 1, len(sub2txid2track))
-		assert.Equal(t, 1, len(sub2txid2track[subid]))
-		assert.Equal(t, tr, sub2txid2track[subid][txid1])
-		assert.Equal(t, 1, len(rxid2track))
-		assert.Equal(t, 1, len(rxid2track[startRxid]))
-		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, tr.rxid)
-		assert.Equal(t, 1, len(pendingSwitch))
-		assert.Equal(t, struct{}{}, pendingSwitch[nextRxid][tr])
+
+		//should not have moved
+		_, ok = rxid2track[0][t0]
+		assert.Equal(t, true, ok)
+
+		// not longer pending on 1
+		_, ok = pendingSwitch[1][t0]
+		assert.Equal(t, false, ok)
+
+		// now  pending on 2
+		_, ok = pendingSwitch[2][t0]
+		assert.Equal(t, true, ok)
+		assert.Equal(t, Rxid(2), t0.rxidLastPending)
 	}
 
 	/*
-		send media on rxid with pending switch
-		BUT! this should not cause a switch, because this is not a valid h.264 SPS!!!
+		new media on rxid/2
+		not keyframe
 	*/
-	rxMediaCh <- MsgRxPacket{
-		rxid:        nextRxid,
-		rxClockRate: 0,
-		packet:      &rtp.Packet{},
-	}
-	msgOnce()
-
 	{
+		rxMediaCh <- MsgRxPacket{
+			rxid:        2,
+			rxClockRate: 0,
+			packet:      &rtp.Packet{},
+		}
+		msgOnce()
+
 		//checklist
 		_ = sub2txid2track
 		_ = rxid2track
 		_ = pendingSwitch
-		assert.Equal(t, 1, len(sub2txid2track))
-		assert.Equal(t, 1, len(sub2txid2track[subid]))
-		assert.Equal(t, tr, sub2txid2track[subid][txid1])
 
-		assert.Equal(t, 1, len(rxid2track))
-		assert.Equal(t, 1, len(rxid2track[startRxid]))
-		assert.Equal(t, struct{}{}, rxid2track[startRxid][tr])
-		assert.Equal(t, startRxid, tr.rxid)
-		assert.Equal(t, 1, len(pendingSwitch))
-		assert.Equal(t, struct{}{}, pendingSwitch[nextRxid][tr])
+		//should not have moved
+		_, ok = rxid2track[0][t0]
+		assert.Equal(t, true, ok)
+
+		// not longer pending on 1
+		_, ok = pendingSwitch[1][t0]
+		assert.Equal(t, false, ok)
+
+		// now  pending on 2
+		_, ok = pendingSwitch[2][t0]
+		assert.Equal(t, true, ok)
+		assert.Equal(t, Rxid(2), t0.rxidLastPending)
 	}
 
 	/*
-		send media on rxid with pending switch
-		BUT! this SHOULD  cause a switch, because this is a valid h.264 SPS!!!
+		new media on rxid/2
+		IS Keyframe!
 	*/
-	rxMediaCh <- MsgRxPacket{
-		rxid:        nextRxid,
-		rxClockRate: 0,
-		packet: &rtp.Packet{
-			Header:  rtp.Header{},
-			Raw:     []byte{},
-			Payload: []byte{0x67, 0x42, 0x00, 0x0a, 0xf8, 0x41, 0xa2},
-		},
-	}
-	msgOnce()
-
 	{
+		rxMediaCh <- MsgRxPacket{
+			rxid:        2,
+			rxClockRate: 0,
+			packet: &rtp.Packet{
+				Header:  rtp.Header{},
+				Raw:     []byte{},
+				Payload: []byte{0x67, 0x42, 0x00, 0x0a, 0xf8, 0x41, 0xa2},
+			},
+		}
+		msgOnce()
+
 		//checklist
 		_ = sub2txid2track //no change
 		_ = rxid2track     // old removed. and new entry
 		_ = pendingSwitch  //now empty
-		assert.Equal(t, 1, len(sub2txid2track))
-		assert.Equal(t, 1, len(sub2txid2track[subid]))
-		assert.Equal(t, tr, sub2txid2track[subid][txid1])
 
-		assert.Equal(t, 0, len(rxid2track[startRxid]))
-		assert.Equal(t, 1, len(rxid2track[nextRxid]))
-		assert.Equal(t, struct{}{}, rxid2track[nextRxid][tr])
+		//moved
+		_, ok = rxid2track[0][t0]
+		assert.Equal(t, false, ok)
+		_, ok = rxid2track[2][t0]
+		assert.Equal(t, true, ok)
 
-		assert.Equal(t, nextRxid, tr.rxid)
+		// not longer pending on 1
+		_, ok = pendingSwitch[1][t0]
+		assert.Equal(t, false, ok)
+		// no longer pending on 2
+		_, ok = pendingSwitch[2][t0]
+		assert.Equal(t, false, ok)
 
-		for _, v := range pendingSwitch {
-			assert.Equal(t, 0, len(v))
-		}
 	}
 
 }
