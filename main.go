@@ -1193,11 +1193,11 @@ type RtpSplicer struct {
 
 type Track struct {
 	subid           Subid // 64bit subscriber key
-	track           *webrtc.TrackLocalStaticRTP
-	splicer         *RtpSplicer
-	txid            Txid // track number from subscriber's perspective
+	txid            Txid  // track number from subscriber's perspective
 	rxid            Rxid
 	rxidLastPending Rxid
+	track           *webrtc.TrackLocalStaticRTP
+	splicer         *RtpSplicer
 }
 
 /*
@@ -1291,6 +1291,7 @@ func msgOnce() {
 			if !test {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
+					log.Printf("track io.ErrClosedPipe, removing track %v %v %v",tr.subid,tr.txid,tr.rxid)
 					removeTrack(tr)
 				}
 			}
