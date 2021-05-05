@@ -1291,12 +1291,7 @@ func msgOnce() {
 			if !test {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
-					//oh fuck! we have to delete all refs to *Track
-					//delete(sub2txid2track[Subid(tr.rxid)], tr)
-					//XXXX
-					//XXXXX
-
-					_ = 0
+					removeTrack(tr)
 				}
 			}
 
@@ -1357,7 +1352,6 @@ func msgOnce() {
 				break
 			}
 
-
 			pendingSwitch[m.rxid][track] = struct{}{}
 
 		} else {
@@ -1369,15 +1363,22 @@ func msgOnce() {
 		// currentRxid/nochange
 
 	case tk := <-ticker.C:
-		fmt.Println("Tick at", tk)
+		_ = tk
+		//fmt.Println("Tick at", tk)
 	}
 }
 
-// nolint:gochecknoglobals
-var rtpPacketPool = sync.Pool{
-	New: func() interface{} {
-		return &rtp.Packet{}
-	},
+// removeTrack will remove all references to a track
+// io.ErrClosedPipe on WriteRTP() is main cause
+func removeTrack(t *Track) {
+	//state checklist
+	_ = sub2txid2track //affected
+	_ = rxid2track     //affected
+	_ = pendingSwitch  //affected
+
+	delete(sub2txid2track[t.subid], t.txid)
+	delete(rxid2track[t.rxid], t)
+	delete(pendingSwitch[t.rxidLastPending], t)
 }
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
