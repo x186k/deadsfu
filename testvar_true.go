@@ -2,4 +2,4 @@
 
 package main
 
-var test = false
+var test = true
