@@ -70,6 +70,13 @@ var myMetrics struct {
 	dialConnectionRefused uint64
 }
 
+// nolint:gochecknoglobals
+var rtpPacketPool = sync.Pool{
+	New: func() interface{} {
+		return &rtp.Packet{}
+	},
+}
+
 // https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
