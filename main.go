@@ -1274,9 +1274,9 @@ func msgOnce() {
 
 	finished_switches:
 
-		splicerList := rxid2track[m.rxid]
+		trackList := rxid2track[m.rxid]
 
-		for tr := range splicerList {
+		for tr := range trackList {
 			var packet *rtp.Packet = m.packet
 			var ipacket interface{}
 
