@@ -1288,7 +1288,7 @@ func msgOnce() {
 				SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
 			}
 
-			if !test {
+			if !disableWriteRTP {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
 					log.Printf("track io.ErrClosedPipe, removing track %v %v %v",tr.subid,tr.txid,tr.rxid)
