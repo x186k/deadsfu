@@ -231,6 +231,31 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 	}
 
+	/*
+	   Tracks are normally eliminated when WriteRTP returns io.Eof*
+	   by calling removeTrack(tr)
+	   We will emulate that for the three tracks
+	*/
+	{
+		removeTrack(t0)
+		removeTrack(t1)
+		removeTrack(t2)
+
+		//checklist
+		_ = sub2txid2track //no change
+		_ = rxid2track     // old removed. and new entry
+		_ = pendingSwitch  //now empty
+		for _, v := range sub2txid2track {
+			assert.Zero(t, len(v))
+		}
+		for _, v := range rxid2track {
+			assert.Zero(t, len(v))
+		}
+		for _, v := range pendingSwitch {
+			assert.Zero(t, len(v))
+		}
+	}
+
 }
 
 func resetState(t *testing.T) {
