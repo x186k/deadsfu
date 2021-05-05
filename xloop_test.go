@@ -24,26 +24,30 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 	// state checklist, do not remove
 	resetState(t)
-	initMediaHandlerState(3,1)
+	initMediaHandlerState(3, 1)
 	ticker.Stop()
 
-	var t0, t1, t2 *Track
-
-	t0 = &Track{
+	t0 := &Track{
 		subid:           subid,
-		track:           &webrtc.TrackLocalStaticRTP{},
-		splicer:         &RtpSplicer{},
+		txid:            0,
 		rxid:            0,
 		rxidLastPending: 0,
 	}
-
-	{
-		x := *t0
-		x.rxid = 1
-		t1 = &x
-		y := *t0
-		y.rxid = 2
-		t2 = &y
+	t1 := &Track{
+		subid:           subid,
+		txid:            1,
+		rxid:            1,
+		rxidLastPending: 0,
+		track:           &webrtc.TrackLocalStaticRTP{},
+		splicer:         &RtpSplicer{},
+	}
+	t2 := &Track{
+		subid:           subid,
+		txid:            2,
+		rxid:            2,
+		rxidLastPending: 0,
+		track:           &webrtc.TrackLocalStaticRTP{},
+		splicer:         &RtpSplicer{},
 	}
 
 	assert.NotEqual(t, t1, t0)
@@ -52,11 +56,11 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 	{
 
-		subAddTrackCh <- MsgSubscriberAddTrack{txid: 0, txtrack: t0}
+		subAddTrackCh <- MsgSubscriberAddTrack{txtrack: t0}
 		msgOnce()
-		subAddTrackCh <- MsgSubscriberAddTrack{txid: 1, txtrack: t1}
+		subAddTrackCh <- MsgSubscriberAddTrack{txtrack: t1}
 		msgOnce()
-		subAddTrackCh <- MsgSubscriberAddTrack{txid: 2, txtrack: t2}
+		subAddTrackCh <- MsgSubscriberAddTrack{txtrack: t2}
 		msgOnce()
 
 		//state checklist
@@ -304,7 +308,6 @@ func TestMsgBadAdd(t *testing.T) {
 	time.Sleep(time.Millisecond * 20)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		txid:    0,
 		txtrack: nil,
 	}
 
