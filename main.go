@@ -750,8 +750,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	go processRTCP(rtpSender)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
-		txid: Audio0,
 		txtrack: &Track{
+			txid:            Audio0,
 			subid:           Subid(txid),
 			track:           track,
 			splicer:         &RtpSplicer{},
@@ -769,8 +769,8 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		go processRTCP(rtpSender)
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
-			txid: Txid(i) + Video0,
 			txtrack: &Track{
+				txid:            Txid(i) + Video0,
 				subid:           Subid(txid),
 				track:           track,
 				splicer:         &RtpSplicer{},
@@ -1162,7 +1162,6 @@ const (
 )
 
 type MsgSubscriberAddTrack struct {
-	txid    Txid   // track number from subscriber's perspective
 	txtrack *Track // can be nil when just changing the channel
 }
 
@@ -1196,6 +1195,7 @@ type Track struct {
 	subid           Subid // 64bit subscriber key
 	track           *webrtc.TrackLocalStaticRTP
 	splicer         *RtpSplicer
+	txid            Txid // track number from subscriber's perspective
 	rxid            Rxid
 	rxidLastPending Rxid
 }
@@ -1318,7 +1318,7 @@ func msgOnce() {
 			sub2txid2track[tr.subid] = make(map[Txid]*Track)
 		}
 
-		sub2txid2track[tr.subid][m.txid] = tr
+		sub2txid2track[tr.subid][tr.txid] = tr
 
 		if _, ok := rxid2track[tr.rxid]; !ok {
 			rxid2track[tr.rxid] = make(map[*Track]struct{})
