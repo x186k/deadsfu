@@ -1,4 +1,4 @@
-// +build test
+// +build disableWriteRTP
 
 package main
 
@@ -20,6 +20,10 @@ const subid = Subid(100)
 // }
 
 func TestMsgAddingSwitchingAndRTP(t *testing.T) {
+	assert.True(t,disableWriteRTP,"disableWriteRTP must be true for this test")
+	if !disableWriteRTP {
+		return
+	}
 	var ok bool
 
 	// state checklist, do not remove
