@@ -931,17 +931,14 @@ func dialUpstream(baseurl string) {
 
 	// Create an offer to send to the other process
 	offer, err := peerConnection.CreateOffer(nil)
-	if err != nil {
-		panic(err)
-	}
+	checkPanic(err)
 
 	logSdpReport("dialupstream-offer", offer)
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	// Note: this will start the gathering of ICE candidates
-	if err = peerConnection.SetLocalDescription(offer); err != nil {
-		panic(err)
-	}
+	err = peerConnection.SetLocalDescription(offer)
+	checkPanic(err)
 
 	setupIngressStateHandler(peerConnection)
 
