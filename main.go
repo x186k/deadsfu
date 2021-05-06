@@ -719,6 +719,12 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	})
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdpbytes)}
+
+	if !validateSDP(offer) {
+		teeErrorStderrHttp(w, fmt.Errorf("invalid offer SDP received"))
+		return
+	}
+
 	logSdpReport("publisher", offer)
 
 	err = peerConnection.SetRemoteDescription(offer)
@@ -831,6 +837,15 @@ func logTransceivers(tag string, pc *webrtc.PeerConnection) {
 			log.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
 		}
 	}
+}
+
+func validateSDP(rtcsd webrtc.SessionDescription) bool {
+	good := strings.HasPrefix(rtcsd.SDP, "v=")
+	if !good {
+		return false
+	}
+	_, err := rtcsd.Unmarshal()
+	return err == nil
 }
 
 func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
