@@ -677,6 +677,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 
+	if httpreq.Header.Get("Content-Type") != "application/sdp" {
+		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /sub when not ?level=..."))
+		return
+	}
+
 	// offer from browser
 	offersdpbytes, err := ioutil.ReadAll(httpreq.Body)
 	if err != nil {
