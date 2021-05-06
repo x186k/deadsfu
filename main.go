@@ -552,6 +552,11 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 
 	log.Println("pubHandler request:", req.URL.String())
 
+	if req.Header.Get("Content-Type") != "application/sdp" {
+		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
+		return
+	}
+
 	if req.Method != "POST" {
 		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
 		return
