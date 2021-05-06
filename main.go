@@ -702,6 +702,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
 		log.Println("sub ICE Connection State has changed", icecs.String())
 	})
+	// XXX is this switch case necessary?, will the pc eventually reach Closed after Failed or Disconnected
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		log.Printf("subscriber 0x%016x newstate: %s", txid, cs.String())
 		switch cs {
