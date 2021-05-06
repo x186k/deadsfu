@@ -824,6 +824,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	logSdpReport("sub-answer", *ansrtcsd)
 
+	w.Header().Set("Content-Type", "application/sdp")
 	w.WriteHeader(http.StatusAccepted)
 	_, err = w.Write([]byte(ansrtcsd.SDP))
 	if err != nil {
