@@ -607,26 +607,29 @@ func numVideoMediaDesc(sdpsd *sdp.SessionDescription) (n int) {
 // 041521 Decided checkPanic() is the correct way to handle errors in this func.
 func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	defer httpreq.Body.Close()
+	var err error
 
 	log.Println("subHandler request", httpreq.URL.String())
 
+	var txid uint64
+
 	rawtxid := httpreq.URL.Query().Get("txid")
-	if rawtxid == "" {
-		teeErrorStderrHttp(w, fmt.Errorf("txid missing"))
-		return
-	}
+	if rawtxid != "" {
+		if len(rawtxid) != 16 {
+			teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars long"))
+			return
+		}
 
-	if len(rawtxid) != 16 {
-		teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars long"))
-		return
+		txid, err = strconv.ParseUint(rawtxid, 16, 64)
+		if err != nil {
+			teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars only"))
+			return
+		}
+	} else {
+		log.Println("assigning random txid")
+		txid = mrand.Uint64()
 	}
-
-	txid, err := strconv.ParseUint(rawtxid, 16, 64)
-	if err != nil {
-		teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars only"))
-		return
-	}
-	log.Println("txid is", rawtxid, txid)
+	log.Println("txid is", txid)
 
 	txidMapMutex.Lock()
 	_, foundTxid := txidMap[txid]
@@ -1291,7 +1294,7 @@ func msgOnce() {
 			if !disableWriteRTP {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
-					log.Printf("track io.ErrClosedPipe, removing track %v %v %v",tr.subid,tr.txid,tr.rxid)
+					log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.rxid)
 					removeTrack(tr)
 				}
 			}
