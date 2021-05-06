@@ -589,6 +589,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	// inside here will panic if something prevents success/by design
 	answersd := createIngressPeerConnection(string(offer))
 
+	w.Header().Set("Content-Type", "application/sdp")
 	w.WriteHeader(http.StatusAccepted)
 	_, err = w.Write([]byte(answersd.SDP))
 	checkPanic(err) // cam/if this write fails, then fail hard!
