@@ -138,8 +138,16 @@ func slashHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var numVideoTracks = flag.Int("num-video", 6, "number of video tracks")
-var numAudioTracks = flag.Int("num-audio", 1, "number of audio tracks")
+type TrackCounts struct {
+	numVideo, numAudio, numIdleVideo, numIdleAudio int
+}
+
+var trackCounts = TrackCounts{
+	numVideo:     *flag.Int("num-video", 6, "number of video tracks"),
+	numAudio:     *flag.Int("num-audio", 1, "number of audio tracks"),
+	numIdleVideo: 1,
+	numIdleAudio: 0,
+}
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("z-debug", false, "enable debug output")
