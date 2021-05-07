@@ -390,19 +390,24 @@ func main() {
 	println("profiling done, exit")
 }
 
-func initMediaHandlerState(numvideo, numaudio int) {
-	log.Printf("Creating %v audio tracks", numaudio)
-	for i := 0; i < numaudio; i++ {
-		ii := Rxid(i) + Rxid(Audio0)
-		rxid2track[ii] = make(map[*Track]struct{})
-		pendingSwitch[ii] = make(map[*Track]struct{})
+func initRxidArray(n int, rxidtype RxidType) {
+	log.Printf("Creating %v %v tracks", n, rxidtype.String())
+
+	for i := 0; i < n; i++ {
+		ix := len(xplodedRxid2rxid)
+		xplodedRxid2rxid[ExplodedRxid{index: i, rxidtype: rxidtype}] = Rxid(ix)
+		rxidArray[ix] = RxData{
+			rxid2track:    map[*Track]struct{}{},
+			pendingSwitch: map[*Track]struct{}{},
+			lastReceipt:   0,
+		}
 	}
-	log.Printf("Creating %v video tracks", numvideo)
-	for i := 0; i < numvideo; i++ {
-		ii := Rxid(i) + Rxid(Video0)
-		rxid2track[ii] = make(map[*Track]struct{})
-		pendingSwitch[ii] = make(map[*Track]struct{})
-	}
+}
+func initMediaHandlerState(t TrackCounts) {
+	initRxidArray(t.numAudio, IngressAudio)
+	initRxidArray(t.numVideo, IngressVideo)
+	initRxidArray(t.numIdleAudio, IdleAudio)
+	initRxidArray(t.numIdleVideo, IdleVideo)
 }
 
 func printURLS(proto string, host string, port string) {
