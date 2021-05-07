@@ -223,7 +223,7 @@ func requiredForUnitTesting() {
 
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
-	initMediaHandlerState(*numVideoTracks, *numAudioTracks)
+	initMediaHandlerState(trackCounts)
 }
 
 func main() {
@@ -1250,10 +1250,7 @@ The nice thing about maps, is the individual elements can be deleted.
 // used mainly to handle control messages from http handlers
 var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
-// rxid to list of txtrack
-// mainly for distributing received packets
-// we could use array for first component if we compressed Rxid space
-var _ = *numVideoTracks + *numAudioTracks // determines the max value for first component of type
+type RxidType int
 // someday?: var [Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
