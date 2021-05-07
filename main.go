@@ -1347,9 +1347,10 @@ func msgOnce() {
 
 		sub2txid2track[tr.subid][tr.txid] = tr
 
-		if _, ok := rxid2track[tr.rxid]; !ok {
-			rxid2track[tr.rxid] = make(map[*Track]struct{})
-		}
+		// this is done else where now
+		// if _, ok := rxid2track[tr.rxid]; !ok {
+		// 	rxid2track[tr.rxid] = make(map[*Track]struct{})
+		// }
 
 		rxid2track[tr.rxid][m.txtrack] = struct{}{}
 
