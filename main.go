@@ -205,23 +205,23 @@ func logGoroutineCountToDebugLog() {
 
 var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
-func main() {
-	var err error
-
+// requiredForUnitTesting is outside of main() to enable unit testing
+func requiredForUnitTesting() {
 	go logGoroutineCountToDebugLog()
 
 	go idleLoopPlayer(idleScreenH264Pcapng)
 
 	go msgLoop()
 
-	var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
-	var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
-	var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
-
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
-
 	initMediaHandlerState(*numVideoTracks, *numAudioTracks)
+}
+
+func main() {
+	var err error
+
+	requiredForUnitTesting() // outside of main() to enable unit testing
 
 	if *httpPort == 0 && *httpsPort == 0 {
 
