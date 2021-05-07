@@ -1202,7 +1202,7 @@ const (
 )
 
 type MsgSubscriberAddTrack struct {
-	txtrack *Track // can be nil when just changing the channel
+	txtrack *Track
 }
 
 type MsgSubscriberSwitchTrack struct {
