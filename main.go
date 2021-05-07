@@ -248,6 +248,9 @@ func main() {
 	}
 	log.Println("NumGoroutine", runtime.NumGoroutine())
 
+	// BEYOND HERE is needed for real operation
+	// but is not needed for unit testing
+
 	// MUX setup
 	mux := http.NewServeMux()
 
