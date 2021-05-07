@@ -174,10 +174,11 @@ Default is zero (0), which means do not enable/bind/listen for HTTPS.
 `
 
 var httpsPort = flag.Int("https-port", 0, httpsPortMsg)
-
 var obsStudio = flag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
-
 var helpAll = flag.Bool("all", false, "Show the full set of advanced flags\n")
+var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
+var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
+var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
 //var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
 
