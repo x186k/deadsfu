@@ -1400,9 +1400,8 @@ func msgOnce() {
 
 	case m := <-subAddTrackCh:
 
-		if m.txtrack == nil {
-			panic("fail")
-		}
+		_ = m.txtrack.txid // pre-vetted
+		_ = m.txtrack.rxid // pre-vetted
 
 		tr := m.txtrack
 
@@ -1412,12 +1411,7 @@ func msgOnce() {
 
 		sub2txid2track[tr.subid][tr.txid] = tr
 
-		// this is done else where now
-		// if _, ok := rxid2track[tr.rxid]; !ok {
-		// 	rxid2track[tr.rxid] = make(map[*Track]struct{})
-		// }
-
-		rxid2track[tr.rxid][m.txtrack] = struct{}{}
+		rxidArray[tr.rxid].rxid2track[m.txtrack] = struct{}{}
 
 	case m := <-subSwitchTrackCh:
 
