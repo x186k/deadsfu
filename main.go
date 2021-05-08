@@ -1454,14 +1454,14 @@ func msgOnce() {
 // removeTrack will remove all references to a track
 // io.ErrClosedPipe on WriteRTP() is main cause
 func removeTrack(t *Track) {
-	//state checklist
-	_ = sub2txid2track //affected
-	_ = rxid2track     //affected
-	_ = pendingSwitch  //affected
+	// checklist
+	_ = sub2txid2track             //affected
+	_ = rxidArray[0].rxid2track    //affected
+	_ = rxidArray[0].pendingSwitch //affected
 
 	delete(sub2txid2track[t.subid], t.txid)
-	delete(rxid2track[t.rxid], t)
-	delete(pendingSwitch[t.rxidLastPending], t)
+	delete(rxidArray[t.rxid].rxid2track, t)
+	delete(rxidArray[t.rxidLastPending].pendingSwitch, t)
 }
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
