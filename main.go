@@ -1299,12 +1299,15 @@ var xplodedRxid2rxid map[ExplodedRxid]Rxid = make(map[ExplodedRxid]Rxid)
 // while this shares the same type as rxid2track, they cannot be joined
 //var pendingSwitch map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
-// array of stuff for incoming(Rxid) details
-var rxidArray []struct {
-	txtracks      map[*Track]struct{}
+type RxidState struct {
+	rxid2track    map[*Track]struct{}
 	pendingSwitch map[*Track]struct{}
-	lastReceipt   time.Time
+	lastReceipt   int64 //unixnanos
 }
+
+// array of stuff for incoming(Rxid) details
+// someday: could over-optimize and make an array (^2 len is best)
+var rxidArray []RxidState
 
 // XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
 // if we compact down the rx track numbers (no audio=10000)
