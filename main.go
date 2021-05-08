@@ -404,6 +404,8 @@ func initRxidArray(n int, rxidtype RxidType) {
 	}
 }
 func initMediaHandlerState(t TrackCounts) {
+	n := t.numAudio + t.numVideo + t.numIdleAudio + t.numIdleVideo
+	rxidArray = make([]RxidState, n)
 	initRxidArray(t.numAudio, IngressAudio)
 	initRxidArray(t.numVideo, IngressVideo)
 	initRxidArray(t.numIdleAudio, IdleAudio)
