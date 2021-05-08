@@ -1415,10 +1415,13 @@ func msgOnce() {
 
 	case m := <-subSwitchTrackCh:
 
-		// state checklist, do not remove
-		_ = sub2txid2track // no change!
-		_ = rxid2track     // no change! this gets updated on new media
-		_ = pendingSwitch  // this gets new entry for switch
+		_ = m.rxid //pre-vetted, will not vet here
+		_ = m.txid //pre-vetted, will not vet here
+
+		// checklist
+		_ = sub2txid2track             // no change!
+		_ = rxidArray[0].rxid2track    // no change! this gets updated on new media
+		_ = rxidArray[0].pendingSwitch // this gets new entry for switch
 
 		// pendingTrackChange
 		txid2track, ok := sub2txid2track[m.subid]
@@ -1426,25 +1429,13 @@ func msgOnce() {
 			track := txid2track[m.txid]
 
 			// remove the last entry we put in the pendingSwitch queue, if any
-			delete(pendingSwitch[track.rxidLastPending], track)
+			delete(rxidArray[track.rxidLastPending].pendingSwitch, track)
 
 			// make note of the new requested RXID
 			// incase we need to delete it again
 			track.rxidLastPending = m.rxid
 
-			// check validity of m.rxid
-			//if this track wasn't ADDED we can't switch it.
-			if _, ok := rxid2track[m.rxid]; !ok {
-				elog.Printf("bad: bad switch msg for rxid %d, not present1", m.rxid)
-				break
-			}
-
-			if _, ok := pendingSwitch[m.rxid]; !ok {
-				elog.Printf("bad: bad switch msg for rxid %d, not present2", m.rxid)
-				break
-			}
-
-			pendingSwitch[m.rxid][track] = struct{}{}
+			rxidArray[m.rxid].pendingSwitch[track] = struct{}{}
 
 		} else {
 			elog.Printf("bad: invalid subid 0x%x", m.subid)
