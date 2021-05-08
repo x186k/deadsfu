@@ -1256,6 +1256,42 @@ The nice thing about maps, is the individual elements can be deleted.
 var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
 type RxidType int
+
+const (
+	IngressAudio RxidType = iota
+	IngressVideo
+	IdleAudio
+	IdleVideo
+)
+
+func (e RxidType) String() string {
+	switch e {
+	case IngressAudio:
+		return "IngressAudio"
+	case IngressVideo:
+		return "IngressVideo"
+	case IdleAudio:
+		return "IdleAudio"
+	case IdleVideo:
+		return "IdleVideo"
+	}
+	return "<bad>"
+}
+
+//The Rxid's form a set of continuous indexes into an array
+//the order is: audio, video, idleAudio, idleVideo
+//this order is important.
+// since the we put audio and video first, which
+// makes the videoX and audioX string parsers simpler,
+// and the http code simpler.
+
+type ExplodedRxid struct {
+	index    int
+	rxidtype RxidType
+}
+
+var xplodedRxid2rxid map[ExplodedRxid]Rxid = make(map[ExplodedRxid]Rxid)
+
 // someday?: var [Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
