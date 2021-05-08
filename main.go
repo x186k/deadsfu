@@ -396,7 +396,7 @@ func initRxidArray(n int, rxidtype RxidType) {
 	for i := 0; i < n; i++ {
 		ix := len(xplodedRxid2rxid)
 		xplodedRxid2rxid[ExplodedRxid{index: i, rxidtype: rxidtype}] = Rxid(ix)
-		rxidArray[ix] = RxData{
+		rxidArray[ix] = RxidState{
 			rxid2track:    map[*Track]struct{}{},
 			pendingSwitch: map[*Track]struct{}{},
 			lastReceipt:   0,
