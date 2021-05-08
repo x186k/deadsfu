@@ -1293,11 +1293,11 @@ type ExplodedRxid struct {
 var xplodedRxid2rxid map[ExplodedRxid]Rxid = make(map[ExplodedRxid]Rxid)
 
 // someday?: var [Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
-var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
+//var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
 // list of txtracks waiting for a keyframe in order to switch input/rx
 // while this shares the same type as rxid2track, they cannot be joined
-var pendingSwitch map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
+//var pendingSwitch map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 
 // array of stuff for incoming(Rxid) details
 var rxidArray []struct {
