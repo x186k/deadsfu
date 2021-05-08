@@ -20,7 +20,7 @@ const subid = Subid(100)
 // }
 
 func TestMsgAddingSwitchingAndRTP(t *testing.T) {
-	assert.True(t,disableWriteRTP,"disableWriteRTP must be true for this test")
+	assert.True(t, disableWriteRTP, "disableWriteRTP must be true for this test")
 	if !disableWriteRTP {
 		return
 	}
@@ -28,7 +28,12 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 	// state checklist, do not remove
 	resetState(t)
-	initMediaHandlerState(3, 1)
+	initMediaHandlerState(TrackCounts{
+		numVideo:     6,
+		numAudio:     1,
+		numIdleVideo: 1,
+		numIdleAudio: 0,
+	})
 	ticker.Stop()
 
 	t0 := &Track{
@@ -67,20 +72,20 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		subAddTrackCh <- MsgSubscriberAddTrack{txtrack: t2}
 		msgOnce()
 
-		//state checklist
-		_ = sub2txid2track //affected
-		_ = rxid2track     //affected
-		_ = pendingSwitch  //no affect
+		// checklist
+		_ = sub2txid2track             //affected
+		_ = rxidArray[0].rxid2track    // affected
+		_ = rxidArray[0].pendingSwitch // not affected
 		assert.Equal(t, t0, sub2txid2track[subid][0])
 		assert.Equal(t, t1, sub2txid2track[subid][1])
 		assert.Equal(t, t2, sub2txid2track[subid][2])
 
 		//make sure setup is good
-		_, ok = rxid2track[0][t0]
+		_, ok = rxidArray[0].rxid2track[t0]
 		assert.Equal(t, true, ok)
-		_, ok = rxid2track[1][t1]
+		_, ok = rxidArray[1].rxid2track[t1]
 		assert.Equal(t, true, ok)
-		_, ok = rxid2track[2][t2]
+		_, ok = rxidArray[2].rxid2track[t2]
 		assert.Equal(t, true, ok)
 
 	}
@@ -94,18 +99,18 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		}
 		msgOnce()
 
-		// switch sent:
-		// state checklist
-		_ = sub2txid2track //no affect
-		_ = rxid2track     //n/a
-		_ = pendingSwitch  //affected
+		//switch sent
+		// checklist
+		_ = sub2txid2track             //not affected
+		_ = rxidArray[0].rxid2track    //affected
+		_ = rxidArray[0].pendingSwitch //affected
 
 		//should not have moved
-		_, ok = rxid2track[0][t0]
+		_, ok = rxidArray[0].rxid2track[t0]
 		assert.Equal(t, true, ok)
 
 		//should be pending entry
-		_, ok = pendingSwitch[1][t0]
+		_, ok = rxidArray[1].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
 		assert.Equal(t, Rxid(1), t0.rxidLastPending)
 	}
@@ -120,22 +125,21 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		msgOnce()
 
 		// switch sent:
-		// state checklist
-		//state checklist
-		_ = sub2txid2track //affected
-		_ = rxid2track     //no affect, since not keyframe
-		_ = pendingSwitch  //no affect
+		// checklist
+		_ = sub2txid2track             //not affected
+		_ = rxidArray[0].rxid2track    //no affect, since not keyframe
+		_ = rxidArray[0].pendingSwitch // affected
 
 		//should not have moved
-		_, ok = rxid2track[0][t0]
+		_, ok = rxidArray[0].rxid2track[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = pendingSwitch[1][t0]
+		_, ok = rxidArray[1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 		// now  pending on 2
-		_, ok = pendingSwitch[2][t0]
+		_, ok = rxidArray[2].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
 		assert.Equal(t, Rxid(2), t0.rxidLastPending)
 
@@ -154,20 +158,20 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		msgOnce()
 
 		//checklist
-		_ = sub2txid2track
-		_ = rxid2track
-		_ = pendingSwitch
+		_ = sub2txid2track             //no affect
+		_ = rxidArray[0].rxid2track    // no affect
+		_ = rxidArray[0].pendingSwitch // not keyframe, no affect
 
 		//should not have moved
-		_, ok = rxid2track[0][t0]
+		_, ok = rxidArray[0].rxid2track[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = pendingSwitch[1][t0]
+		_, ok = rxidArray[1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 		// now  pending on 2
-		_, ok = pendingSwitch[2][t0]
+		_, ok = rxidArray[2].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
 		assert.Equal(t, Rxid(2), t0.rxidLastPending)
 	}
@@ -186,19 +190,19 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 		//checklist
 		_ = sub2txid2track
-		_ = rxid2track
-		_ = pendingSwitch
+		_ = rxidArray[0].rxid2track    // no affect
+		_ = rxidArray[0].pendingSwitch // not keyframe, no affect
 
 		//should not have moved
-		_, ok = rxid2track[0][t0]
+		_, ok = rxidArray[0].rxid2track[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = pendingSwitch[1][t0]
+		_, ok = rxidArray[1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 		// now  pending on 2
-		_, ok = pendingSwitch[2][t0]
+		_, ok = rxidArray[2].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
 		assert.Equal(t, Rxid(2), t0.rxidLastPending)
 	}
@@ -220,21 +224,21 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		msgOnce()
 
 		//checklist
-		_ = sub2txid2track //no change
-		_ = rxid2track     // old removed. and new entry
-		_ = pendingSwitch  //now empty
+		_ = sub2txid2track             //no change
+		_ = rxidArray[0].rxid2track    // old removed. and new entry
+		_ = rxidArray[0].pendingSwitch //now empty
 
 		//moved
-		_, ok = rxid2track[0][t0]
+		_, ok = rxidArray[0].rxid2track[t0]
 		assert.Equal(t, false, ok)
-		_, ok = rxid2track[2][t0]
+		_, ok = rxidArray[2].rxid2track[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = pendingSwitch[1][t0]
+		_, ok = rxidArray[1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 		// no longer pending on 2
-		_, ok = pendingSwitch[2][t0]
+		_, ok = rxidArray[2].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 	}
@@ -250,17 +254,18 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		removeTrack(t2)
 
 		//checklist
-		_ = sub2txid2track //no change
-		_ = rxid2track     // old removed. and new entry
-		_ = pendingSwitch  //now empty
+		_ = sub2txid2track             //no change
+		_ = rxidArray[0].rxid2track    // old removed. and new entry
+		_ = rxidArray[0].pendingSwitch //now empty
+
 		for _, v := range sub2txid2track {
 			assert.Zero(t, len(v))
 		}
-		for _, v := range rxid2track {
-			assert.Zero(t, len(v))
+		for _, v := range rxidArray {
+			assert.Zero(t, len(v.rxid2track))
 		}
-		for _, v := range pendingSwitch {
-			assert.Zero(t, len(v))
+		for _, v := range rxidArray {
+			assert.Zero(t, len(v.pendingSwitch))
 		}
 	}
 
@@ -276,25 +281,24 @@ func resetState(t *testing.T) {
 		}
 	}
 	{
-		m := rxid2track
-		for k := range m {
-			delete(m, k)
-		}
-	}
-	{
-		m := pendingSwitch
-		for k := range m {
-			delete(m, k)
+		for _, v := range rxidArray {
+			v.rxid2track = make(map[*Track]struct{})
+			v.pendingSwitch = make(map[*Track]struct{})
 		}
 	}
 
-	// development helper checklist, do not remove
-	_ = sub2txid2track
-	_ = rxid2track
-	_ = pendingSwitch
+	// checklist
+	// _ = sub2txid2track
+	// _ = rxidArray[0].rxid2track
+	// _ = rxidArray[0].pendingSwitch
+
 	assert.Equal(t, 0, len(sub2txid2track))
-	assert.Equal(t, 0, len(rxid2track))
-	assert.Equal(t, 0, len(pendingSwitch))
+	{
+		for _, v := range rxidArray {
+			assert.Equal(t, 0, len(v.rxid2track))
+			assert.Equal(t, 0, len(v.pendingSwitch))
+		}
+	}
 }
 
 func mustPanic(t *testing.T) {
