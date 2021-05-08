@@ -1324,8 +1324,13 @@ func msgOnce() {
 
 	case m := <-rxMediaCh:
 
+		if int(m.rxid) >= len(rxidArray) {
+			panic("bad rxid")
+		}
+
 		{ // handle any switching required
-			if trackList, ok := pendingSwitch[m.rxid]; ok {
+			trackList := rxidArray[m.rxid].pendingSwitch
+			if len(trackList) > 0 {
 
 				isaudio := m.rxid > Rxid(Audio0)
 				if !isaudio {
@@ -1335,28 +1340,29 @@ func msgOnce() {
 				}
 
 				for tr := range trackList {
-
 					//remove the current entry
-					delete(rxid2track[tr.rxid], tr)
-
-					// rxid2track[] entries get created after flag.parse()
-
-					if _, ok := rxid2track[m.rxid]; !ok {
-						//no	rxid2track[m.rxid] = make(map[*Track]struct{})
-						panic("bad index for rxid2track, should not be in pending list")
+					{
+						const sanityCheck = true
+						if sanityCheck {
+							_, ok := rxidArray[tr.rxid].rxid2track[tr]
+							if !ok {
+								panic("unexpected missing")
+							}
+						}
 					}
 
+					delete(rxidArray[tr.rxid].rxid2track, tr)
+
 					// save the track
-					rxid2track[m.rxid][tr] = struct{}{}
+					rxidArray[m.rxid].rxid2track[tr] = struct{}{}
 
 					//update the track
 					tr.rxid = m.rxid //overwrite old value
-
 				}
 
 				//remove the set of tracks pending on m.rxid
-				for k := range pendingSwitch[m.rxid] { // optimized: https://golang.org/doc/go1.11#performance-compiler
-					delete(pendingSwitch[m.rxid], k)
+				for k := range trackList { // optimized: https://golang.org/doc/go1.11#performance-compiler
+					delete(trackList, k)
 				}
 
 			}
@@ -1364,7 +1370,7 @@ func msgOnce() {
 
 	finished_switches:
 
-		trackList := rxid2track[m.rxid]
+		trackList := rxidArray[m.rxid].rxid2track
 
 		for tr := range trackList {
 			var packet *rtp.Packet = m.packet
