@@ -111,8 +111,22 @@ must have multiple sendGR per RX
 
 ## 5/3/21 The subscriber Browser or SFU controls the number of video+audio transcievers
 
+## 5/10/21 To use struct indexes or 'int' indexes
 
+- ultimatly there are audio/video tracks and regular-rx vs idle-rx tracks
+- I realized that I hadn't included 'idle' assignments in the Audio0, Video0 style enums
+- I have explored moving away from enums to a struct for the source or truth of track indexes:
+struct {
+	index        int
+	isAudio      bool
+	isIdleSource bool
+}
+var uniqRxid map[RxTxId]Rxid = make(map[RxTxId]Rxid)
+var uniqTxid map[RxTxId]Txid = make(map[RxTxId]Txid)
 
+- While this works and provides a ton of flexibility down the road, I think it is overkill
+- So, I will save this work but use git-revert to move back to int Video0 style enum indexes
+- It is a little less flexible, but so much simpler in the long run.
 
 
 
