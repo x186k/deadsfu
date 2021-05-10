@@ -229,7 +229,7 @@ func initStateAndGoroutines() {
 func main() {
 	var err error
 
-	requiredForUnitTesting() // outside of main() to enable unit testing
+	initStateAndGoroutines() // outside of main() to enable unit testing
 
 	if *httpPort == 0 && *httpsPort == 0 {
 
