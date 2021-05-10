@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 
 func TestBasicSubscriber(t *testing.T) {
 
-	requiredForUnitTesting()
+	initStateAndGoroutines()
 
 
 	rtcconf := webrtc.Configuration{

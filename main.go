@@ -213,8 +213,8 @@ func logGoroutineCountToDebugLog() {
 
 var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
-// requiredForUnitTesting is outside of main() to enable unit testing
-func requiredForUnitTesting() {
+// initStateAndGoroutines is outside of main() to enable unit testing
+func initStateAndGoroutines() {
 	go logGoroutineCountToDebugLog()
 
 	go idleLoopPlayer(idleScreenH264Pcapng)
