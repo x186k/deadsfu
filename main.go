@@ -390,30 +390,13 @@ func main() {
 	println("profiling done, exit")
 }
 
-func initUniqTxid(n int, isAudio bool) {
-	log.Printf("Creating txid n/%v  isaudio:%v", n, isAudio)
+func initRxidArray(n int, rxidtype RxidType) {
+	log.Printf("Creating %v %v tracks", n, rxidtype.String())
 
 	for i := 0; i < n; i++ {
-		nextix := len(uniqTxid)
-		ix := RxTxId{index: i, isAudio: isAudio, isIdleSource: false}
-		if _, ok := uniqTxid[ix]; ok {
-			panic("xxx")
-		}
-		uniqTxid[ix] = Txid(nextix)
-	}
-}
-
-func initRxidArray(n int, isAudio bool, isIdle bool) {
-	log.Printf("Creating rxid n/%v tracks: %v/audio %v/idle", n, isAudio, isIdle)
-
-	for i := 0; i < n; i++ {
-		nextix := len(uniqRxid)
-		ix := RxTxId{index: i, isAudio: isAudio, isIdleSource: isIdle}
-		if _, ok := uniqRxid[ix]; ok {
-			panic("xxx")
-		}
-		uniqRxid[ix] = Rxid(nextix)
-		rxidArray[nextix] = RxidState{
+		ix := len(xplodedRxid2rxid)
+		xplodedRxid2rxid[ExplodedRxid{index: i, rxidtype: rxidtype}] = Rxid(ix)
+		rxidArray[ix] = RxidState{
 			rxid2track:    map[*Track]struct{}{},
 			pendingSwitch: map[*Track]struct{}{},
 			lastReceipt:   0,
@@ -423,12 +406,10 @@ func initRxidArray(n int, isAudio bool, isIdle bool) {
 func initMediaHandlerState(t TrackCounts) {
 	n := t.numAudio + t.numVideo + t.numIdleAudio + t.numIdleVideo
 	rxidArray = make([]RxidState, n)
-	initRxidArray(t.numAudio, true, false)
-	initRxidArray(t.numVideo, false, false)
-	initRxidArray(t.numIdleAudio, true, true)
-	initRxidArray(t.numIdleVideo, false, true)
-	initUniqTxid(t.numAudio, true)
-	initUniqTxid(t.numIdleVideo, false)
+	initRxidArray(t.numAudio, IngressAudio)
+	initRxidArray(t.numVideo, IngressVideo)
+	initRxidArray(t.numIdleAudio, IdleAudio)
+	initRxidArray(t.numIdleVideo, IdleVideo)
 }
 
 func printURLS(proto string, host string, port string) {
@@ -655,7 +636,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("subHandler request", httpreq.URL.String())
 
-	var transactionId uint64
+	var txid uint64
 
 	rawtxid := httpreq.URL.Query().Get("txid")
 	if rawtxid != "" {
@@ -664,26 +645,26 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 			return
 		}
 
-		transactionId, err = strconv.ParseUint(rawtxid, 16, 64)
+		txid, err = strconv.ParseUint(rawtxid, 16, 64)
 		if err != nil {
 			teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars only"))
 			return
 		}
 	} else {
 		log.Println("assigning random txid")
-		transactionId = mrand.Uint64()
+		txid = mrand.Uint64()
 	}
-	log.Println("transactionId is", transactionId)
+	log.Println("txid is", txid)
 
 	txidMapMutex.Lock()
-	_, foundTxid := txidMap[transactionId]
+	_, foundTxid := txidMap[txid]
 	txidMapMutex.Unlock()
 
 	rid := httpreq.URL.Query().Get("level")
 	//issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
-		rxtxid, err := parseTrackname(rid)
+		trackNum, err := parseTrackname(rid)
 		if err != nil {
 			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video<N>, audio<N> are okay"))
 			return
@@ -692,34 +673,14 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		// This isn't required.
 		// but nice to tell the HTTP requestor something if the operation can't be executed
 		if !foundTxid {
-			teeErrorStderrHttp(w, fmt.Errorf("txid transaction id not found"))
+			teeErrorStderrHttp(w, fmt.Errorf("no such sub"))
 			return
-		}
-
-		if !rxtxid.isAudio {
-			teeErrorStderrHttp(w, fmt.Errorf("audio switching not allowed"))
-			return
-		}
-
-		rxid, ok := uniqRxid[rxtxid]
-		if !ok {
-			teeErrorStderrHttp(w, fmt.Errorf("invalid rid."))
-			return
-		}
-
-		txid, ok := uniqTxid[RxTxId{
-			index:        0,  // we only allow switching of tx track zero
-			isAudio:      false, //we only allow switching of video
-			isIdleSource: false,
-		}]
-		if !ok {
-			panic("can't find txid track zero")
 		}
 
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
-			subid: Subid(transactionId),
-			txid:  txid, //you can only switch track 0 of video
-			rxid:  rxid,
+			subid: Subid(txid),
+			txid:  Video0, //in v1, we only allow switching of Video0, SFUs don't switch
+			rxid:  trackNum,
 		}
 
 		w.WriteHeader(http.StatusAccepted)
@@ -752,7 +713,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 	txidMapMutex.Lock()
-	txidMap[transactionId] = struct{}{}
+	txidMap[txid] = struct{}{}
 	txidMapMutex.Unlock()
 
 	// Create a new PeerConnection
@@ -773,7 +734,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	})
 	// XXX is this switch case necessary?, will the pc eventually reach Closed after Failed or Disconnected
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		log.Printf("subscriber 0x%016x newstate: %s", transactionId, cs.String())
+		log.Printf("subscriber 0x%016x newstate: %s", txid, cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 		case webrtc.PeerConnectionStateFailed:
@@ -831,7 +792,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &Track{
 			txid:            Audio0,
-			subid:           Subid(transactionId),
+			subid:           Subid(txid),
 			track:           track,
 			splicer:         &RtpSplicer{},
 			rxid:            Rxid(Audio0),
@@ -850,7 +811,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		subAddTrackCh <- MsgSubscriberAddTrack{
 			txtrack: &Track{
 				txid:            Txid(i) + Video0,
-				subid:           Subid(transactionId),
+				subid:           Subid(txid),
 				track:           track,
 				splicer:         &RtpSplicer{},
 				rxid:            0,
@@ -1192,38 +1153,25 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 
 }
 
-func parseTrackname(trackname string) (id RxTxId, err error) {
-
+func parseTrackname(trackname string) (Rxid, error) {
 	if strings.HasPrefix(trackname, "video") {
-		i, xerr := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
-		if xerr != nil {
-			err = fmt.Errorf("bad number after video")
-			return
+		i, err := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
+		if err != nil {
+			return -1, fmt.Errorf("bad number after video")
 		}
 
-		id.index = i
-		id.isAudio = false
-		id.isIdleSource = false
-
-		return
+		return Rxid(i) + Rxid(Video0), nil
 	}
 
 	if strings.HasPrefix(trackname, "audio") {
-		i, xerr := strconv.Atoi(strings.TrimPrefix(trackname, "audio"))
-		if xerr != nil {
-			err = fmt.Errorf("bad number after audio")
-			return
+		i, err := strconv.Atoi(strings.TrimPrefix(trackname, "audio"))
+		if err != nil {
+			return -1, fmt.Errorf("bad number after audio")
 		}
-
-		id.index = i
-		id.isAudio = true
-		id.isIdleSource = false
-
-		return
+		return Rxid(i) + Rxid(Audio0), nil
 	}
 
-	err = fmt.Errorf("need video<N> or audio<N> for track num")
-	return
+	return -1, fmt.Errorf("need video<N> or audio<N> for track num")
 }
 
 func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid Rxid, clockrate uint32) {
@@ -1249,20 +1197,21 @@ type MsgRxPacket struct {
 	packet      *rtp.Packet
 }
 
-type Txid int
-type Rxid int // usually an index into rxidArray
+type Txid int // 0 = video0, 1=video1, 10000=audio0 ...
+type Rxid int // 0 = video0, 1=video1, 10000=audio0 ...
+
+// We don't define constants for Video2...Video9999 nor Audio 2...
+const (
+	Video0 Txid = 0
+	//Video1 TrkId = 1
+	Audio0 Txid = 10000
+	//Audio1 TrkId = 10001
+)
 
 type MsgSubscriberAddTrack struct {
 	txtrack *Track
 }
 
-// we could use the compact or exploded types
-// for exchanging rxid, txid
-// advantage of using the compact/int type for
-// communicating tracks is that
-// we check for errors inside the http handler,
-// NOT in the media loop.
-// This means we can communicate errors back via HTTP
 type MsgSubscriberSwitchTrack struct {
 	subid Subid // 64bit subscriber key
 	txid  Txid  // track number from subscriber's perspective
@@ -1308,6 +1257,29 @@ The nice thing about maps, is the individual elements can be deleted.
 // used mainly to handle control messages from http handlers
 var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 
+type RxidType int
+
+const (
+	IngressAudio RxidType = iota
+	IngressVideo
+	IdleAudio
+	IdleVideo
+)
+
+func (e RxidType) String() string {
+	switch e {
+	case IngressAudio:
+		return "IngressAudio"
+	case IngressVideo:
+		return "IngressVideo"
+	case IdleAudio:
+		return "IdleAudio"
+	case IdleVideo:
+		return "IdleVideo"
+	}
+	return "<bad>"
+}
+
 //The Rxid's form a set of continuous indexes into an array
 //the order is: audio, video, idleAudio, idleVideo
 //this order is important.
@@ -1315,14 +1287,12 @@ var sub2txid2track map[Subid]map[Txid]*Track = make(map[Subid]map[Txid]*Track)
 // makes the videoX and audioX string parsers simpler,
 // and the http code simpler.
 
-type RxTxId struct {
-	index        int
-	isAudio      bool
-	isIdleSource bool
+type ExplodedRxid struct {
+	index    int
+	rxidtype RxidType
 }
 
-var uniqRxid map[RxTxId]Rxid = make(map[RxTxId]Rxid)
-var uniqTxid map[RxTxId]Txid = make(map[RxTxId]Txid)
+var xplodedRxid2rxid map[ExplodedRxid]Rxid = make(map[ExplodedRxid]Rxid)
 
 // someday?: var [Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
 //var rxid2track map[Rxid]map[*Track]struct{} = make(map[Rxid]map[*Track]struct{})
