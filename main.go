@@ -97,6 +97,96 @@ var (
 	txidMapMutex     sync.Mutex
 )
 
+
+var ticker = time.NewTicker(100 * time.Millisecond)
+
+type Subid uint64
+
+// type Txid int // 0 = video0, 1=video1, 10000=audio0 ...
+// type Rxid int // 0 = video0, 1=video1, 10000=audio0 ...
+
+// We don't define constants for Video2...Video9999 nor Audio 2...
+
+type MsgRxPacket struct {
+	rxidstate   *RxidState
+	rxClockRate uint32
+	packet      *rtp.Packet
+}
+
+type MsgSubscriberAddTrack struct {
+	txtrack *Track
+}
+
+type MsgSubscriberSwitchTrack struct {
+	subid Subid   // 64bit subscriber key
+	txid  TrackId // track number from subscriber's perspective
+	rxid  TrackId // where txid will get it's input from
+}
+
+var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
+var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
+var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack, 10)
+
+// type Subscriber struct {
+// 	txTracks []*Track
+// }
+// var zz map[Subid]Subscriber = make(map[Subid]Subscriber)
+
+// reviewed
+type RtpSplicer struct {
+	debugName        string
+	lastSSRC         uint32
+	lastSN           uint16
+	lastTS           uint32
+	lastUnixnanosNow int64
+	snOffset         uint16
+	tsOffset         uint32
+}
+
+type Track struct {
+	subid           Subid   // 64bit subscriber key
+	txid            TrackId // track number from subscriber's perspective
+	rxid            TrackId
+	rxidLastPending TrackId
+	track           *webrtc.TrackLocalStaticRTP
+	splicer         *RtpSplicer
+}
+
+/*
+It has seemed at times that using arrays instead of maps
+would be simpler (and faster).
+The nice thing about maps, is the individual elements can be deleted.
+*/
+
+// subid to txid to track
+// used mainly to handle control messages from http handlers
+var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
+
+
+
+type TrackType int
+
+const (
+	Audio TrackType = iota
+	Video
+	Data
+)
+
+type TrackId struct {
+	typ            TrackType
+	index          int  // 0=first track, 1=2nd, 2=3rd, etc...
+	internalSource bool // mostly for idle video tracks
+}
+
+var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
+
+type RxidState struct {
+	txtracks      map[*Track]struct{}
+	pendingSwitch map[*Track]struct{}
+	lastReceipt   int64 //unixnanos
+	rxid          TrackId
+}
+
 func checkFatal(err error) {
 	if err != nil {
 		elog.Fatal(err)
@@ -1211,69 +1301,6 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidstate *RxidState, clock
 	}
 }
 
-var ticker = time.NewTicker(100 * time.Millisecond)
-
-type Subid uint64
-
-// type Txid int // 0 = video0, 1=video1, 10000=audio0 ...
-// type Rxid int // 0 = video0, 1=video1, 10000=audio0 ...
-
-// We don't define constants for Video2...Video9999 nor Audio 2...
-
-type MsgRxPacket struct {
-	rxidstate   *RxidState
-	rxClockRate uint32
-	packet      *rtp.Packet
-}
-
-type MsgSubscriberAddTrack struct {
-	txtrack *Track
-}
-
-type MsgSubscriberSwitchTrack struct {
-	subid Subid   // 64bit subscriber key
-	txid  TrackId // track number from subscriber's perspective
-	rxid  TrackId // where txid will get it's input from
-}
-
-var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
-var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
-var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack, 10)
-
-// type Subscriber struct {
-// 	txTracks []*Track
-// }
-// var zz map[Subid]Subscriber = make(map[Subid]Subscriber)
-
-// reviewed
-type RtpSplicer struct {
-	debugName        string
-	lastSSRC         uint32
-	lastSN           uint16
-	lastTS           uint32
-	lastUnixnanosNow int64
-	snOffset         uint16
-	tsOffset         uint32
-}
-
-type Track struct {
-	subid           Subid   // 64bit subscriber key
-	txid            TrackId // track number from subscriber's perspective
-	rxid            TrackId
-	rxidLastPending TrackId
-	track           *webrtc.TrackLocalStaticRTP
-	splicer         *RtpSplicer
-}
-
-/*
-It has seemed at times that using arrays instead of maps
-would be simpler (and faster).
-The nice thing about maps, is the individual elements can be deleted.
-*/
-
-// subid to txid to track
-// used mainly to handle control messages from http handlers
-var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
 
 func (e TrackType) String() string {
 	switch e {
@@ -1285,29 +1312,6 @@ func (e TrackType) String() string {
 		return "Data"
 	}
 	return "<bad>"
-}
-
-type TrackType int
-
-const (
-	Audio TrackType = iota
-	Video
-	Data
-)
-
-type TrackId struct {
-	typ            TrackType
-	index          int  // 0=first track, 1=2nd, 2=3rd, etc...
-	internalSource bool // mostly for idle video tracks
-}
-
-var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
-
-type RxidState struct {
-	txtracks      map[*Track]struct{}
-	pendingSwitch map[*Track]struct{}
-	lastReceipt   int64 //unixnanos
-	rxid          TrackId
 }
 
 // XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
