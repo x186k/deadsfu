@@ -38,9 +38,11 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 	t0 := &Track{
 		subid:           subid,
-		txid:            0,
+		txid:            TrackId{typ: 0, index: 0, internalSource: false},
 		rxid:            0,
 		rxidLastPending: 0,
+		track:           &webrtc.TrackLocalStaticRTP{},
+		splicer:         &RtpSplicer{},
 	}
 	t1 := &Track{
 		subid:           subid,
