@@ -97,15 +97,9 @@ var (
 	txidMapMutex     sync.Mutex
 )
 
-
 var ticker = time.NewTicker(100 * time.Millisecond)
 
 type Subid uint64
-
-// type Txid int // 0 = video0, 1=video1, 10000=audio0 ...
-// type Rxid int // 0 = video0, 1=video1, 10000=audio0 ...
-
-// We don't define constants for Video2...Video9999 nor Audio 2...
 
 type MsgRxPacket struct {
 	rxidstate   *RxidState
@@ -118,7 +112,7 @@ type MsgSubscriberAddTrack struct {
 }
 
 type MsgSubscriberSwitchTrack struct {
-	subid Subid   // 64bit subscriber key
+	subid Subid    // 64bit subscriber key
 	txid  TrackId // track number from subscriber's perspective
 	rxid  TrackId // where txid will get it's input from
 }
@@ -144,7 +138,7 @@ type RtpSplicer struct {
 }
 
 type Track struct {
-	subid           Subid   // 64bit subscriber key
+	subid           Subid    // 64bit subscriber key
 	txid            TrackId // track number from subscriber's perspective
 	rxid            TrackId
 	rxidLastPending TrackId
@@ -162,8 +156,6 @@ The nice thing about maps, is the individual elements can be deleted.
 // used mainly to handle control messages from http handlers
 var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
 
-
-
 type TrackType int
 
 const (
@@ -172,11 +164,15 @@ const (
 	Data
 )
 
-type TrackId struct {
-	typ            TrackType
-	index          int  // 0=first track, 1=2nd, 2=3rd, etc...
-	internalSource bool // mostly for idle video tracks
-}
+type TrackId int
+
+const (
+	XInvalid    TrackId = Spacing * 0
+	XVideo     TrackId = Spacing * 1
+	XAudio     TrackId = Spacing * 2
+	XData      TrackId = Spacing * 3
+	XIdleVideo TrackId = Spacing * 4
+)
 
 var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
 
@@ -480,11 +476,11 @@ func main() {
 	println("profiling done, exit")
 }
 
-func initRxid2state(n int, typ TrackType, internalSource bool) {
-	log.Printf("Creating %v %v tracks", n, typ.String())
+func initRxid2state(n int, id TrackId) {
+	log.Printf("Creating %v %v tracks", n, id.String())
 
 	for i := 0; i < n; i++ {
-		z := TrackId{typ: typ, index: i, internalSource: internalSource}
+		z := TrackId(i) + id
 		rxid2state[z] = &RxidState{
 			txtracks:      make(map[*Track]struct{}),
 			pendingSwitch: make(map[*Track]struct{}),
@@ -493,10 +489,10 @@ func initRxid2state(n int, typ TrackType, internalSource bool) {
 	}
 }
 func initMediaHandlerState(t TrackCounts) {
-	initRxid2state(t.numAudio, Audio, false)
-	initRxid2state(t.numVideo, Video, false)
-	initRxid2state(t.numIdleAudio, Audio, true)
-	initRxid2state(t.numIdleVideo, Video, true)
+	initRxid2state(t.numAudio, XAudio)
+	initRxid2state(t.numVideo, XVideo)
+	initRxid2state(t.numIdleAudio, XIdleVideo)
+	//	initRxid2state(t.numIdleVideo, Xidleaudio
 }
 
 func printURLS(proto string, host string, port string) {
@@ -771,7 +767,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
 			subid: Subid(txid),
-			txid:  TrackId{typ: Video, index: 0, internalSource: false}, //can only switch output track 0
+			txid:  XVideo + 0, //can only switch output track 0
 			rxid:  trackid,
 		}
 
@@ -883,12 +879,12 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &Track{
-			txid:            TrackId{typ: Audio, index: 0},
+			txid:            XAudio + 0,
 			subid:           Subid(txid),
 			track:           track,
 			splicer:         &RtpSplicer{},
-			rxid:            TrackId{typ: Audio, index: 0},
-			rxidLastPending: TrackId{},
+			rxid:            XAudio + 0,
+			rxidLastPending: XInvalid,
 		},
 	}
 
@@ -902,12 +898,12 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
 			txtrack: &Track{
-				txid:            TrackId{typ: Video, index: i},
+				txid:            XVideo + TrackId(i),
 				subid:           Subid(txid),
 				track:           track,
 				splicer:         &RtpSplicer{},
-				rxid:            TrackId{typ: Video, index: i},
-				rxidLastPending: TrackId{},
+				rxid:            XVideo + TrackId(i),
+				rxidLastPending: XInvalid,
 			},
 		}
 	}
@@ -1006,7 +1002,7 @@ func idleLoopPlayer(xxx []byte) {
 	seq := uint16(mrand.Uint32())
 	ts := mrand.Uint32()
 
-	id := TrackId{typ: Video, index: 0, internalSource: true}
+	id := XIdleVideo + 0
 	rxidstate, ok := rxid2state[id]
 	if !ok {
 		panic("cannot find idle video loop track")
@@ -1159,8 +1155,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		log.Println("OnTrack audio", mimetype)
 
-		id := TrackId{typ: Audio, index: 0, internalSource: false}
-		s, ok := rxid2state[id]
+		s, ok := rxid2state[XAudio]
 		if !ok {
 			panic("cannot find idle video loop track")
 		}
@@ -1266,9 +1261,7 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 			return
 		}
 
-		t.index = i
-		t.internalSource = false
-		t.typ = Video
+		t = XVideo + TrackId(i)
 	}
 
 	if strings.HasPrefix(trackname, "audio") {
@@ -1278,9 +1271,7 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 			return
 		}
 
-		t.index = i
-		t.internalSource = false
-		t.typ = Audio
+		t = XAudio + TrackId(i)
 		return
 	}
 
@@ -1301,17 +1292,25 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidstate *RxidState, clock
 	}
 }
 
+const Spacing = 100
 
-func (e TrackType) String() string {
-	switch e {
-	case Audio:
-		return "Audio"
-	case Video:
+func (e TrackId) String() string {
+
+	switch {
+	case e >= XVideo && e < XVideo+Spacing:
 		return "Video"
-	case Data:
+	case e >= XAudio && e < XAudio+Spacing:
+		return "Audio"
+	case e >= XData && e < XData+Spacing:
 		return "Data"
 	}
+
 	return "<bad>"
+}
+
+func (e TrackId) XTrackId() TrackId {
+
+	return (e / Spacing) * Spacing
 }
 
 // XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
@@ -1333,7 +1332,7 @@ func msgOnce() {
 
 			if len(m.rxidstate.pendingSwitch) > 0 {
 
-				isaudio := m.rxidstate.rxid.typ == Audio
+				isaudio := m.rxidstate.rxid.XTrackId() == XAudio
 				if !isaudio {
 					if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
 						goto finished_switches
@@ -1417,9 +1416,9 @@ func msgOnce() {
 		_ = m.txid //pre-vetted, will not vet here
 
 		// checklist
-		_ = sub2txid2track                      // no change!
-		_ = rxid2state[TrackId{}].txtracks      // no change! this gets updated on new media
-		_ = rxid2state[TrackId{}].pendingSwitch // this gets new entry for switch
+		_ = sub2txid2track              // no change!
+		_ = rxid2state[0].txtracks      // no change! this gets updated on new media
+		_ = rxid2state[0].pendingSwitch // this gets new entry for switch
 
 		// pendingTrackChange
 		txid2track, ok := sub2txid2track[m.subid]
