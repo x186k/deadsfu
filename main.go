@@ -472,11 +472,12 @@ func initRxid2state(n int, id TrackId) {
 	log.Printf("Creating %v %v tracks", n, id.String())
 
 	for i := 0; i < n; i++ {
-		z := TrackId(i) + id
-		rxid2state[z] = &RxidState{
+		rxid := TrackId(i) + id
+		rxid2state[rxid] = &RxidState{
 			txtracks:      make(map[*Track]struct{}),
 			pendingSwitch: make(map[*Track]struct{}),
 			lastReceipt:   0,
+			rxid:          rxid,
 		}
 	}
 }
