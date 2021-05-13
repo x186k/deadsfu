@@ -1417,23 +1417,29 @@ func msgOnce() {
 		_ = m.txid //pre-vetted, will not vet here
 
 		// checklist
-		_ = sub2txid2track              // no change!
-		_ = rxid2state[0].txtracks      // no change! this gets updated on new media
-		_ = rxid2state[0].pendingSwitch // this gets new entry for switch
+		// _ = sub2txid2track              // no change!
+		// _ = rxid2state[0].txtracks      // no change! this gets updated on new media
+		// _ = rxid2state[0].pendingSwitch // this gets new entry for switch
 
 		// pendingTrackChange
 		txid2track, ok := sub2txid2track[m.subid]
 		if ok {
-			track := txid2track[m.txid]
+			track, ok := txid2track[m.txid]
+			if !ok {
+				panic(fmt.Errorf("cant find sub %v track for txid %d", m.subid, m.txid))
+			}
 
 			// remove the last entry we put in the pendingSwitch queue, if any
-			delete(rxid2state[track.rxidLastPending].pendingSwitch, track)
+			if z, ok := rxid2state[track.rxidLastPending]; ok {
+				delete(z.pendingSwitch, track)
+			}
+			//delete(rxid2state[track.rxidLastPending].pendingSwitch, track)
 
 			// make note of the new requested RXID
-			// incase we need to delete it again
-			track.rxidLastPending = m.rxid
+			// incase we need to delete it later
 
-			rxid2state[track.rxidLastPending].pendingSwitch[track] = struct{}{}
+			rxid2state[m.rxid].pendingSwitch[track] = struct{}{}
+			track.rxidLastPending = m.rxid
 
 		} else {
 			elog.Printf("bad: invalid subid 0x%x", m.subid)
