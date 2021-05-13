@@ -3,6 +3,9 @@
 package main
 
 import (
+	"io/ioutil"
+	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -13,11 +16,14 @@ import (
 
 const subid = Subid(100)
 
-// func TestMain(m *testing.M) {
-// 	//flag.Parse() // call flag.Parse() here if TestMain uses flags
+func TestMain(m *testing.M) {
+	//flag.Parse() // call flag.Parse() here if TestMain uses flags
 
-// 	os.Exit(m.Run())
-// }
+	log.SetOutput(ioutil.Discard)
+	elog.SetOutput(ioutil.Discard)
+	
+	os.Exit(m.Run())
+}
 
 func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	assert.True(t, disableWriteRTP, "disableWriteRTP must be true for this test")
@@ -38,24 +44,24 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 
 	t0 := &Track{
 		subid:           subid,
-		txid:            TrackId{typ: 0, index: 0, internalSource: false},
-		rxid:            0,
+		txid:            XVideo + 0,
+		rxid:            XVideo + 0,
 		rxidLastPending: 0,
 		track:           &webrtc.TrackLocalStaticRTP{},
 		splicer:         &RtpSplicer{},
 	}
 	t1 := &Track{
 		subid:           subid,
-		txid:            1,
-		rxid:            1,
+		txid:            XVideo + 1,
+		rxid:            XVideo + 1,
 		rxidLastPending: 0,
 		track:           &webrtc.TrackLocalStaticRTP{},
 		splicer:         &RtpSplicer{},
 	}
 	t2 := &Track{
 		subid:           subid,
-		txid:            2,
-		rxid:            2,
+		txid:            XVideo + 2,
+		rxid:            XVideo + 2,
 		rxidLastPending: 0,
 		track:           &webrtc.TrackLocalStaticRTP{},
 		splicer:         &RtpSplicer{},
@@ -74,20 +80,22 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		subAddTrackCh <- MsgSubscriberAddTrack{txtrack: t2}
 		msgOnce()
 
+		assert.Equal(t, XVideo, rxid2state[XVideo].rxid)
+
 		// checklist
-		_ = sub2txid2track             //affected
-		_ = rxidArray[0].rxid2track    // affected
-		_ = rxidArray[0].pendingSwitch // not affected
-		assert.Equal(t, t0, sub2txid2track[subid][0])
-		assert.Equal(t, t1, sub2txid2track[subid][1])
-		assert.Equal(t, t2, sub2txid2track[subid][2])
+		_ = sub2txid2track                   //affected
+		_ = rxid2state[XVideo].txtracks      // affected
+		_ = rxid2state[XVideo].pendingSwitch // not affected
+		assert.Equal(t, t0, sub2txid2track[subid][XVideo+0])
+		assert.Equal(t, t1, sub2txid2track[subid][XVideo+1])
+		assert.Equal(t, t2, sub2txid2track[subid][XVideo+2])
 
 		//make sure setup is good
-		_, ok = rxidArray[0].rxid2track[t0]
+		_, ok = rxid2state[XVideo].txtracks[t0]
 		assert.Equal(t, true, ok)
-		_, ok = rxidArray[1].rxid2track[t1]
+		_, ok = rxid2state[XVideo+1].txtracks[t1]
 		assert.Equal(t, true, ok)
-		_, ok = rxidArray[2].rxid2track[t2]
+		_, ok = rxid2state[XVideo+2].txtracks[t2]
 		assert.Equal(t, true, ok)
 
 	}
@@ -96,54 +104,54 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	{
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
 			subid: subid,
-			txid:  0,
-			rxid:  1, //was zero
+			txid:  XVideo + 0,
+			rxid:  XVideo + 1, //was zero
 		}
 		msgOnce()
 
 		//switch sent
 		// checklist
-		_ = sub2txid2track             //not affected
-		_ = rxidArray[0].rxid2track    //affected
-		_ = rxidArray[0].pendingSwitch //affected
+		_ = sub2txid2track                   //not
+		_ = rxid2state[XVideo].txtracks      // affected
+		_ = rxid2state[XVideo].pendingSwitch //  affected
 
 		//should not have moved
-		_, ok = rxidArray[0].rxid2track[t0]
+		_, ok = rxid2state[XVideo].txtracks[t0]
 		assert.Equal(t, true, ok)
 
 		//should be pending entry
-		_, ok = rxidArray[1].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+1].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
-		assert.Equal(t, Rxid(1), t0.rxidLastPending)
+		assert.Equal(t, XVideo+1, t0.rxidLastPending)
 	}
 
 	// SWITCH to rxid/2
 	{
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
 			subid: subid,
-			txid:  0,
-			rxid:  2,
+			txid:  XVideo + 0,
+			rxid:  XVideo + 2,
 		}
 		msgOnce()
 
 		// switch sent:
 		// checklist
-		_ = sub2txid2track             //not affected
-		_ = rxidArray[0].rxid2track    //no affect, since not keyframe
-		_ = rxidArray[0].pendingSwitch // affected
+		_ = sub2txid2track                   //not
+		_ = rxid2state[XVideo].txtracks      // not
+		_ = rxid2state[XVideo].pendingSwitch //  affected
 
 		//should not have moved
-		_, ok = rxidArray[0].rxid2track[t0]
+		_, ok = rxid2state[XVideo+0].txtracks[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = rxidArray[1].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 		// now  pending on 2
-		_, ok = rxidArray[2].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+2].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
-		assert.Equal(t, Rxid(2), t0.rxidLastPending)
+		assert.Equal(t, XVideo+2, t0.rxidLastPending)
 
 	}
 
@@ -153,29 +161,29 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	*/
 	{
 		rxMediaCh <- MsgRxPacket{
-			rxid:        0,
+			rxidstate:   rxid2state[XVideo+0],
 			rxClockRate: 0,
 			packet:      &rtp.Packet{},
 		}
 		msgOnce()
 
 		//checklist
-		_ = sub2txid2track             //no affect
-		_ = rxidArray[0].rxid2track    // no affect
-		_ = rxidArray[0].pendingSwitch // not keyframe, no affect
+		_ = sub2txid2track                   //not
+		_ = rxid2state[XVideo].txtracks      // not
+		_ = rxid2state[XVideo].pendingSwitch //  no affect
 
 		//should not have moved
-		_, ok = rxidArray[0].rxid2track[t0]
+		_, ok = rxid2state[XVideo+0].txtracks[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = rxidArray[1].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 		// now  pending on 2
-		_, ok = rxidArray[2].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+2].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
-		assert.Equal(t, Rxid(2), t0.rxidLastPending)
+		assert.Equal(t, XVideo+2, t0.rxidLastPending)
 	}
 
 	/*
@@ -184,29 +192,29 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	*/
 	{
 		rxMediaCh <- MsgRxPacket{
-			rxid:        2,
+			rxidstate:   rxid2state[XVideo+2],
 			rxClockRate: 0,
 			packet:      &rtp.Packet{},
 		}
 		msgOnce()
 
 		//checklist
-		_ = sub2txid2track
-		_ = rxidArray[0].rxid2track    // no affect
-		_ = rxidArray[0].pendingSwitch // not keyframe, no affect
+		_ = sub2txid2track                   //no
+		_ = rxid2state[XVideo].txtracks      // no
+		_ = rxid2state[XVideo].pendingSwitch //  no affect
 
 		//should not have moved
-		_, ok = rxidArray[0].rxid2track[t0]
+		_, ok = rxid2state[XVideo+0].txtracks[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = rxidArray[1].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 		// now  pending on 2
-		_, ok = rxidArray[2].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+2].pendingSwitch[t0]
 		assert.Equal(t, true, ok)
-		assert.Equal(t, Rxid(2), t0.rxidLastPending)
+		assert.Equal(t, XVideo+2, t0.rxidLastPending)
 	}
 
 	/*
@@ -215,7 +223,7 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	*/
 	{
 		rxMediaCh <- MsgRxPacket{
-			rxid:        2,
+			rxidstate:   rxid2state[XVideo+2],
 			rxClockRate: 0,
 			packet: &rtp.Packet{
 				Header:  rtp.Header{},
@@ -226,21 +234,21 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		msgOnce()
 
 		//checklist
-		_ = sub2txid2track             //no change
-		_ = rxidArray[0].rxid2track    // old removed. and new entry
-		_ = rxidArray[0].pendingSwitch //now empty
+		_ = sub2txid2track              //no
+		_ = rxid2state[XVideo].txtracks      //  old removed. and new entry
+		_ = rxid2state[XVideo].pendingSwitch //  now empty
 
 		//moved
-		_, ok = rxidArray[0].rxid2track[t0]
+		_, ok = rxid2state[XVideo+0].txtracks[t0]
 		assert.Equal(t, false, ok)
-		_, ok = rxidArray[2].rxid2track[t0]
+		_, ok = rxid2state[XVideo+2].txtracks[t0]
 		assert.Equal(t, true, ok)
 
 		// not longer pending on 1
-		_, ok = rxidArray[1].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+1].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 		// no longer pending on 2
-		_, ok = rxidArray[2].pendingSwitch[t0]
+		_, ok = rxid2state[XVideo+2].pendingSwitch[t0]
 		assert.Equal(t, false, ok)
 
 	}
@@ -256,17 +264,17 @@ func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 		removeTrack(t2)
 
 		//checklist
-		_ = sub2txid2track             //no change
-		_ = rxidArray[0].rxid2track    // old removed. and new entry
-		_ = rxidArray[0].pendingSwitch //now empty
+		_ = sub2txid2track              //no
+		_ = rxid2state[XVideo].txtracks      //  old removed. and new entry
+		_ = rxid2state[XVideo].pendingSwitch //  now empty
 
 		for _, v := range sub2txid2track {
 			assert.Zero(t, len(v))
 		}
-		for _, v := range rxidArray {
-			assert.Zero(t, len(v.rxid2track))
+		for _, v := range rxid2state {
+			assert.Zero(t, len(v.txtracks))
 		}
-		for _, v := range rxidArray {
+		for _, v := range rxid2state {
 			assert.Zero(t, len(v.pendingSwitch))
 		}
 	}
@@ -283,8 +291,8 @@ func resetState(t *testing.T) {
 		}
 	}
 	{
-		for _, v := range rxidArray {
-			v.rxid2track = make(map[*Track]struct{})
+		for _, v := range rxid2state {
+			v.txtracks = make(map[*Track]struct{})
 			v.pendingSwitch = make(map[*Track]struct{})
 		}
 	}
@@ -296,8 +304,8 @@ func resetState(t *testing.T) {
 
 	assert.Equal(t, 0, len(sub2txid2track))
 	{
-		for _, v := range rxidArray {
-			assert.Equal(t, 0, len(v.rxid2track))
+		for _, v := range rxid2state {
+			assert.Equal(t, 0, len(v.txtracks))
 			assert.Equal(t, 0, len(v.pendingSwitch))
 		}
 	}
@@ -331,8 +339,8 @@ func TestMsgInvalidSwitchTrack(t *testing.T) {
 	// The following is the code under test
 	subSwitchTrackCh <- MsgSubscriberSwitchTrack{
 		subid: Subid(subid), //invalid!
-		txid:  999,
-		rxid:  99,
+		txid:  XVideo + 999,
+		rxid:  XVideo + 99,
 	}
 
 	msgOnce()
