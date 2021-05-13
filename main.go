@@ -112,7 +112,7 @@ type MsgSubscriberAddTrack struct {
 }
 
 type MsgSubscriberSwitchTrack struct {
-	subid Subid    // 64bit subscriber key
+	subid Subid   // 64bit subscriber key
 	txid  TrackId // track number from subscriber's perspective
 	rxid  TrackId // where txid will get it's input from
 }
@@ -138,7 +138,7 @@ type RtpSplicer struct {
 }
 
 type Track struct {
-	subid           Subid    // 64bit subscriber key
+	subid           Subid   // 64bit subscriber key
 	txid            TrackId // track number from subscriber's perspective
 	rxid            TrackId
 	rxidLastPending TrackId
@@ -159,7 +159,7 @@ var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Tr
 type TrackId int
 
 const (
-	XInvalid    TrackId = Spacing * 0
+	XInvalid   TrackId = Spacing * 0
 	XVideo     TrackId = Spacing * 1
 	XAudio     TrackId = Spacing * 2
 	XData      TrackId = Spacing * 3
