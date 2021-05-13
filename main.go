@@ -156,14 +156,6 @@ The nice thing about maps, is the individual elements can be deleted.
 // used mainly to handle control messages from http handlers
 var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
 
-type TrackType int
-
-const (
-	Audio TrackType = iota
-	Video
-	Data
-)
-
 type TrackId int
 
 const (
