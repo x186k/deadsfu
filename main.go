@@ -1396,11 +1396,20 @@ func msgOnce() {
 
 		tr := m.txtrack
 
+		if tr.txid == 0 {
+			panic(911)
+		}
+		if tr.rxid == 0 {
+			panic(912)
+		}
+
 		if _, ok := sub2txid2track[tr.subid]; !ok {
 			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
 		}
 
 		sub2txid2track[tr.subid][tr.txid] = tr
+
+		rxid2state[tr.rxid].txtracks[tr] = struct{}{}
 
 	case m := <-subSwitchTrackCh:
 
