@@ -1037,6 +1037,8 @@ func dialUpstream(baseurl string) {
 		log.Println("dial ICE Connection State has changed", icecs.String())
 	})
 
+	//XXXX
+
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
 	_, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
@@ -1151,7 +1153,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 
 		s, ok := rxid2state[XAudio]
 		if !ok {
-			panic("cannot find idle video loop track")
+			panic("cannot find idle video loop track2")
 		}
 
 		inboundTrackReader(track, s, track.Codec().ClockRate)
