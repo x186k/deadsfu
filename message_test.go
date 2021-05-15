@@ -3,9 +3,6 @@
 package main
 
 import (
-	"io/ioutil"
-	"log"
-	"os"
 	"testing"
 	"time"
 
@@ -16,14 +13,7 @@ import (
 
 const subid = Subid(100)
 
-func TestMain(m *testing.M) {
-	//flag.Parse() // call flag.Parse() here if TestMain uses flags
 
-	log.SetOutput(ioutil.Discard)
-	elog.SetOutput(ioutil.Discard)
-	
-	os.Exit(m.Run())
-}
 
 func TestMsgAddingSwitchingAndRTP(t *testing.T) {
 	assert.True(t, disableWriteRTP, "disableWriteRTP must be true for this test")
