@@ -293,15 +293,16 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 
 // initStateAndGoroutines is outside of main() to enable unit testing
 func initStateAndGoroutines() {
+	
+	flag.Usage = Usage // my own usage handle
+	flag.Parse()
+	initMediaHandlerState(trackCounts)
+
 	go logGoroutineCountToDebugLog()
 
 	go idleLoopPlayer(idleScreenH264Pcapng)
 
 	go msgLoop()
-
-	flag.Usage = Usage // my own usage handle
-	flag.Parse()
-	initMediaHandlerState(trackCounts)
 }
 
 func main() {
