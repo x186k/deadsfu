@@ -485,7 +485,7 @@ func initRxid2state(n int, id TrackId) {
 func initMediaHandlerState(t TrackCounts) {
 	initRxid2state(t.numAudio, XAudio)
 	initRxid2state(t.numVideo, XVideo)
-	initRxid2state(t.numIdleAudio, XIdleVideo)
+	initRxid2state(t.numIdleVideo, XIdleVideo)
 	//	initRxid2state(t.numIdleVideo, Xidleaudio
 }
 
