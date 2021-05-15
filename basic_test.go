@@ -1,5 +1,3 @@
-// +build !disableWriteRTP
-
 package main
 
 import (
@@ -19,10 +17,8 @@ func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 
 	log.SetOutput(ioutil.Discard)
-	log.SetPrefix("")
 	log.SetFlags(0)
 	elog.SetOutput(ioutil.Discard)
-	elog.SetPrefix("")
 	elog.SetFlags(0)
 
 	os.Exit(m.Run())
@@ -31,7 +27,6 @@ func TestMain(m *testing.M) {
 func TestBasicSubscriber(t *testing.T) {
 
 	initStateAndGoroutines()
-
 
 	rtcconf := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -44,8 +39,14 @@ func TestBasicSubscriber(t *testing.T) {
 	pc, err := webrtc.NewPeerConnection(rtcconf)
 	checkPanic(err)
 
+	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		panic("--ontrack")
+	})
+
 	ro := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
-	// // create transceivers for 1x audio, 3x video
+	// create transceivers for 1x audio, 3x video
+	_, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, ro)
+	checkPanic(err)
 	_, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, ro)
 	checkPanic(err)
 
@@ -65,13 +66,10 @@ func TestBasicSubscriber(t *testing.T) {
 	checkPanic(err)
 
 	//logSdpReport("dialupstream-offer", offer)
-
-	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		println("--ontrack")
-	})
-
+	gatherComplete := webrtc.GatheringCompletePromise(pc)
 	err = pc.SetLocalDescription(offer) //start ICE
 	checkPanic(err)
+	<-gatherComplete
 
 	req := httptest.NewRequest("POST", "http://ignored.com/sub", strings.NewReader(offer.SDP))
 	w := httptest.NewRecorder()
@@ -89,7 +87,7 @@ func TestBasicSubscriber(t *testing.T) {
 	err = pc.SetRemoteDescription(ans)
 	checkPanic(err)
 
-
+	println(999)
 
 	select {}
 
