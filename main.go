@@ -1417,8 +1417,8 @@ func msgOnce() {
 
 	case m := <-subSwitchTrackCh:
 
-		_ = m.rxid //pre-vetted, will not vet here
-		_ = m.txid //pre-vetted, will not vet here
+		// _ = m.rxid //pre-vetted, will not vet here
+		// _ = m.txid //pre-vetted, will not vet here
 
 		// checklist
 		// _ = sub2txid2track              // no change!
