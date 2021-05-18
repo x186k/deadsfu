@@ -130,3 +130,47 @@ var uniqTxid map[RxTxId]Txid = make(map[RxTxId]Txid)
 
 
 
+
+## 5/17/21 Looking at Media Forwarding Engine Again
+
+I see two major ways of doing multi-core pkt forwarding:
+A. *Unsynchronized-writers*: Using goroutines, and channels, RX packet order is maintained toward TX writes, and switching is also implemented.
+B. *One-RX-pkt-at-time*: all cores are let loose on one packet and a TX track list and the pkts is forwarded to all TX tracks until there is noting left to Write(). This is done in a loop for each packet.
+
+The main question between the two, is "how is packet ordering maintained".
+In method #B, it is simple, one packet is worked on until all Write()s are complete, all GR are waited for done/ready and another packet is worked upon.
+In method #A, you need to maintain the channel/GR packet path from RX to TX. And for switching there are two primary methods: and either have a single GR switching between changing RX, 
+
+
+### Method A/*Unsynchronized-writers*
+GR=goroutine, pkt=packet
+Method A is simple and has advantages in systems with no switching, but in a system with switching like
+ours it might become complicated. 
+We can't send from the receiving OnTrack goroutine, we need to be able to use multiple GR for large Subscribers counts.
+So, the OnTrack/GR will send to one or many Senders.
+Those Senders will be married to a particular track in order to maintain pkt ordering.
+So far so good.
+When switching a Sender will either recv msg to switch, or read a struct-flag in memory.
+When a keyframe/switchpoint occurs the Sender it will change it's unshared state for the Track
+to the new/pending Rxid.
+
+All RX packets will need to be transmitted to all senders.
+*The main issue with this approach is work distribution*
+*webrtc.LocalTracks are tied to GRs, so getting num tracks per GR sizing correct is important and not flexible. Also, all Tracks tied to a GR could have different Rxid*
+- Every GR for this approach would have to receive every RX packet. This might not be a big cost. The ratio of RX-work to TX-work should be very low. ie: rxwork/txwork < .0001 for example.
+- This approach requires either a) a shared Tracks slice, or b) messaging the Senders to inform them of their Track list. *both of these are ugly*
+
+
+### Method B/*One-RX-pkt-at-time*
+
+The big advantage of method B, is that there is the "classic single-thread/GR" that maintains most relevant state. With little or no shared state.
+
+
+## 5/18/21 media engine design notes
+
+Simplest design:
+One-slice of Tracks, Track includes 'pending Txid' and 'active bool'
+Can iter 1e10 48-byte structs in 155us, or 1.5us per 100-core box
+For max packet throughput of <1e6 or ~.66e6 pps
+
+
