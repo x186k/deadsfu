@@ -1456,6 +1456,26 @@ func msgOnce() {
 	case tk := <-ticker.C:
 		_ = tk
 		//fmt.Println("Tick at", tk)
+
+		nano := time.Now().UnixNano()
+		for k, v := range rxid2state {
+
+			if k < XVideo || k >= XVideo+Spacing {
+				continue
+			}
+
+			if v.isIdling {
+				continue
+			}		
+
+			if nano-v.lastReceipt < int64(1e9) {
+				continue
+			}
+
+			// transition this RX!
+
+
+		}
 	}
 }
 
