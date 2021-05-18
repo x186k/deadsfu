@@ -1464,9 +1464,9 @@ func msgOnce() {
 				continue
 			}
 
-			if v.isIdling {
-				continue
-			}		
+			// if v.isIdling {
+			// 	continue
+			// }		
 
 			if nano-v.lastReceipt < int64(1e9) {
 				continue
