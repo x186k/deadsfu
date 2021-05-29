@@ -128,13 +128,12 @@ var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwit
 
 // reviewed
 type RtpSplicer struct {
-	debugName        string
-	lastSSRC         uint32
-	lastSN           uint16
-	lastTS           uint32
 	lastUnixnanosNow int64
-	snOffset         uint16
+	lastSSRC         uint32
+	lastTS           uint32
 	tsOffset         uint32
+	lastSN           uint16
+	snOffset         uint16
 }
 
 type Track struct {
@@ -293,7 +292,7 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 
 // initStateAndGoroutines is outside of main() to enable unit testing
 func initStateAndGoroutines() {
-	
+
 	flag.Usage = Usage // my own usage handle
 	flag.Parse()
 	initMediaHandlerState(trackCounts)
@@ -1466,14 +1465,13 @@ func msgOnce() {
 
 			// if v.isIdling {
 			// 	continue
-			// }		
+			// }
 
 			if nano-v.lastReceipt < int64(1e9) {
 				continue
 			}
 
 			// transition this RX!
-
 
 		}
 	}
@@ -1661,7 +1659,7 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
 	if o.SSRC != s.lastSSRC || forceKeyFrame {
-		log.Printf("SpliceRTP: %v: ssrc changed new=%v cur=%v", s.debugName, o.SSRC, s.lastSSRC)
+		log.Printf("SpliceRTP: %p: ssrc changed new=%v cur=%v", s, o.SSRC, s.lastSSRC)
 
 		td := unixnano - s.lastUnixnanosNow // nanos
 		if td < 0 {
