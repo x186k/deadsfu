@@ -137,12 +137,12 @@ type RtpSplicer struct {
 }
 
 type Track struct {
-	subid           Subid   // 64bit subscriber key
+	track           *webrtc.TrackLocalStaticRTP
+	splicer         *RtpSplicer
 	txid            TrackId // track number from subscriber's perspective
 	rxid            TrackId
 	rxidLastPending TrackId
-	track           *webrtc.TrackLocalStaticRTP
-	splicer         *RtpSplicer
+	subid           Subid   // 64bit subscriber key
 }
 
 /*
