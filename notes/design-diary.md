@@ -173,4 +173,47 @@ One-slice of Tracks, Track includes 'pending Txid' and 'active bool'
 Can iter 1e10 48-byte structs in 155us, or 1.5us per 100-core box
 For max packet throughput of <1e6 or ~.66e6 pps
 
+## 5/30/21 media sending engine/switching engine
+
+I am not satisfied with my current designs for multi-goroutine sending/switching engine.
+I feel it is too complex.
+
+I am going back to basics.
+
+Simple idea #1
+- slice of all tracks, Track contains txid, pendingid, mutex, etc
+- multiple GRs scan tracks-slice, and lock, switch and send on each Track
+
+Simple idea #2
+- Two slices: stuct{active, pending Txid}, and Track
+- GRs use atomic.AddInt32 to grab chunks of the first slice and work on their chunks
+
+Simple idea #3
+- One or more slices of components of Track, maybe active Txid, pending Txid have own slices.
+- GRs use atomic.AddInt32 to grab ranges of the slices, and to work on their range.
+- chans+GRs could be used as an alternative to range-grabbing, but this might be less granular, as each Track must be fixed to a GR
+
+Down the road: A 'map[int]int'  for counts of a Txid in a range of the indexes can LATER be
+used to skip chunks of the slice(s).
+
+This example can be helpful: https://gobyexample.com/worker-pools
+
+Simple approach recap:
+- single slice of Track structs
+- Track contains 'source Rxid' and 'pending Rxid' (literally or in same-indexed slice)
+- 
+
+Big recap of major questions for media/switching engine:
+- single slice with encapsulated sourcerxid/pendingrxid vs. txslice/txmap or pendingslice/pendingmap
+	- we are moving toward: encapsulated sourcerxid/pendingrxid with effective single-slice
+- packet sending: fire-and-forget vs send-all-wait-for-completion
+	- fire-and-forget requires packets to always go to the same channel/GR to maintain ordering
+	- so we choose syncronous send-and-wait approach
+
+
+
+
+
+
+
 

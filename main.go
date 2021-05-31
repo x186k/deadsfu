@@ -121,12 +121,7 @@ var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack, 10)
 
-// type Subscriber struct {
-// 	txTracks []*Track
-// }
-// var zz map[Subid]Subscriber = make(map[Subid]Subscriber)
-
-// reviewed
+// size optimized, not readability
 type RtpSplicer struct {
 	lastUnixnanosNow int64
 	lastSSRC         uint32
@@ -136,23 +131,17 @@ type RtpSplicer struct {
 	snOffset         uint16
 }
 
+// size optimized, not readability
 type Track struct {
-	track           *webrtc.TrackLocalStaticRTP
-	splicer         *RtpSplicer
-	subid           Subid   // 64bit subscriber key
-	txid            TrackId // track number from subscriber's perspective
-	rxid            TrackId
-	rxidLastPending TrackId
+	track   *webrtc.TrackLocalStaticRTP
+	splicer *RtpSplicer
+	subid   Subid   // 64bit subscriber key
+	txid    TrackId // track number from subscriber's perspective
+	rxid    TrackId
+	pending TrackId
 }
 
-/*
-It has seemed at times that using arrays instead of maps
-would be simpler (and faster).
-The nice thing about maps, is the individual elements can be deleted.
-*/
-
-// subid to txid to track
-// used mainly to handle control messages from http handlers
+// subid to txid to txtrack index
 var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
 
 type TrackId int
@@ -168,11 +157,11 @@ const (
 var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
 
 type RxidState struct {
-	txtracks      map[*Track]struct{}
-	pendingSwitch map[*Track]struct{}
-	lastReceipt   int64 //unixnanos
-	rxid          TrackId
+	lastReceipt int64 //unixnanos
+	rxid        TrackId
 }
+
+var txtracks []*Track
 
 func checkFatal(err error) {
 	if err != nil {
@@ -220,7 +209,7 @@ type TrackCounts struct {
 }
 
 var trackCounts = TrackCounts{
-	numVideo:     *flag.Int("num-video", 6, "number of video tracks"),
+	numVideo:     *flag.Int("num-video", 10, "number of video tracks"),
 	numAudio:     *flag.Int("num-audio", 1, "number of audio tracks"),
 	numIdleVideo: 1,
 	numIdleAudio: 0,
@@ -474,10 +463,8 @@ func initRxid2state(n int, id TrackId) {
 	for i := 0; i < n; i++ {
 		rxid := TrackId(i) + id
 		rxid2state[rxid] = &RxidState{
-			txtracks:      make(map[*Track]struct{}),
-			pendingSwitch: make(map[*Track]struct{}),
-			lastReceipt:   0,
-			rxid:          rxid,
+			lastReceipt: 0,
+			rxid:        rxid,
 		}
 	}
 }
@@ -872,12 +859,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &Track{
-			txid:            XAudio + 0,
-			subid:           Subid(txid),
-			track:           track,
-			splicer:         &RtpSplicer{},
-			rxid:            XAudio + 0,
-			rxidLastPending: XInvalid,
+			txid:    XAudio + 0,
+			subid:   Subid(txid),
+			track:   track,
+			splicer: &RtpSplicer{},
+			rxid:    XAudio + 0,
 		},
 	}
 
@@ -891,12 +877,11 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
 			txtrack: &Track{
-				txid:            XVideo + TrackId(i),
-				subid:           Subid(txid),
-				track:           track,
-				splicer:         &RtpSplicer{},
-				rxid:            XVideo + TrackId(i),
-				rxidLastPending: XInvalid,
+				txid:    XVideo + TrackId(i),
+				subid:   Subid(txid),
+				track:   track,
+				splicer: &RtpSplicer{},
+				rxid:    XVideo + TrackId(i),
 			},
 		}
 	}
@@ -1323,50 +1308,25 @@ func msgOnce() {
 
 	case m := <-rxMediaCh:
 
-		{ // handle any switching required
+		m.rxidstate.lastReceipt = time.Now().UnixNano() // update last rx time
 
-			if len(m.rxidstate.pendingSwitch) > 0 {
-
-				isaudio := m.rxidstate.rxid.XTrackId() == XAudio
-				if !isaudio {
-					if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
-						goto finished_switches
-					}
-				}
-
-				for tr := range m.rxidstate.pendingSwitch {
-					//remove the current entry
-
-					//remove track from its txtracks list
-					z := rxid2state[tr.rxid].txtracks
-
-					l1 := len(z)
-					delete(z, tr)
-					if l1-len(z) != 1 { // sanity check
-						panic("xx")
-					}
-
-					// add the track back in
-					rxid2state[m.rxidstate.rxid].txtracks[tr] = struct{}{}
-
-					//update the track
-					tr.rxid = m.rxidstate.rxid //overwrite old value
-
-				}
-				//remove the set of tracks pending on m.rxid
-				for k := range m.rxidstate.pendingSwitch { // optimized: https://golang.org/doc/go1.11#performance-compiler
-					delete(m.rxidstate.pendingSwitch, k)
-				}
-
+		isaudio := m.rxidstate.rxid.XTrackId() == XAudio
+		if !isaudio {
+			if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
+				goto finished_switches2
 			}
 		}
 
-	finished_switches:
+		//is keyframe switch any pending Tracks
+		for _, v := range txtracks {
+			if v.pending == m.rxidstate.rxid {
+				v.rxid = v.pending
+				v.pending = XInvalid
+			}
+		}
 
-		//trackList := rxidArray[m.rxid].rxid2track
-		trackList := m.rxidstate.txtracks
-
-		for tr := range trackList {
+	finished_switches2:
+		for i, tr := range txtracks {
 			var packet *rtp.Packet = m.packet
 			var ipacket interface{}
 
@@ -1382,7 +1342,18 @@ func msgOnce() {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
 					log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.rxid)
-					removeTrack(tr)
+
+					//first remove from sub2txid2track
+					// if _, ok := sub2txid2track[tr.subid][tr.txid]; !ok {
+					// 	panic("invalid tr.txid")
+					// }
+					delete(sub2txid2track[tr.subid], tr.txid)
+
+					// slice tricks non-order preserving delete
+					txtracks[i] = txtracks[len(txtracks)-1]
+					txtracks[len(txtracks)-1] = nil
+					txtracks = txtracks[:len(txtracks)-1]
+
 				}
 			}
 
@@ -1390,21 +1361,14 @@ func msgOnce() {
 				*packet = rtp.Packet{}
 				rtpPacketPool.Put(ipacket)
 			}
+
 		}
 
 	case m := <-subAddTrackCh:
 
-		_ = m.txtrack.txid // pre-vetted
-		_ = m.txtrack.rxid // pre-vetted
-
 		tr := m.txtrack
 
-		if tr.txid == 0 {
-			panic(911)
-		}
-		if tr.rxid == 0 {
-			panic(912)
-		}
+		txtracks = append(txtracks, tr)
 
 		if _, ok := sub2txid2track[tr.subid]; !ok {
 			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
@@ -1412,45 +1376,17 @@ func msgOnce() {
 
 		sub2txid2track[tr.subid][tr.txid] = tr
 
-		rxid2state[tr.rxid].txtracks[tr] = struct{}{}
-
 	case m := <-subSwitchTrackCh:
 
-		// _ = m.rxid //pre-vetted, will not vet here
-		// _ = m.txid //pre-vetted, will not vet here
-
-		// checklist
-		// _ = sub2txid2track              // no change!
-		// _ = rxid2state[0].txtracks      // no change! this gets updated on new media
-		// _ = rxid2state[0].pendingSwitch // this gets new entry for switch
-
-		// pendingTrackChange
-		txid2track, ok := sub2txid2track[m.subid]
-		if ok {
-			track, ok := txid2track[m.txid]
-			if !ok {
-				panic(fmt.Errorf("cant find sub %v track for txid %d", m.subid, m.txid))
+		if a, ok := sub2txid2track[m.subid]; ok {
+			if tr, ok := a[m.txid]; ok {
+				tr.pending = m.rxid
+			} else {
+				elog.Println("invalid txid", m.txid)
 			}
-
-			// remove the last entry we put in the pendingSwitch queue, if any
-			if z, ok := rxid2state[track.rxidLastPending]; ok {
-				delete(z.pendingSwitch, track)
-			}
-			//delete(rxid2state[track.rxidLastPending].pendingSwitch, track)
-
-			// make note of the new requested RXID
-			// incase we need to delete it later
-
-			rxid2state[m.rxid].pendingSwitch[track] = struct{}{}
-			track.rxidLastPending = m.rxid
-
 		} else {
-			elog.Printf("bad: invalid subid 0x%x", m.subid)
+			elog.Println("invalid subid", m.subid)
 		}
-
-		// txtrack/nochange
-		// subid2Track/nochange
-		// currentRxid/nochange
 
 	case tk := <-ticker.C:
 		_ = tk
@@ -1475,19 +1411,6 @@ func msgOnce() {
 
 		}
 	}
-}
-
-// removeTrack will remove all references to a track
-// io.ErrClosedPipe on WriteRTP() is main cause
-func removeTrack(t *Track) {
-	// checklist
-	// _ = sub2txid2track                      //
-	// _ = rxid2state[TrackId{}].txtracks      //
-	// _ = rxid2state[TrackId{}].pendingSwitch //
-
-	delete(sub2txid2track[t.subid], t.txid)
-	delete(rxid2state[t.rxid].txtracks, t)
-	delete(rxid2state[t.rxid].pendingSwitch, t)
 }
 
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
