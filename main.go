@@ -1318,7 +1318,7 @@ func msgOnce() {
 		isaudio := m.rxidstate.rxid.XTrackId() == XAudio
 		if !isaudio {
 			if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
-				goto finished_switches2
+				goto not_keyframe
 			}
 		}
 
@@ -1331,8 +1331,12 @@ func msgOnce() {
 			}
 		}
 
-	finished_switches2:
+	not_keyframe:
+		rxid := m.rxidstate.rxid
 		for i, tr := range txtracks {
+			if tr.rxid != rxid {
+				continue
+			}
 			var packet *rtp.Packet = m.packet
 			var ipacket interface{}
 
