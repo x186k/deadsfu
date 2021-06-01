@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/assert"
@@ -40,7 +42,21 @@ func TestBasicSubscriber(t *testing.T) {
 	checkPanic(err)
 
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		panic("--ontrack")
+		//panic("--ontrack")
+
+		mimetype := track.Codec().MimeType
+
+		for {
+			p, _, err := track.ReadRTP()
+			if err == io.EOF {
+				return
+			}
+			checkPanic(err)
+
+			_ = fmt.Print
+			_ = p
+			fmt.Printf(" rx test-pc %v %x\n", mimetype, p.Payload[0:10])
+		}
 	})
 
 	ro := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
@@ -87,8 +103,12 @@ func TestBasicSubscriber(t *testing.T) {
 	err = pc.SetRemoteDescription(ans)
 	checkPanic(err)
 
-	println(999)
 
-	select {}
 
+	tk := time.NewTicker(time.Second)
+
+	for range tk.C {
+		println(98,txtracks[0].pending,txtracks[0].rxid)
+		println(99,txtracks[1].pending,txtracks[1].rxid)
+	}
 }
