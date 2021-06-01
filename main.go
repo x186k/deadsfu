@@ -133,12 +133,13 @@ type RtpSplicer struct {
 
 // size optimized, not readability
 type Track struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer *RtpSplicer
-	subid   Subid   // 64bit subscriber key
-	txid    TrackId // track number from subscriber's perspective
-	rxid    TrackId
-	pending TrackId
+	track    *webrtc.TrackLocalStaticRTP
+	splicer  *RtpSplicer
+	subid    Subid   // 64bit subscriber key
+	txid     TrackId // track number from subscriber's perspective
+	rxid     TrackId
+	pending  TrackId
+	rxidsave TrackId
 }
 
 // subid to txid to txtrack index
@@ -999,6 +1000,8 @@ func idleLoopPlayer(xxx []byte) {
 			// 	logPacket(logPacketIn, &v)
 			// }
 
+			fmt.Printf(" tx idle msg %x\n", (v.Payload[0:10]))
+
 			rxMediaCh <- MsgRxPacket{rxidstate: rxidstate, packet: &v, rxClockRate: 90000}
 
 		}
@@ -1384,12 +1387,20 @@ func msgOnce() {
 			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
 		}
 
+		if !rxid2state[tr.rxid].active {
+			tr.rxidsave = tr.rxid
+			tr.pending = XIdleVideo
+		}
+
 		sub2txid2track[tr.subid][tr.txid] = tr
 
 	case m := <-subSwitchTrackCh:
 
 		if a, ok := sub2txid2track[m.subid]; ok {
 			if tr, ok := a[m.txid]; ok {
+				if m.rxid == XInvalid {
+					panic("bad msg 99")
+				}
 				tr.pending = m.rxid
 			} else {
 				elog.Println("invalid txid", m.txid)
