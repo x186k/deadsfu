@@ -157,8 +157,9 @@ const (
 var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
 
 type RxidState struct {
-	lastReceipt int64 //unixnanos
+	lastReceipt time.Time //unixnanos
 	rxid        TrackId
+	active      bool
 }
 
 var txtracks []*Track
@@ -463,7 +464,7 @@ func initRxid2state(n int, id TrackId) {
 	for i := 0; i < n; i++ {
 		rxid := TrackId(i) + id
 		rxid2state[rxid] = &RxidState{
-			lastReceipt: 0,
+			lastReceipt: time.Time{},
 			rxid:        rxid,
 		}
 	}
@@ -1258,7 +1259,7 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 		return
 	}
 
-	err = fmt.Errorf("need video<N> or audio<N> for track num, got:[%s]",trackname)
+	err = fmt.Errorf("need video<N> or audio<N> for track num, got:[%s]", trackname)
 	return
 }
 
@@ -1310,8 +1311,9 @@ func msgOnce() {
 	select {
 
 	case m := <-rxMediaCh:
+		//fmt.Printf(" tx %x\n",m.packet.Payload[0:10])
 
-		m.rxidstate.lastReceipt = time.Now().UnixNano() // update last rx time
+		m.rxidstate.lastReceipt = time.Now()
 
 		isaudio := m.rxidstate.rxid.XTrackId() == XAudio
 		if !isaudio {
@@ -1391,26 +1393,56 @@ func msgOnce() {
 			elog.Println("invalid subid", m.subid)
 		}
 
-	case tk := <-ticker.C:
-		_ = tk
+	case now := <-ticker.C:
+
 		//fmt.Println("Tick at", tk)
 
-		nano := time.Now().UnixNano()
-		for k, v := range rxid2state {
+		for _, v := range rxid2state {
 
-			if k < XVideo || k >= XVideo+Spacing {
+			isvideo := v.rxid.XTrackId() == XVideo
+
+			if !isvideo {
+				continue // we only do idle switching on video right now
+			}
+
+			duration := now.Sub(v.lastReceipt)
+			active := duration < time.Second
+
+			transition := v.active != active
+
+			//println(999,active,v.active )
+
+			if !transition {
 				continue
 			}
 
-			// if v.isIdling {
-			// 	continue
-			// }
+			v.active = active
 
-			if nano-v.lastReceipt < int64(1e9) {
-				continue
+			if active {
+				// became ready, thus no longer idle
+				// find all tracks on XIdleVideo or pending: XIdleVideo
+				// change their source,pending value to the idle track
+				for _, tr := range txtracks {
+					if tr.rxid == XIdleVideo || tr.pending == XIdleVideo {
+						tr.pending = tr.rxidsave
+					}
+				}
+
+			} else {
+				// became idle.
+				// find all tracks on this rxid, or pending this rxid
+				// change their source,pending value to the idle track
+				// okay
+				for _, tr := range txtracks {
+					if tr.rxid == v.rxid || tr.pending == v.rxid {
+						tr.rxidsave = tr.pending
+						tr.pending = XIdleVideo
+					}
+				}
+
 			}
 
-			// transition this RX!
+			// idle transition has occurred on this Rxid
 
 		}
 	}
