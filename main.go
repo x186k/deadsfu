@@ -1256,7 +1256,7 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 		return
 	}
 
-	err = fmt.Errorf("need video<N> or audio<N> for track num")
+	err = fmt.Errorf("need video<N> or audio<N> for track num, got:[%s]",trackname)
 	return
 }
 
