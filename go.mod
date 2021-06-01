@@ -18,7 +18,7 @@ require (
 	github.com/pion/webrtc/v3 v3.0.21
 	github.com/pkg/profile v1.5.0
 	github.com/stretchr/testify v1.7.0
-	github.com/x186k/ddns5libdns v0.0.0-20210329015635-0863cd9aa3bb
+	github.com/x186k/ddns5libdns v0.0.0-20210601224053-e288019a9d55
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
