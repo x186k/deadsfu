@@ -1242,6 +1242,7 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 		}
 
 		t = XVideo + TrackId(i)
+		return
 	}
 
 	if strings.HasPrefix(trackname, "audio") {
