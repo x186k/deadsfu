@@ -1326,7 +1326,8 @@ func msgOnce() {
 		for _, v := range txtracks {
 			if v.pending == m.rxidstate.rxid {
 				v.rxid = v.pending
-				v.pending = XInvalid
+				// no! v.pending = XInvalid
+				// pending should never be XInvalid
 			}
 		}
 
