@@ -988,6 +988,8 @@ func idleLoopPlayer(xxx []byte) {
 
 	for {
 		for _, v := range p {
+			// if you want to modify bytes inside v.Raw
+			// you must make a copy first
 			time.Sleep(delta1)
 			v.SequenceNumber = seq
 			seq++
