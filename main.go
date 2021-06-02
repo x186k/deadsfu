@@ -281,11 +281,21 @@ func logGoroutineCountToDebugLog() {
 
 var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
-// initStateAndGoroutines is outside of main() to enable unit testing
-func initStateAndGoroutines() {
+// should this be 'init' or 'initXXX'
+// if we want this func to be called everyttime we run tests, then
+// it should be init(), otherwise initXXX()
+// I suppose testing in this package/dir should be related to the
+// running SFU engine, so we use 'init()'
+// But! this means we need to determine if we are a test or not,
+// so we can not call flag.Parse() or not
+func init() {
 
-	flag.Usage = Usage // my own usage handle
-	flag.Parse()
+	istest := strings.HasSuffix(os.Args[0], ".test")
+	if !istest {
+		flag.Usage = Usage // my own usage handle
+		flag.Parse()
+	}
+
 	initMediaHandlerState(trackCounts)
 
 	go logGoroutineCountToDebugLog()
@@ -298,7 +308,7 @@ func initStateAndGoroutines() {
 func main() {
 	var err error
 
-	initStateAndGoroutines() // outside of main() to enable unit testing
+	//initStateAndGoroutines() // outside of main() to enable unit testing
 
 	if *httpPort == 0 && *httpsPort == 0 {
 
@@ -334,7 +344,7 @@ func main() {
 	if !*nohtml {
 		mux.HandleFunc("/", slashHandler)
 	}
-	mux.HandleFunc(subPath, subHandler)
+	mux.HandleFunc(subPath, SubHandler)
 	if *dialIngressURL == "" {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
@@ -695,7 +705,7 @@ func numVideoMediaDesc(sdpsd *sdp.SessionDescription) (n int) {
 
 // sfu egress setup
 // 041521 Decided checkPanic() is the correct way to handle errors in this func.
-func subHandler(w http.ResponseWriter, httpreq *http.Request) {
+func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	defer httpreq.Body.Close()
 	var err error
 
@@ -821,7 +831,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdpbytes)}
 
-	if !validateSDP(offer) {
+	if !ValidateSDP(offer) {
 		teeErrorStderrHttp(w, fmt.Errorf("invalid offer SDP received"))
 		return
 	}
@@ -939,7 +949,7 @@ func logTransceivers(tag string, pc *webrtc.PeerConnection) {
 	}
 }
 
-func validateSDP(rtcsd webrtc.SessionDescription) bool {
+func ValidateSDP(rtcsd webrtc.SessionDescription) bool {
 	good := strings.HasPrefix(rtcsd.SDP, "v=")
 	if !good {
 		return false

@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"fmt"
@@ -13,22 +13,33 @@ import (
 
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/assert"
+
+	//this is kinda weird, but works, so we use it.
+	main "github.com/x186k/sfu1"
 )
 
 func TestMain(m *testing.M) {
+
 	// call flag.Parse() here if TestMain uses flags
 
 	log.SetOutput(ioutil.Discard)
 	log.SetFlags(0)
-	elog.SetOutput(ioutil.Discard)
-	elog.SetFlags(0)
+
+	// elog.SetOutput(ioutil.Discard)
+	// elog.SetFlags(0)
 
 	os.Exit(m.Run())
 }
 
+func checkPanic(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 func TestBasicSubscriber(t *testing.T) {
 
-	initStateAndGoroutines()
+	//initStateAndGoroutines()
 
 	rtcconf := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -90,25 +101,24 @@ func TestBasicSubscriber(t *testing.T) {
 	req := httptest.NewRequest("POST", "http://ignored.com/sub", strings.NewReader(offer.SDP))
 	w := httptest.NewRecorder()
 	req.Header.Set("Content-Type", "application/sdp")
-	subHandler(w, req)
+
+	main.SubHandler(w, req)  // not super clean, but \_(ツ)_/¯
 	resp := w.Result()
 	answerraw, _ := io.ReadAll(resp.Body)
 
 	assert.Equal(t, 202, resp.StatusCode)
-	assert.Equal(t, resp.Header.Get("Content-Type"), "application/sdp")
+	assert.Equal(t, "application/sdp", resp.Header.Get("Content-Type"))
 
 	ans := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
-	assert.True(t, validateSDP(ans))
+	assert.True(t, main.ValidateSDP(ans))
 
 	err = pc.SetRemoteDescription(ans)
 	checkPanic(err)
 
-
-
 	tk := time.NewTicker(time.Second)
 
 	for range tk.C {
-		println(98,txtracks[0].pending,txtracks[0].rxid)
-		println(99,txtracks[1].pending,txtracks[1].rxid)
+		//println(98, txtracks[0].pending, txtracks[0].rxid)
+		//println(99, txtracks[1].pending, txtracks[1].rxid)
 	}
 }
