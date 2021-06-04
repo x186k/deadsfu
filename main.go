@@ -1108,10 +1108,37 @@ tryagain:
 }
 
 func processRTCP(rtpSender *webrtc.RTPSender) {
-	rtcpBuf := make([]byte, 1500)
-	for {
-		if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-			return
+
+	if true {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			_, _, rtcpErr := rtpSender.Read(rtcpBuf)
+			if rtcpErr != nil {
+				return
+			}
+		}
+	} else {
+		for {
+			packets, _, rtcpErr := rtpSender.ReadRTCP()
+			if rtcpErr != nil {
+				return
+			}
+			if true {
+				for _, pkt := range packets {
+					switch v := pkt.(type) {
+					case *rtcp.SenderReport:
+						//fmt.Printf("rtpSender Sender Report %s \n", v.String())
+					case *rtcp.ReceiverReport:
+						fmt.Printf("rtpSender Receiver Report %s \n", v.String())
+					case *rtcp.ReceiverEstimatedMaximumBitrate:
+					case *rtcp.PictureLossIndication:
+
+					default:
+						// fmt.Printf("foof %#v\n", v)
+						// panic(v)
+					}
+				}
+			}
 		}
 	}
 }
