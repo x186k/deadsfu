@@ -42,6 +42,7 @@ import (
 
 	_ "embed"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
@@ -606,15 +607,24 @@ func acmeConfigureProvider(provider interface{}) {
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
+
 	// Do NOT share MediaEngine between PC!  BUG of 020321
 	// with Sean & Orlando. They are so nice.
-	m := webrtc.MediaEngine{}
-	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(&m))
+	m := &webrtc.MediaEngine{}
+
+	i := &interceptor.Registry{}
+	_ = i
+	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
+		panic(err)
+	}
+
+	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
+	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m))
 
 	//rtcApi = webrtc.NewAPI()
 	//if *videoCodec == "h264" {
 	if true {
-		err := RegisterH264AndOpusCodecs(&m)
+		err := RegisterH264AndOpusCodecs(m)
 		checkPanic(err)
 	} else {
 		log.Fatalln("only h.264 supported")
