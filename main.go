@@ -1009,9 +1009,10 @@ func idleLoopPlayer(xxx []byte) {
 	}
 
 	for {
-		for _, v := range p {
-			// if you want to modify bytes inside v.Raw
-			// you must make a copy first
+		for _, tmp := range p {
+			v := tmp // critical!, if we use original packets, something bad happens.
+			// (not sure what exactly)
+
 			time.Sleep(delta1)
 			v.SequenceNumber = seq
 			seq++
