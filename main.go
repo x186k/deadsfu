@@ -1362,7 +1362,8 @@ func msgOnce() {
 	select {
 
 	case m := <-rxMediaCh:
-		//fmt.Printf(" tx %x\n",m.packet.Payload[0:10])
+		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
+		//println(6666,m.rxidstate.rxid)
 
 		m.rxidstate.lastReceipt = time.Now()
 
@@ -1385,21 +1386,30 @@ func msgOnce() {
 	not_keyframe:
 		rxid := m.rxidstate.rxid
 		for i, tr := range txtracks {
-			if tr.rxid != rxid {
+
+			send := tr.rxid == rxid
+			if !send {
 				continue
 			}
+			
+		
+
+			//fmt.Printf("%d ", int(rxid))
+
 			var packet *rtp.Packet = m.packet
-			var ipacket interface{}
+			//var ipacket interface{}
 
 			if tr.splicer != nil {
-
-				ipacket = rtpPacketPool.Get()
-				packet = ipacket.(*rtp.Packet)
-				*packet = *m.packet
-				SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
+			//	ipacket = rtpPacketPool.Get()
+			//	packet = ipacket.(*rtp.Packet)
+			//	*packet = *m.packet
+				packet=SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
 			}
 
-			if !disableWriteRTP {
+			fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n", 
+			send, i, rxid, tr.rxid,packet.SequenceNumber,packet.Timestamp,packet.SSRC)
+
+			if true {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
 					log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.rxid)
@@ -1419,8 +1429,8 @@ func msgOnce() {
 			}
 
 			if tr.splicer != nil {
-				*packet = rtp.Packet{}
-				rtpPacketPool.Put(ipacket)
+				//*packet = rtp.Packet{}
+				//rtpPacketPool.Put(ipacket)
 			}
 
 		}
