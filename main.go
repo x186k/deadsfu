@@ -1449,7 +1449,7 @@ func msgOnce() {
 			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
 		}
 
-		if !rxid2state[tr.rxid].active {
+		if !rxid2state[tr.rxid].active && tr.rxid.XTrackId() == XVideo {
 			tr.rxidsave = tr.rxid
 			tr.pending = XIdleVideo
 		}
