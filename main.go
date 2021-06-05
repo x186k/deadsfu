@@ -1331,16 +1331,20 @@ const Spacing = 100
 
 func (e TrackId) String() string {
 
-	switch {
-	case e >= XVideo && e < XVideo+Spacing:
-		return "Video"
-	case e >= XAudio && e < XAudio+Spacing:
-		return "Audio"
-	case e >= XData && e < XData+Spacing:
-		return "Data"
+	switch e.XTrackId() {
+	case XVideo:
+		return "XVideo"
+	case XAudio:
+		return "XAudio"
+	case XData:
+		return "XData"
+	case XIdleVideo:
+		return "XIdleVideo"
+	case XInvalid:
+		return "XInvalid"
 	}
 
-	return "<bad>"
+	return "<bad TrackId>"
 }
 
 func (e TrackId) XTrackId() TrackId {
