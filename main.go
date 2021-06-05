@@ -309,6 +309,18 @@ func init() {
 func main() {
 	var err error
 
+	if false {
+		go func() {
+			tk := time.NewTicker(time.Second * 2)
+			for range tk.C {
+				for i, v := range txtracks {
+					//RACEY
+					println("track", i, v.pending, v.rxid)
+				}
+			}
+		}()
+	}
+
 	//initStateAndGoroutines() // outside of main() to enable unit testing
 
 	if *httpPort == 0 && *httpsPort == 0 {
@@ -1395,8 +1407,6 @@ func msgOnce() {
 			if !send {
 				continue
 			}
-			
-		
 
 			//fmt.Printf("%d ", int(rxid))
 
@@ -1404,14 +1414,14 @@ func msgOnce() {
 			//var ipacket interface{}
 
 			if tr.splicer != nil {
-			//	ipacket = rtpPacketPool.Get()
-			//	packet = ipacket.(*rtp.Packet)
-			//	*packet = *m.packet
-				packet=SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
+				//	ipacket = rtpPacketPool.Get()
+				//	packet = ipacket.(*rtp.Packet)
+				//	*packet = *m.packet
+				packet = SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
 			}
 
-			fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n", 
-			send, i, rxid, tr.rxid,packet.SequenceNumber,packet.Timestamp,packet.SSRC)
+			fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
+				send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
 
 			if true {
 				err := tr.track.WriteRTP(packet)
