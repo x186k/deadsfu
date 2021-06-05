@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"hash/crc64"
 	"io"
 	"sync/atomic"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/x186k/sfu1/rtpstuff"
 	//this is kinda weird, but works, so we use it.
 	//main "github.com/x186k/sfu1"
 )
@@ -40,7 +43,35 @@ var rtcconf = webrtc.Configuration{
 	},
 }
 
+var tab = crc64.MakeTable(crc64.ISO)
+
+func calccrc(p []byte) uint64 {
+	a := uint64(0)
+	// a = crc64.Update(0, tab, p[0:1])
+	// a = crc64.Update(a, tab, p[2:8])
+	a = crc64.Update(a, tab, p[12:])
+	return a
+}
+
+var pkthash map[uint64]int = make(map[uint64]int)
+
 func TestPubSub(t *testing.T) {
+	//log.SetOutput(ioutil.Discard)
+	//log.SetFlags(0)
+
+	fake := append(make([]byte, 12), spspps...)
+
+	pkthash[calccrc(fake)] = 2
+
+	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
+	checkPanic(err)
+	for _, v := range p {
+		crc := calccrc(v.Raw)
+		//println(88,)
+
+		pkthash[crc] = 1
+
+	}
 
 	//initStateAndGoroutines()
 
@@ -63,7 +94,8 @@ func TestPubSub(t *testing.T) {
 
 			_ = fmt.Print
 			_ = p
-			fmt.Printf(" rx test-pc %v %x\n", mimetype, p.Payload[0:10])
+			found := pkthash[calccrc(p.Raw)]
+			fmt.Printf(" rx test-pc %v %v %v\n", mimetype, len(p.Payload), found)
 			if mimetype == "video/H264" {
 				atomic.AddInt32(&numvid, 1)
 			}
@@ -119,10 +151,24 @@ func TestPubSub(t *testing.T) {
 
 	go startMultiTrackPublisher(t)
 
-
-
-	select {}
+	for {
+		time.Sleep(time.Second)
+		err := video1.WriteSample(media.Sample{Data: spspps, Duration: time.Second})
+		if err != nil && err != io.ErrClosedPipe {
+			panic(err)
+		}
+	}
+	//select {}
 }
+
+var spspps = []byte{
+	0x78, 0x00, 0x10, 0x67, 0x42, 0xc0, 0x1f, 0x43,
+	0x23, 0x50, 0x14, 0x05, 0xef, 0x2c, 0x03, 0xc2,
+	0x21, 0x1a, 0x80, 0x00, 0x04, 0x68, 0x48, 0xe3,
+	0xc8,
+}
+
+var video1 *webrtc.TrackLocalStaticSample
 
 func startMultiTrackPublisher(t *testing.T) {
 
@@ -136,33 +182,19 @@ func startMultiTrackPublisher(t *testing.T) {
 	// _, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, so)
 	// checkPanic(err)
 
-	video1, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/h264", SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"}, "1", "1")
+	video1, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/h264", SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"}, "1", "1")
 	checkPanic(err)
 
-	spspps := []byte{
-		0x78, 0x00, 0x10, 0x67, 0x42, 0xc0, 0x1f, 0x43,
-		0x23, 0x50, 0x14, 0x05, 0xef, 0x2c, 0x03, 0xc2,
-		0x21, 0x1a, 0x80, 0x00, 0x04, 0x68, 0x48, 0xe3,
-		0xc8,
-		0x78, 0x00, 0x10, 0x67, 0x42, 0xc0, 0x1f, 0x43,
-		0x23, 0x50, 0x14, 0x05, 0xef, 0x2c, 0x03, 0xc2,
-		0x21, 0x1a, 0x80, 0x00, 0x04, 0x68, 0x48, 0xe3,
-		0xc8,
-	}
-
-	go func() {
-
-		for {
-			time.Sleep(time.Second)
-			if err := video1.WriteSample(media.Sample{Data: spspps, Duration: time.Second}); err != nil && err != io.ErrClosedPipe {
-				panic(err)
-			}
-		}
-	}()
+	//println(88,)
 
 	rtpSender, err := pc.AddTrack(video1)
 	checkPanic(err)
 	go processRTCP(rtpSender)
+
+	go func() {
+
+
+	}()
 
 	pc.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) { println("pub-ICEConnection", s.String()) })
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) { println("pub-Connection", s.String()) })
