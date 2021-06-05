@@ -1411,17 +1411,17 @@ func msgOnce() {
 			//fmt.Printf("%d ", int(rxid))
 
 			var packet *rtp.Packet = m.packet
-			//var ipacket interface{}
+			var ipacket interface{}
 
 			if tr.splicer != nil {
-				//	ipacket = rtpPacketPool.Get()
-				//	packet = ipacket.(*rtp.Packet)
-				//	*packet = *m.packet
+				ipacket = rtpPacketPool.Get()
+				packet = ipacket.(*rtp.Packet)
+				*packet = *m.packet
 				packet = SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
 			}
 
-			fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
-				send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
+			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
+			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
 
 			if true {
 				err := tr.track.WriteRTP(packet)
@@ -1443,8 +1443,8 @@ func msgOnce() {
 			}
 
 			if tr.splicer != nil {
-				//*packet = rtp.Packet{}
-				//rtpPacketPool.Put(ipacket)
+				*packet = rtp.Packet{}
+				rtpPacketPool.Put(ipacket)
 			}
 
 		}
