@@ -1021,7 +1021,7 @@ func idleLoopPlayer(xxx []byte) {
 			// 	logPacket(logPacketIn, &v)
 			// }
 
-			fmt.Printf(" tx idle msg %x\n", (v.Payload[0:10]))
+			//fmt.Printf(" tx idle msg %x iskey %v len %v\n", v.Payload[0:10],rtpstuff.IsH264Keyframe(v.Payload),len(v.Payload))
 
 			rxMediaCh <- MsgRxPacket{rxidstate: rxidstate, packet: &v, rxClockRate: 90000}
 
