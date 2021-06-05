@@ -12,7 +12,7 @@ require (
 	github.com/libdns/libdns v0.2.0
 	github.com/miekg/dns v1.1.40
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
-	github.com/pion/interceptor v0.0.12 // indirect
+	github.com/pion/interceptor v0.0.12
 	github.com/pion/rtcp v1.2.6
 	github.com/pion/rtp v1.6.2
 	github.com/pion/sdp/v3 v3.0.4

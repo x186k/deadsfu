@@ -109,8 +109,6 @@ github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5
 github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
-github.com/x186k/ddns5libdns v0.0.0-20210329015635-0863cd9aa3bb h1:GDnXY9kD10+WpIRuGNKz8JcLFCCDPE8OIgsxGEIkoBI=
-github.com/x186k/ddns5libdns v0.0.0-20210329015635-0863cd9aa3bb/go.mod h1:9FAoj8bfSg+cVEoDIyMfI+4GAtFllfDfLOW20S74JsM=
 github.com/x186k/ddns5libdns v0.0.0-20210601224053-e288019a9d55 h1:fi9R4VnOuicbR0wGN5B1s0beYq4FryU30iba72cetO0=
 github.com/x186k/ddns5libdns v0.0.0-20210601224053-e288019a9d55/go.mod h1:9FAoj8bfSg+cVEoDIyMfI+4GAtFllfDfLOW20S74JsM=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
