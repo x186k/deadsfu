@@ -1,9 +1,0 @@
-site_name: My Docs
-
-#theme: bulma
-
-# NOTE! this theme is not part of the repo
-# and can be found at github.com/cameronelliott/mkdocs-bulma
-theme:
-    name: null
-    custom_dir: '../../mkdocs-bulma/bulma/'
