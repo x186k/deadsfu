@@ -37,7 +37,7 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@master
       with:
-        version: v1.35.2
+        version: v2.5.2
         skip-go-installation: true
         args: --skip-files pion.go
 
