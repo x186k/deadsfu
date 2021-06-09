@@ -54,7 +54,7 @@ jobs:
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
  #      goversion: "https://dl.google.com/go/go1.15.6.linux-amd64.tar.gz"
-  #      goversion: "https://golang.org/dl/go1.16rc1.linux-amd64.tar.gz"
+        goversion: "1.16.5"
         project_path: "."
         binary_name: "sfu1"
         extra_files: LICENSE README.md
