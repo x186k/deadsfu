@@ -27,12 +27,12 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v2
     
-    # # Setup Go
-    # - name: Setup Go
-    #   uses: actions/setup-go@v2.1.3
-    #   with:
-    #     stable: 'false'
-    #     go-version: '1.16.0-rc1' # The Go version to download (if necessary) and use.
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-go@v2
+      with:
+        go-version: '^1.16.5' # The Go version to download (if necessary) and use.
+    - run: go version
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v2
