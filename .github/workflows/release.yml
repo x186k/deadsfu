@@ -63,7 +63,7 @@ jobs:
 # https://github.com/x186k/sfu1/releases/latest/download/sfu1-linux-amd64.tar.gz
 # https://github.com/x186k/sfu1/releases/latest/download/sfu1-windows-amd64.tar.gz
 # etc
-        asset_name: ${{ BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+        asset_name: sfu1-${{ matrix.goos }}-${{ matrix.goarch }}
 
 
 
