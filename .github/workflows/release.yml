@@ -9,6 +9,9 @@ name: Make Release
 # events but only for the master branch
 on:
   workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Test scenario tags'
   release:
     types: [created]
 
@@ -42,7 +45,10 @@ jobs:
       matrix:
         # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/386, darwin/amd64 
         goos: [linux, windows, darwin]
-        goarch: [amd64]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
     steps:
     - uses: actions/checkout@v2
     - uses: wangyoucao577/go-release-action@v1.18
@@ -55,7 +61,6 @@ jobs:
         project_path: "."
         binary_name: "sfu1"
         extra_files: LICENSE README.md
-        release_tag: ""
 # default is ${BINARY_NAME}-${RELEASE_TAG}-${GOOS}-${GOARCH}
 # but my version allows direct downloads using:
 # https://github.com/x186k/sfu1/releases/latest/download/sfu1-linux-amd64.tar.gz
