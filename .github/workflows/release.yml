@@ -55,6 +55,7 @@ jobs:
         project_path: "."
         binary_name: "sfu1"
         extra_files: LICENSE README.md
+        release_tag: ""
 # default is ${BINARY_NAME}-${RELEASE_TAG}-${GOOS}-${GOARCH}
 # but my version allows direct downloads using:
 # https://github.com/x186k/sfu1/releases/latest/download/sfu1-linux-amd64.tar.gz
