@@ -8,10 +8,11 @@ name: Make Release
 # Controls when the action will run. Triggers the workflow on push or pull request
 # events but only for the master branch
 on:
-  workflow_dispatch:
-    inputs:
-      tags:
-        description: 'Test scenario tags'
+  # doesnt work well
+  # workflow_dispatch:
+  #   inputs:
+  #     tags:
+  #       description: 'Test scenario tags'
   release:
     types: [created]
 
@@ -64,6 +65,8 @@ jobs:
 # default is ${BINARY_NAME}-${RELEASE_TAG}-${GOOS}-${GOARCH}
 # but my version allows direct downloads using:
 # https://github.com/x186k/sfu1/releases/latest/download/sfu1-linux-amd64.tar.gz
+# https://github.com/x186k/sfu1/releases/latest/download/sfu1-darwin-amd64.tar.gz
+# https://github.com/x186k/sfu1/releases/latest/download/sfu1-darwin-arm64.tar.gz
 # https://github.com/x186k/sfu1/releases/latest/download/sfu1-windows-amd64.tar.gz
 # etc
         asset_name: sfu1-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -108,6 +111,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+# I am really tempted to cut this crap down, but github doesn't seem to mind building
+# i guess arm/v6 arm/v7 can help with raspberry pi's
+# i am not sure who the linux/386 is for, but let's leave it incase.
           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.docker_meta.outputs.tags }}
