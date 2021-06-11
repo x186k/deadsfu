@@ -314,10 +314,9 @@ func init() {
 
 	go logGoroutineCountToDebugLog()
 
+	log.Printf("idleScreenH264Pcapng len=%d md5=%x", len(idleScreenH264Pcapng), md5.Sum(idleScreenH264Pcapng))
 	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkPanic(err)
-
-	log.Printf("idleScreenH264Pcapng len=%d md5=%x", len(idleScreenH264Pcapng), md5.Sum(idleScreenH264Pcapng))
 
 	go idleLoopPlayer(p)
 
