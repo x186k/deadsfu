@@ -301,7 +301,10 @@ func init() {
 
 	go logGoroutineCountToDebugLog()
 
-	go idleLoopPlayer(idleScreenH264Pcapng)
+	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
+	checkPanic(err)
+
+	go idleLoopPlayer(p)
 
 	go msgLoop()
 }
@@ -1002,10 +1005,7 @@ func randomHex(n int) string {
 	return hex.EncodeToString(bytes)
 }
 
-func idleLoopPlayer(xxx []byte) {
-
-	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(xxx))
-	checkPanic(err)
+func idleLoopPlayer(p []rtp.Packet) {
 
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
