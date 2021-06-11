@@ -292,6 +292,10 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 // so we can not call flag.Parse() or not
 func init() {
 
+	if strings.HasPrefix(string(idleScreenH264Pcapng[0:10]),"version "){
+		panic("You have NOT built the binaries correctly. You must use \"git lfs\" to fill in files under /lfs")
+	}
+
 	istest := strings.HasSuffix(os.Args[0], ".test")
 	if !istest {
 		flag.Usage = Usage // my own usage handle
