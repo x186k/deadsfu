@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -295,6 +296,18 @@ func init() {
 	if !istest {
 		flag.Usage = Usage // my own usage handle
 		flag.Parse()
+
+		if *debug {
+			log.SetFlags(log.Lmicroseconds | log.LUTC)
+			log.SetPrefix("D ")
+			log.SetOutput(os.Stdout)
+			log.Println("debug output IS enabled")
+		} else {
+			elog.Println("debug output NOT enabled")
+			log.SetOutput(ioutil.Discard)
+			log.SetPrefix("")
+			log.SetFlags(0)
+		}
 	}
 
 	initMediaHandlerState(trackCounts)
@@ -303,6 +316,8 @@ func init() {
 
 	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkPanic(err)
+
+	log.Printf("idleScreenH264Pcapng len=%d md5=%x", len(idleScreenH264Pcapng), md5.Sum(idleScreenH264Pcapng))
 
 	go idleLoopPlayer(p)
 
@@ -338,17 +353,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *debug {
-		log.SetFlags(log.Lmicroseconds | log.LUTC)
-		log.SetPrefix("D ")
-		log.SetOutput(os.Stdout)
-		log.Println("debug output IS enabled")
-	} else {
-		elog.Println("debug output NOT enabled")
-		log.SetOutput(ioutil.Discard)
-		log.SetPrefix("")
-		log.SetFlags(0)
-	}
 	log.Println("NumGoroutine", runtime.NumGoroutine())
 
 	// BEYOND HERE is needed for real operation
