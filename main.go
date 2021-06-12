@@ -511,15 +511,17 @@ func printURLS(proto string, host string, port string) {
 		elog.Println(proto, " is bound to ALL interfaces")
 	}
 
-	reportURL("URL for browser. Copy & paste into address bar", proto, hostport, "/")
+	url := computeURL(proto, hostport, "/")
+
+	elog.Printf("BROWSER URL. Copy & paste into address bar  ==>  %s", url)
 
 	if *dialIngressURL == "" {
-		elog.Printf("%s is %s endpoint for WHIP/WISH ingress signalling",pubPath,proto)
+		elog.Printf("%s is %s endpoint for WHIP/WISH ingress signalling", pubPath, proto)
 	}
-	elog.Printf("%s is %s endpoint for WHEP egress signalling",subPath,proto)
+	elog.Printf("%s is %s endpoint for WHEP egress signalling", subPath, proto)
 }
 
-func reportURL(description string, protocol string, hostport string, path string) {
+func computeURL(protocol string, hostport string, path string) (url string) {
 	// we want something like:
 	//"Publisher Ingress API URL: http://foo.bar/pub"
 
@@ -530,9 +532,9 @@ func reportURL(description string, protocol string, hostport string, path string
 		hostport = strings.TrimSuffix(hostport, ":80")
 	}
 
-	url := fmt.Sprintf("%s://%s%s", protocol, hostport, path)
+	url = fmt.Sprintf("%s://%s%s", protocol, hostport, path)
 
-	elog.Println(url, "   ==> ", description)
+	return
 }
 
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
