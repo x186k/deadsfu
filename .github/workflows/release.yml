@@ -62,6 +62,7 @@ jobs:
       with:
         repository: x186k/sfu-binaries
         path: sfu1-binaries
+        ref: main
     - uses: wangyoucao577/go-release-action@v1.18
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -99,6 +100,7 @@ jobs:
         with:
           repository: x186k/sfu-binaries
           path: sfu1-binaries
+          ref: main
       - name: Docker meta
         id: docker_meta
         uses: crazy-max/ghaction-docker-meta@v1.11.0
