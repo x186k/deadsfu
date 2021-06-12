@@ -27,6 +27,9 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v2
+      # dont need lfs assets for linting
+      # with:
+      #   lfs: true
     - uses: actions/setup-go@v2
       with:
         go-version: '^1.16.5' # The Go version to download (if necessary) and use.
@@ -52,6 +55,8 @@ jobs:
             goarch: arm64
     steps:
     - uses: actions/checkout@v2
+      with:
+        lfs: true
     - uses: wangyoucao577/go-release-action@v1.18
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
