@@ -511,12 +511,12 @@ func printURLS(proto string, host string, port string) {
 		elog.Println(proto, " is bound to ALL interfaces")
 	}
 
-	reportURL("URL for End-user HTML control panel", proto, hostport, "/")
+	reportURL("URL for browser. Copy & paste into address bar", proto, hostport, "/")
 
 	if *dialIngressURL == "" {
-		reportURL("URL for Publisher Ingress API ", proto, hostport, pubPath)
+		elog.Printf("%s is %s endpoint for WHIP/WISH ingress signalling",pubPath,proto)
 	}
-	reportURL("URL for Subscriber Egress API", proto, hostport, subPath)
+	elog.Printf("%s is %s endpoint for WHEP egress signalling",subPath,proto)
 }
 
 func reportURL(description string, protocol string, hostport string, path string) {
