@@ -57,7 +57,7 @@ import (
 //go:embed html/index.html
 var indexHtml []byte
 
-//go:embed lfs/idle.screen.h264.pcapng
+//go:embed sfu1-binaries/idle.screen.h264.pcapng
 var idleScreenH264Pcapng []byte
 
 var peerConnectionConfig = webrtc.Configuration{
