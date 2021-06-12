@@ -195,17 +195,8 @@ func slashHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//XXX fix
-	if true || len(indexHtml) == 0 {
-		buf, err := ioutil.ReadFile("html/index.html")
-		if err != nil {
-			http.Error(w, "can't open index.html", http.StatusInternalServerError)
-			return
-		}
-		_, _ = w.Write(buf)
-	} else {
-		_, _ = w.Write(indexHtml)
-	}
+	_, _ = w.Write(indexHtml)
+
 }
 
 type TrackCounts struct {
@@ -292,7 +283,11 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 // so we can not call flag.Parse() or not
 func init() {
 
-	if strings.HasPrefix(string(idleScreenH264Pcapng[0:10]),"version "){
+	if len(indexHtml) == 0 {
+		panic("index.html failed to embed correctly")
+	}
+
+	if strings.HasPrefix(string(idleScreenH264Pcapng[0:10]), "version ") {
 		panic("You have NOT built the binaries correctly. You must use \"git lfs\" to fill in files under /lfs")
 	}
 
