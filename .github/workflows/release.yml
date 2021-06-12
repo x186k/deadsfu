@@ -54,9 +54,14 @@ jobs:
           - goos: windows
             goarch: arm64
     steps:
-    - uses: actions/checkout@v2
+    # https://github.com/actions/checkout#checkout-multiple-repos-nested
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Checkout binaries
+      uses: actions/checkout@v2
       with:
-        lfs: true
+        repository: x186k/sfu-binaries
+        path: sfu1-binaries
     - uses: wangyoucao577/go-release-action@v1.18
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
