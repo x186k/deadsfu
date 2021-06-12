@@ -60,7 +60,7 @@ jobs:
     - name: Checkout binaries
       uses: actions/checkout@v2
       with:
-        repository: x186k/sfu-binaries
+        repository: x186k/sfu1-binaries
         path: sfu1-binaries
         ref: main
     - uses: wangyoucao577/go-release-action@v1.18
@@ -98,7 +98,7 @@ jobs:
       - name: Checkout binaries repo
         uses: actions/checkout@v2
         with:
-          repository: x186k/sfu-binaries
+          repository: x186k/sfu1-binaries
           path: sfu1-binaries
           ref: main
       - name: Docker meta
