@@ -563,11 +563,11 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 
 		normalip := NormalizeIP(v.String(), dnstype)
 
-		log.Println("DDNS setting", fqdn, suffixCount, normalip)
+		log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
-		log.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip)
+		log.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
