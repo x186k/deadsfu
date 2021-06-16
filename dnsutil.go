@@ -10,6 +10,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -154,9 +155,11 @@ func sendDNSQuery(m *dns.Msg, ns string) (*dns.Msg, error) {
 	// truncation and timeout; see https://github.com/caddyserver/caddy/issues/3639
 	truncated := in != nil && in.Truncated
 	timeoutErr := err != nil && strings.Contains(err.Error(), "timeout")
-	if truncated || timeoutErr {
+	log.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v",ns,timeoutErr,truncated,err)
+	if truncated || timeoutErr {		
 		tcp := &dns.Client{Net: "tcp", Timeout: dnsTimeout}
 		in, _, err = tcp.Exchange(m, ns)
+		log.Printf("tcp sendDNSQuery result ns:%v err:%v",ns,err)
 	}
 	return in, err
 }
