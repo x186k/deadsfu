@@ -62,6 +62,8 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 	// you can change the nameservers here
 	resolvers := recursiveNameservers([]string{})
 
+	log.Println("ddnsWaitUntilSet resolvers", resolvers)
+
 	var err error
 	start := time.Now()
 	for time.Since(start) < timeout {
