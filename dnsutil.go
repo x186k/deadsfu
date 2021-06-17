@@ -132,10 +132,12 @@ func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (
 	for _, ns := range nameservers {
 		in, err = sendDNSQuery(m, ns)
 		if err == nil && len(in.Answer) > 0 {
-			break
+			return in, nil
 		}
 	}
-	return in, fmt.Errorf("dnsQuery() to %v of type %s failed", fqdn, dns.TypeToString[rtype])
+	//the error of the last query doesn't well represent the failure of this routine
+	//return in,err
+	return &dns.Msg{}, fmt.Errorf("dnsQuery() to %v of type %s failed", fqdn, dns.TypeToString[rtype])
 }
 
 func createDNSMsg(fqdn string, rtype uint16, recursive bool) *dns.Msg {
