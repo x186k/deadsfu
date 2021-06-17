@@ -210,6 +210,8 @@ var trackCounts = TrackCounts{
 	numIdleAudio: 0,
 }
 
+var Version = "version-unset"
+
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var debug = flag.Bool("z-debug", false, "enable debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
@@ -300,7 +302,7 @@ func init() {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
 			log.SetPrefix("D ")
 			log.SetOutput(os.Stdout)
-			log.Println("debug output IS enabled99")
+			log.Println("debug output IS enabled Version=",Version)
 		} else {
 			elog.Println("debug output NOT enabled")
 			log.SetOutput(ioutil.Discard)
