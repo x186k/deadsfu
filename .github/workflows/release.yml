@@ -65,7 +65,7 @@ jobs:
         ref: main
     - uses: wangyoucao577/go-release-action@v1.18
       with:
-        ldflags: -X main.Version=${{ GITHUB_REF }}
+        ldflags: -X main.Version=${GITHUB_REF##*/}
         github_token: ${{ secrets.GITHUB_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
