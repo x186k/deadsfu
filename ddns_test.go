@@ -46,7 +46,7 @@ func randIPv6() string {
 }
 
 func TestDDNSCloudflare(t *testing.T) {
-	ddnsutilDebug = true
+	*ddnsutilDebug = true
 
 	token := os.Getenv("CLOUDFLARE_TOKEN")
 	if token == "" {
@@ -66,7 +66,7 @@ func TestDDNSCloudflare(t *testing.T) {
 }
 
 func TestDDNS5API(t *testing.T) {
-	ddnsutilDebug = true
+	*ddnsutilDebug = true
 
 	//token := strings.Repeat("a", 32)
 	fqdn := fmt.Sprintf("test%d.ddns5.com", rand.Intn(10))
@@ -82,7 +82,7 @@ func TestDDNSDuckdnsAPI(t *testing.T) {
 
 	//ctx = httpTrace(ctx)
 
-	ddnsutilDebug = true
+	*ddnsutilDebug = true
 
 	token := os.Getenv("DUCKDNS_TOKEN")
 	if token == "" {
