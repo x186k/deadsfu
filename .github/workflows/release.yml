@@ -57,6 +57,8 @@ jobs:
     # https://github.com/actions/checkout#checkout-multiple-repos-nested
     - name: Checkout
       uses: actions/checkout@v2
+    - name: Branch name
+      run: echo foof $${GITHUB_REF}}
     - name: Checkout binaries
       uses: actions/checkout@v2
       with:
@@ -65,7 +67,7 @@ jobs:
         ref: main
     - uses: wangyoucao577/go-release-action@v1.18
       with:
-        ldflags: -X main.Version=${GITHUB_REF##*/}
+        ldflags: -X main.Version=$${{GITHUB_REF}}
         github_token: ${{ secrets.GITHUB_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
