@@ -58,7 +58,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Branch name
-      run: echo foof $${{GITHUB_REF}}
+      run: echo foof ${GITHUB_REF##*/}
     - name: Checkout binaries
       uses: actions/checkout@v2
       with:
