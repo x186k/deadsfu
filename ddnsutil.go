@@ -28,10 +28,6 @@ import (
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-var (
-	ddnsutilDebug = false
-)
-
 // DDNSProvider defines the set of operations required for
 // ACME challenges. A DNS provider must be able to append and
 // delete records in order to solve ACME challenges. Find one
@@ -78,8 +74,8 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 		// 	return fmt.Errorf("checking DNS propagation of %s: %w", dnsName, err)
 		// }
 
-		if ddnsutilDebug {
-			log.Println("// DDNS testing got/wanting", val, dnsVal)
+		if *ddnsutilDebug {
+			log.Println("DDNS testing got/wanting", val, dnsVal)
 		}
 
 		if val == dnsVal {
@@ -151,8 +147,6 @@ func dnstype2String(dnstype uint16) string {
 	}
 	return recstr
 }
-
-
 
 // ddnsRemoveAddrs deletes the DNS record created in Present().
 func ddnsRemoveAddrs(ctx context.Context, provider DDNSProvider, fqdn string, suffixCount int, dnstype uint16) error {

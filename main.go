@@ -213,6 +213,7 @@ var trackCounts = TrackCounts{
 var Version = "version-unset"
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
+var ddnsutilDebug = flag.Bool("z-ddns-debug",false,"enable ddns debug output")
 var debug = flag.Bool("z-debug", false, "enable debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 

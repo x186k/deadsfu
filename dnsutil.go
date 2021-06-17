@@ -157,11 +157,11 @@ func sendDNSQuery(m *dns.Msg, ns string) (*dns.Msg, error) {
 	// truncation and timeout; see https://github.com/caddyserver/caddy/issues/3639
 	truncated := in != nil && in.Truncated
 	timeoutErr := err != nil && strings.Contains(err.Error(), "timeout")
-	log.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v",ns,timeoutErr,truncated,err)
-	if truncated || timeoutErr {		
+	log.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v", ns, timeoutErr, truncated, err)
+	if truncated || timeoutErr {
 		tcp := &dns.Client{Net: "tcp", Timeout: dnsTimeout}
 		in, _, err = tcp.Exchange(m, ns)
-		log.Printf("tcp sendDNSQuery result ns:%v err:%v",ns,err)
+		log.Printf("tcp sendDNSQuery result ns:%v err:%v", ns, err)
 	}
 	return in, err
 }
@@ -228,8 +228,8 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 
 	// Initial attempt to resolve at the recursive NS
 	r, err := dnsQuery(fqdn, dnstype, resolvers, true)
-	if ddnsutilDebug {
-		fmt.Println("// dnsQuery result", fqdn, dns.TypeToString[dnstype], err, r.Rcode)
+	if *ddnsutilDebug {
+		log.Println("dnsQuery result", fqdn, dns.TypeToString[dnstype], err, r.Rcode)
 	}
 	if err != nil {
 		return "", err
@@ -250,8 +250,8 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 	}
 
 	xx, err := checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
-	if ddnsutilDebug {
-		fmt.Println("// checkAuthoritativeNss result", fqdn, dns.TypeToString[dnstype], err, xx)
+	if *ddnsutilDebug {
+		log.Println("checkAuthoritativeNss result", fqdn, dns.TypeToString[dnstype], err, xx)
 	}
 
 	return xx, err
