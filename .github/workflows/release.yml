@@ -57,10 +57,6 @@ jobs:
     # https://github.com/actions/checkout#checkout-multiple-repos-nested
     - name: Checkout
       uses: actions/checkout@v2
-    - name: Branch name
-      run: echo foof ${GITHUB_REF##*/}
-    - name: method2
-      run: echo foof ${{ github.event.release.tag_name }}
     - name: Checkout binaries
       uses: actions/checkout@v2
       with:

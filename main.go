@@ -302,7 +302,7 @@ func init() {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
 			log.SetPrefix("D ")
 			log.SetOutput(os.Stdout)
-			log.Println("debug output IS enabled Version=",Version)
+			log.Printf("debug output IS enabled Version=%s",Version)
 		} else {
 			elog.Println("debug output NOT enabled")
 			log.SetOutput(ioutil.Discard)
