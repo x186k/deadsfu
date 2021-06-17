@@ -135,7 +135,7 @@ func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (
 			break
 		}
 	}
-	return in, err
+	return in, fmt.Errorf("dnsQuery() to %v of type %s failed", fqdn, dns.TypeToString[rtype])
 }
 
 func createDNSMsg(fqdn string, rtype uint16, recursive bool) *dns.Msg {
