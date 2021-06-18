@@ -213,7 +213,7 @@ var trackCounts = TrackCounts{
 var Version = "version-unset"
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
-var ddnsutilDebug = flag.Bool("z-ddns-debug",false,"enable ddns debug output")
+var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
 var debug = flag.Bool("z-debug", false, "enable debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 
@@ -304,12 +304,12 @@ func init() {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
 			log.SetPrefix("D ")
 			log.SetOutput(os.Stdout)
-			log.Printf("debug output IS enabled Version=%s",Version)
+			log.Printf("debug output IS enabled Version=%s", Version)
 		} else {
 			elog.Println("debug output NOT enabled")
 			silenceLogger(log.Default())
 		}
-	} 
+	}
 	if !*ddnsutilDebug {
 		silenceLogger(ddnslog)
 	}
@@ -582,7 +582,14 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
-		log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
+		//log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
+
+		pubpriv := "Public"
+		if IsPrivate(v) {
+			pubpriv = "Private/ NOT REACHABLE FROM INTERNET"
+		}
+
+		elog.Printf("Registered DNS name: %v to %v %v", fqdn, pubpriv, normalip)
 
 	}
 
@@ -1763,4 +1770,26 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 	s.lastSSRC = copy.SSRC
 
 	return &copy
+}
+
+var _ = IsPrivate
+
+// remove with go 1.17 arrival
+func IsPrivate(ip net.IP) bool {
+	if ip4 := ip.To4(); ip4 != nil {
+		// Following RFC 4193, Section 3. Local IPv6 Unicast Addresses which says:
+		//   The Internet Assigned Numbers Authority (IANA) has reserved the
+		//   following three blocks of the IPv4 address space for private internets:
+		//     10.0.0.0        -   10.255.255.255  (10/8 prefix)
+		//     172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
+		//     192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
+		return ip4[0] == 10 ||
+			(ip4[0] == 172 && ip4[1]&0xf0 == 16) ||
+			(ip4[0] == 192 && ip4[1] == 168)
+	}
+	// Following RFC 4193, Section 3. Private Address Space which says:
+	//   The Internet Assigned Numbers Authority (IANA) has reserved the
+	//   following block of the IPv6 address space for local internets:
+	//     FC00::  -  FDFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF (FC00::/7 prefix)
+	return len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc
 }
