@@ -74,9 +74,7 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 		// 	return fmt.Errorf("checking DNS propagation of %s: %w", dnsName, err)
 		// }
 
-		if *ddnsutilDebug {
-			log.Println("DDNS testing got/wanting", val, dnsVal)
-		}
+		ddnslog.Printf("wait()  want:%v got:%v from checkDNSPropagation()", dnsVal, val)
 
 		if val == dnsVal {
 			return nil

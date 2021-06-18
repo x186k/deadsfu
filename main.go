@@ -262,6 +262,7 @@ var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind 
 // var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
+var ddnslog = log.New(os.Stderr, "X ", log.Lmicroseconds|log.LUTC)
 
 func logGoroutineCountToDebugLog() {
 	n := runtime.NumGoroutine()
@@ -306,10 +307,11 @@ func init() {
 			log.Printf("debug output IS enabled Version=%s",Version)
 		} else {
 			elog.Println("debug output NOT enabled")
-			log.SetOutput(ioutil.Discard)
-			log.SetPrefix("")
-			log.SetFlags(0)
+			silenceLogger(log.Default())
 		}
+	} 
+	if !*ddnsutilDebug {
+		silenceLogger(ddnslog)
 	}
 
 	initMediaHandlerState(trackCounts)
@@ -323,6 +325,12 @@ func init() {
 	go idleLoopPlayer(p)
 
 	go msgLoop()
+}
+
+func silenceLogger(l *log.Logger) {
+	l.SetOutput(ioutil.Discard)
+	l.SetPrefix("")
+	l.SetFlags(0)
 }
 
 func main() {

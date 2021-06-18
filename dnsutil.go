@@ -10,7 +10,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -126,11 +125,15 @@ func dnsMsgContainsCNAME(msg *dns.Msg) bool {
 }
 
 func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (*dns.Msg, error) {
+	ddnslog.Printf("dnsQuery(%v,%v,%v,%v) entered", fqdn, dns.TypeToString[rtype], nameservers, recursive)
+
 	m := createDNSMsg(fqdn, rtype, recursive)
 	var in *dns.Msg
 	var err error
 	for _, ns := range nameservers {
 		in, err = sendDNSQuery(m, ns)
+		ddnslog.Printf("sendDNSQuery(%v) retrn hasansr:%v nilerr:%v", ns, len(in.Answer) > 0, err == nil)
+
 		if err == nil && len(in.Answer) > 0 {
 			return in, nil
 		}
@@ -157,11 +160,11 @@ func sendDNSQuery(m *dns.Msg, ns string) (*dns.Msg, error) {
 	// truncation and timeout; see https://github.com/caddyserver/caddy/issues/3639
 	truncated := in != nil && in.Truncated
 	timeoutErr := err != nil && strings.Contains(err.Error(), "timeout")
-	log.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v", ns, timeoutErr, truncated, err)
+	ddnslog.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v", ns, timeoutErr, truncated, err)
 	if truncated || timeoutErr {
 		tcp := &dns.Client{Net: "tcp", Timeout: dnsTimeout}
 		in, _, err = tcp.Exchange(m, ns)
-		log.Printf("tcp sendDNSQuery result ns:%v err:%v", ns, err)
+		ddnslog.Printf("tcp sendDNSQuery result ns:%v err:%v", ns, err)
 	}
 	return in, err
 }
@@ -225,12 +228,12 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 	if !strings.HasSuffix(fqdn, ".") {
 		fqdn += "."
 	}
+	ddnslog.Printf("checkDNSPropagation(%v,%v,%v) entry", fqdn, resolvers, dns.TypeToString[dnstype])
 
 	// Initial attempt to resolve at the recursive NS
 	r, err := dnsQuery(fqdn, dnstype, resolvers, true)
-	if *ddnsutilDebug {
-		log.Println("dnsQuery result", fqdn, dns.TypeToString[dnstype], err, r.Rcode)
-	}
+
+	ddnslog.Printf("dnsQuery() ret: dns.RcodeSuccess:%v nilerr:%v", r.Rcode == dns.RcodeSuccess, err == nil)
 	if err != nil {
 		return "", err
 	}
@@ -242,17 +245,17 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 
 	if r.Rcode == dns.RcodeSuccess {
 		fqdn = updateDomainWithCName(r, fqdn)
+		ddnslog.Printf("dnsQuery()  returns fqdn = %v", fqdn)
 	}
 
 	authoritativeNss, err := lookupNameservers(fqdn, resolvers)
+	ddnslog.Printf("lookupNameservers() ret authnss:%v nilerr:%v", authoritativeNss, err == nil)
 	if err != nil {
 		return "", err
 	}
 
 	xx, err := checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
-	if *ddnsutilDebug {
-		log.Println("checkAuthoritativeNss result", fqdn, dns.TypeToString[dnstype], err, xx)
-	}
+	ddnslog.Printf("checkAuthoritativeNss() ret val:%v nilerr:%v", xx, err == nil)
 
 	return xx, err
 
