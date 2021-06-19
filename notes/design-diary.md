@@ -210,8 +210,24 @@ Big recap of major questions for media/switching engine:
 	- fire-and-forget requires packets to always go to the same channel/GR to maintain ordering
 	- so we choose syncronous send-and-wait approach
 
+## 6/18/21 Handing Usage from private-ip only situations
 
+When sfu1 detects the default route/interface only has private IPv4 addresses, this means:
+- The system is or is not on the Internet, we don't know
+- If it is on the Internet, it will have a public-IP, which is brittle to detect.
+- We also, don't want to detect the public-IP.
+- 
 
+In this situation (only private IPv4 addrs), we want the user to clarify whether they
+want the system to be accessed via it's private-ip, or presumable public-ip.
+There is involved steps we could do to detect an open public-ip port, but lets keep it simple for now.
+
+So, we have two flags: '-public: for the DNS hostname, sfu1 will detect and register public IP-addresses'
+and '-private: for the DNS hostname, sfu1 will detect and register the private IP-addresses'
+
+If the SFU only has private IP then we require the user to indicate whether the hostname should use the private IP or the public IP.
+If the user.indicates public, then we query a service like xxx.aws.com to find their public IP.
+With regards to helping the user discover the openness their ip,
 
 
 
