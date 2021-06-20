@@ -410,7 +410,7 @@ func main() {
 	}
 
 	var localAddrs []net.IP
-	if *interfaceAddr != "" {
+	if len(*interfaceAddr) > 0 {
 		localAddrs = []net.IP{net.ParseIP(*interfaceAddr)}
 	} else {
 		localAddrs = getDefaultRouteInterfaceAddresses()
@@ -434,24 +434,39 @@ func main() {
 
 	// 	}
 
-	
-	publicAddrs:=localAddrs//XXXXXXXXX fixme
+	var publicAddr net.IP = nil
 	if *public {
 		//go get my public address
-
+		publicAddr = getMyPublicIpV4()
 	}
-	
+
+	if *public && *private {
+		for _, v := range localAddrs {
+			if publicAddr.Equal(v) {
+				elog.Println("INFO: -public flag not necessary, -private addresses include public")
+				*private = false
+			}
+		}
+	}
+
+	log.Println("urlsFlag", urlsFlag)
+
 	//https first
 	for _, url := range urlsFlag {
 		if url.Scheme != "https" {
 			continue
 		}
+		elog.Printf("%v is BROWSER URL", url)
+		elog.Printf("%v/pub is ingress signalling URL", url)
+		elog.Printf("%v/sub is egress signalling URL", url)
+
+
 		if *enableDDNS {
 			if *private {
 				registerDDNS(url, localAddrs)
 			}
 			if *public {
-				registerDDNS(url, publicAddrs)
+				registerDDNS(url, []net.IP{publicAddr})
 			}
 		}
 
@@ -478,7 +493,25 @@ func main() {
 		if url.Scheme != "http" {
 			continue
 		}
-		printURLS("http", url.Host, url.Port())
+		elog.Printf("%v is BROWSER URL", url)
+		elog.Printf("%v/pub is ingress signalling URL", url)
+		elog.Printf("%v/sub is egress signalling URL", url)
+
+		if len(*interfaceAddr) > 0 {
+			intfAddr := net.ParseIP(*interfaceAddr)
+			if intfAddr == nil {
+				elog.Fatal("Invalid IP address for -http-interface")
+			}
+			hostAddr := net.ParseIP(url.Host)
+			if intfAddr == nil {
+				elog.Fatal("HTTP URLs must contain valid, numeric IPs when using the flag: -http-interface")
+			}
+			if !intfAddr.Equal(hostAddr) {
+				elog.Fatal("HTTP URLs must contain the same IP address, when using the flag: -http-interface")
+			}
+		}
+
+
 
 		laddr := *interfaceAddr + ":" + getPort(url)
 		go func() {
@@ -487,10 +520,6 @@ func main() {
 			panic(err)
 		}()
 		elog.Printf("HTTP listener started")
-	}
-
-	if *interfaceAddr == "::" {
-		*interfaceAddr = ""
 	}
 
 	//the user can specify zero for port, and Linux/etc will choose a port
@@ -591,22 +620,6 @@ func initMediaHandlerState(t TrackCounts) {
 	//	initRxid2state(t.numIdleVideo, Xidleaudio
 }
 
-func printURLS(proto string, host string, port string) {
-	hostport := net.JoinHostPort(host, port)
-	if host == "" {
-		elog.Println(proto, " is bound to ALL interfaces")
-	}
-
-	url := computeURL(proto, hostport, "/")
-
-	elog.Printf("BROWSER URL. Copy & paste into address bar  ==>  %s", url)
-
-	if *dialIngressURL == "" {
-		elog.Printf("%s is %s endpoint for WHIP/WISH ingress signalling", pubPath, proto)
-	}
-	elog.Printf("%s is %s endpoint for WHEP egress signalling", subPath, proto)
-}
-
 func getPort(u *url.URL) string {
 	if u.Scheme == "https" {
 		if u.Port() == "" {
@@ -621,22 +634,6 @@ func getPort(u *url.URL) string {
 		return u.Port()
 	}
 	panic("bad scheme")
-}
-
-func computeURL(protocol string, hostport string, path string) (url string) {
-	// we want something like:
-	//"Publisher Ingress API URL: http://foo.bar/pub"
-
-	if protocol == "https" {
-		hostport = strings.TrimSuffix(hostport, ":443")
-	}
-	if protocol == "http" {
-		hostport = strings.TrimSuffix(hostport, ":80")
-	}
-
-	url = fmt.Sprintf("%s://%s%s", protocol, hostport, path)
-
-	return
 }
 
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
@@ -663,7 +660,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		if IsPrivate(v) {
 			pubpriv = "Private"
 		}
-		elog.Printf("Setting DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
+		elog.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
 
 		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
@@ -1856,8 +1853,6 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 	return &copy
 }
 
-var _ = IsPrivate
-
 // remove with go 1.17 arrival
 func IsPrivate(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
@@ -1887,19 +1882,28 @@ func IsAccessibleFromInternet(addrPort string) bool {
 
 var _ = IsAccessibleFromInternet
 
-var _ = getMyIpV4
+var _ = getMyPublicIpV4
 
-func getMyIpV4() net.IP {
+func getMyPublicIpV4() net.IP {
+	var publicmyip []string = []string{"https://api.ipify.org", "http://checkip.amazonaws.com/"}
+
 	client := http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 2 * time.Second,
 	}
-	res, err := client.Get("https://api.ipify.org")
-	if err != nil {
-		return nil
+	for _, v := range publicmyip {
+		res, err := client.Get(v)
+		if err != nil {
+			return nil
+		}
+		ipraw, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return nil
+		}
+		ip := net.ParseIP(string(ipraw))
+		if ip != nil {
+			return ip
+		}
 	}
-	ipraw, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil
-	}
-	return net.ParseIP(string(ipraw))
+	return nil
+
 }
