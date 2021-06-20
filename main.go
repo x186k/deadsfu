@@ -295,11 +295,20 @@ func (i *urlset) Set(value string) error {
 	if len(*i) > 0 {
 		return errors.New("urlset flag already set")
 	}
-	for _, dt := range strings.Split(value, ",") {
-		u, err := url.Parse(dt)
+	for _, rawurl := range strings.Split(value, ",") {
+		u, err := url.Parse(rawurl)
 		if err != nil {
-			return err
+			elog.Fatal("Cannot parse url:", rawurl)
 		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			elog.Fatal("URL scheme/proto must be either http or https. input=", rawurl)
+		}
+		if u.Path != "" && u.Path != "/" {
+			elog.Fatal("URL path must be /", rawurl)
+		}
+		u.Path = "" //normalize
+
+		log.Printf("-urls got: %#v", u)
 		u.Path = ""
 		*i = append(*i, u)
 	}
