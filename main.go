@@ -20,6 +20,7 @@ import (
 	mrand "math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -83,7 +84,6 @@ var rtpPacketPool = sync.Pool{
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	docsurl       = "https://sfu1.com/docs"
 	mediaStreamId = "x186k"
 	ddns5Suffix   = ".ddns5.com"
 	duckdnsSuffix = ".duckdns.org"
@@ -181,20 +181,32 @@ func checkPanic(err error) {
 
 func slashHandler(w http.ResponseWriter, r *http.Request) {
 
-	if r.URL.Scheme == "http" && *httpsPort != 0 {
-		uri := "https://" + r.Host + ":" + strconv.Itoa(*httpsPort) + r.RequestURI
-		log.Println("Redirecting HTTP req to ", uri)
-		http.Redirect(w, r, uri, http.StatusMovedPermanently)
-		return
+	if r.URL.Scheme == "http" {
+
+		//can we redirect this to https?
+		if net.ParseIP(r.Host) == nil { // performance-hack, if it is not an IP address see if it is a hostname
+
+			for _, u := range urlsFlag {
+				if u.Scheme == "https" && u.Host == r.Host {
+					uri := "https://" + r.Host + ":" + u.Port() + r.RequestURI
+					log.Println("Redirecting HTTP req to ", uri)
+					http.Redirect(w, r, uri, http.StatusMovedPermanently)
+					return
+				}
+			}
+		}
 	}
 
-	w.Header().Set("Content-Type", "text/html")
+	// if we can't redirect to https, we fall to here
 
 	if r.URL.Path != "/" {
 		http.Error(w, "404 - page not found", http.StatusNotFound)
 		return
 	}
 
+	//serve index.html as embeded
+
+	w.Header().Set("Content-Type", "text/html")
 	_, _ = w.Write(indexHtml)
 
 }
@@ -212,6 +224,14 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
+const urlsFlagName = "http-urls"
+const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
+
+var private = flag.Bool("https-private", true, "Auto-detect my LOCAL IP address, and register it with DDNS using HTTPS hostname")
+var public = flag.Bool("https-public", false, "Auto-detect my PUBLIC IP address, and register it with DDNS using HTTPS hostname")
+var enableDDNS = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
+var enableCaddy = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
+
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
 var debug = flag.Bool("z-debug", false, "enable debug output")
@@ -226,30 +246,11 @@ var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
-const httpPortMsg = `
-Port number to bind/listen for HTTP requests.
-May both: serve HTML and/or perform WebRTC signalling.
-If https-port also used, HTTP will redirect to HTTPS.
-HTTP is preferred when using in conjunction with a front-end load balancer.
-Common choices are 80 or 8080, or 0.
-Default is zero (0), which means do not enable/bind/listen for HTTP.
-`
-
-var httpPort = flag.Int("http-port", 0, httpPortMsg)
-
-const httpsPortMsg = `
-Port number to bind/listen for HTTPS requests.
-May both: serve HTML and/or perform WebRTC signalling.
-Must use -domain when using HTTPS
-Common choices are 443 or 8443, or 0.
-Default is zero (0), which means do not enable/bind/listen for HTTPS.
-`
-
-var httpsPort = flag.Int("https-port", 0, httpsPortMsg)
 var obsStudio = flag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
 var helpAll = flag.Bool("all", false, "Show the full set of advanced flags\n")
 var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
-var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
+
+//var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
 var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
 
 //var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
@@ -278,6 +279,40 @@ func logGoroutineCountToDebugLog() {
 
 var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
+// Example 3: A user-defined flag type, a slice of durations.
+type urlset []*url.URL
+
+// String is the method to format the flag's value, part of the flag.Value interface.
+// The String method's output will be used in diagnostics.
+func (i *urlset) String() string {
+	return fmt.Sprint(*i)
+}
+
+// Set is the method to set the flag value, part of the flag.Value interface.
+// Set's argument is a string to be parsed to set the flag.
+// It's a comma-separated list, so we split it.
+func (i *urlset) Set(value string) error {
+	// If we wanted to allow the flag to be set multiple times,
+	// accumulating values, we would delete this if statement.
+	// That would permit usages such as
+	//	-deltaT 10s -deltaT 15s
+	// and other combinations.
+	if len(*i) > 0 {
+		return errors.New("urlset flag already set")
+	}
+	for _, dt := range strings.Split(value, ",") {
+		u, err := url.Parse(dt)
+		if err != nil {
+			return err
+		}
+		u.Path = ""
+		*i = append(*i, u)
+	}
+	return nil
+}
+
+var urlsFlag urlset
+
 // should this be 'init' or 'initXXX'
 // if we want this func to be called everyttime we run tests, then
 // it should be init(), otherwise initXXX()
@@ -286,6 +321,7 @@ var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname
 // But! this means we need to determine if we are a test or not,
 // so we can not call flag.Parse() or not
 func init() {
+	flag.Var(&urlsFlag, urlsFlagName, urlsFlagUsage)
 
 	if len(indexHtml) == 0 {
 		panic("index.html failed to embed correctly")
@@ -348,15 +384,6 @@ func main() {
 		}()
 	}
 
-	//initStateAndGoroutines() // outside of main() to enable unit testing
-
-	if *httpPort == 0 && *httpsPort == 0 {
-
-		fmt.Fprintf(flag.CommandLine.Output(), "\nError: either -http-port or -https-port must be used.\n\n")
-		flag.Usage()
-		os.Exit(1)
-	}
-
 	if *helpAll {
 		flag.Usage()
 		os.Exit(0)
@@ -378,96 +405,88 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
-	if *httpsPort != 0 {
-		if *domain == "" {
-			xdomain := randomHex(4) + ".ddns5.com"
-			elog.Fatalf("-domain <name> flag must be used with -https or -http-https\nFor example, you could use: -domain %s\nddns5.com is a no-auth dynamic dns sevice\nsee the Docs online: %s\n", xdomain, docsurl)
-		} else if strings.HasSuffix(*domain, ddns5Suffix) {
-			// zone := string(ddns5Suffix[1:])
-			// subname := strings.TrimSuffix(*domain, ddns5Suffix)
+	var localAddrs []net.IP
+	if *interfaceAddr != "" {
+		localAddrs = []net.IP{net.ParseIP(*interfaceAddr)}
+	} else {
+		localAddrs = getDefaultRouteInterfaceAddresses()
+	} // privateaddrs := true
+	// for _,v:=range addrs {
+	// 	if v.To4() != nil {
+	// 		if !IsPrivate(v4) {
+	// 			privateaddrs=fal
 
-			//token := ddns5com_Token()
-			ddnsProvider := &ddns5libdns.Provider{}
-			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
+	// 		}
 
-			acmeConfigureProvider(ddnsProvider)
-		} else if strings.HasSuffix(*domain, duckdnsSuffix) {
-			token := duckdnsorg_Token()
-			// zone := string(duckdnsSuffix[1:])
-			// subname := strings.TrimSuffix(*domain, duckdnsSuffix)
+	// }
 
-			ddnsProvider := &duckdns.Provider{APIToken: token}
-			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
+	//var ipaddrURL = flag.String("url-ip-addr", "", "HTTP URL for signalling. The URL IP address is not registered with DNS.")
+	// if privateaddrs {
+	// 	if !*private && !*public {
+	// 		elog.Fatal("FATAL: use the -private flag to continue on this system.")
+	// 	} else if *public {
 
-			acmeConfigureProvider(ddnsProvider)
-		} else if *cloudflareDDNS {
-			//cloudflare can have any zone, not just duckdns.org
-			token := cloudflare_Token()
+	// 	} else if *private {
 
-			// split := dns.SplitDomainName(*domain)
-			// zone := strings.Join(split[len(split)-2:], ".")
-			// subname := strings.TrimSuffix(*domain, "."+zone)
+	// 	}
 
-			ddnsProvider := &cloudflare.Provider{APIToken: token}
-			ddnsRegisterIPAddresses(ddnsProvider, *domain, 2, *interfaceAddr)
+	
+	publicAddrs:=localAddrs//XXXXXXXXX fixme
+	if *public {
+		//go get my public address
 
-			acmeConfigureProvider(ddnsProvider)
-		} else {
-			elog.Printf("We assume you have pointed the IP for domain: %s to this machine.", *domain)
-			elog.Printf("And adjusted your firewall")
-			elog.Printf("Also, LetsEncrypt certificates will only work if port 80/443 are reachable from the Internet")
+	}
+	
+	//https first
+	for _, url := range urlsFlag {
+		if url.Scheme != "https" {
+			continue
 		}
-	}
-
-	if *interfaceAddr == "::" {
-		*interfaceAddr = ""
-	}
-
-	if *httpPort != 0 {
-
-		// httpLn, err := net.Listen("tcp", laddr)
-		// checkPanic(err)
-		// hostport := httpLn.Addr().String()
-
-		port := strconv.Itoa(*httpPort)
-
-		if *interfaceAddr == "" {
-			if addr := getDefRouteIntfAddrIPv4(); addr != nil {
-				printURLS("http", addr.String(), port)
-			} else if addr := getDefRouteIntfAddrIPv6(); addr != nil {
-				printURLS("http", addr.String(), port)
+		if *enableDDNS {
+			if *private {
+				registerDDNS(url, localAddrs)
 			}
-		} else {
-			printURLS("http", *interfaceAddr, port)
+			if *public {
+				registerDDNS(url, publicAddrs)
+			}
 		}
 
+		var tlsConfig *tls.Config = nil
+		if *enableCaddy {
+			tlsConfig, err = certmagic.TLS([]string{url.Host})
+			checkPanic(err)
+		} else {
+			tlsConfig = &tls.Config{
+				Certificates: []tls.Certificate{},
+				RootCAs:      nil,
+			}
+			tlsConfig.BuildNameToCertificate()
+			panic("cert files code unfinished")
+
+		}
+
+		laddr := *interfaceAddr + ":" + getPort(url)
+		spawnHTTPSServer(tlsConfig, mux, laddr)
+	}
+
+	//http next
+	for _, url := range urlsFlag {
+		if url.Scheme != "http" {
+			continue
+		}
+		printURLS("http", url.Host, url.Port())
+
+		laddr := *interfaceAddr + ":" + getPort(url)
 		go func() {
-			laddr := *interfaceAddr + ":" + port
+			// httpLn, err := net.Listen("tcp", laddr)
 			err := http.ListenAndServe(laddr, certmagic.DefaultACME.HTTPChallengeHandler(mux))
 			panic(err)
 		}()
 		elog.Printf("HTTP listener started")
 	}
-	if *httpsPort != 0 {
-		//tlsConfig := certmagic.NewDefault().TLSConfig()
-		tlsConfig, err := certmagic.TLS([]string{*domain})
-		checkPanic(err)
 
-		/// XXX to work with OBS studio for now
-		if *obsStudio {
-			tlsConfig.MinVersion = 0
-		}
-		port := strconv.Itoa(*httpsPort)
-
-		printURLS("https", *domain, port)
-
-		go func() {
-			laddr := *interfaceAddr + ":" + port
-			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
-			checkPanic(err)
-			panic(http.Serve(httpsLn, mux))
-		}()
-		elog.Printf("HTTPS listener started")
+	if *interfaceAddr == "::" {
+		*interfaceAddr = ""
 	}
 
 	//the user can specify zero for port, and Linux/etc will choose a port
@@ -496,6 +515,58 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
+}
+
+func spawnHTTPSServer(tlsConfig *tls.Config, mux *http.ServeMux, laddr string) {
+	//tlsConfig := certmagic.NewDefault().TLSConfig()
+	// tlsConfig, err := certmagic.TLS([]string{domain})
+	// checkPanic(err)
+
+	if *obsStudio {
+
+		/// XXX to work with OBS studio for now
+		tlsConfig.MinVersion = 0
+	}
+
+	go func() {
+
+		httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
+		checkPanic(err)
+		panic(http.Serve(httpsLn, mux))
+	}()
+	elog.Printf("HTTPS listener started")
+}
+
+func registerDDNS(u *url.URL, addrs []net.IP) {
+
+	domain := u.Host
+
+	if strings.HasSuffix(domain, ddns5Suffix) {
+
+		ddnsProvider := &ddns5libdns.Provider{}
+		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
+
+		acmeConfigureProvider(ddnsProvider)
+	} else if strings.HasSuffix(domain, duckdnsSuffix) {
+		token := duckdnsorg_Token()
+
+		ddnsProvider := &duckdns.Provider{APIToken: token}
+		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
+
+		acmeConfigureProvider(ddnsProvider)
+	} else if *cloudflareDDNS {
+
+		token := cloudflare_Token()
+
+		ddnsProvider := &cloudflare.Provider{APIToken: token}
+		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
+
+		acmeConfigureProvider(ddnsProvider)
+	} else {
+		elog.Println("For hostname:", domain)
+		elog.Fatal(`Unable to determine which DDNS provider to use: ddns5.com, duckdns.org, or Cloudflare\n
+	Names ending ddns5.com indicate ddns5, ending duckdns indicate duckdns, Cloudflare is selected using a param flag`)
+	}
 }
 
 func initRxid2state(n int, id TrackId) {
@@ -532,6 +603,22 @@ func printURLS(proto string, host string, port string) {
 	elog.Printf("%s is %s endpoint for WHEP egress signalling", subPath, proto)
 }
 
+func getPort(u *url.URL) string {
+	if u.Scheme == "https" {
+		if u.Port() == "" {
+			return "443"
+		}
+		return u.Port()
+	}
+	if u.Scheme == "http" {
+		if u.Port() == "" {
+			return "80"
+		}
+		return u.Port()
+	}
+	panic("bad scheme")
+}
+
 func computeURL(protocol string, hostport string, path string) (url string) {
 	// we want something like:
 	//"Publisher Ingress API URL: http://foo.bar/pub"
@@ -551,13 +638,7 @@ func computeURL(protocol string, hostport string, path string) (url string) {
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
 // zone might be duckdns.org
 // subname might be server01
-func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int, interfaceAddr string) {
-	var addrs []net.IP
-	if interfaceAddr != "" {
-		addrs = []net.IP{net.ParseIP(interfaceAddr)}
-	} else {
-		addrs = getDefaultRouteInterfaceAddresses()
-	}
+func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int, addrs []net.IP) {
 
 	//timestr := strconv.FormatInt(time.Now().UnixNano(), 10)
 	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
@@ -574,7 +655,13 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 
 		normalip := NormalizeIP(v.String(), dnstype)
 
-		log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
+		pubpriv := "Public"
+		if IsPrivate(v) {
+			pubpriv = "Private"
+		}
+		elog.Printf("Setting DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
+
+		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
@@ -583,13 +670,6 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		checkFatal(err)
 
 		//log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
-
-		pubpriv := "Public"
-		if IsPrivate(v) {
-			pubpriv = "Private/ NOT REACHABLE FROM INTERNET"
-		}
-
-		elog.Printf("Registered DNS name: %v to %v %v", fqdn, pubpriv, normalip)
 
 	}
 
@@ -1691,8 +1771,8 @@ func getDefaultRouteInterfaceAddresses() []net.IP {
 }
 
 func getDefRouteIntfAddrIPv6() net.IP {
-	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080"
-	cc, err := net.Dial("udp6", googleDNSIPv6)
+	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080" // not important, does not hit the wire
+	cc, err := net.Dial("udp6", googleDNSIPv6)          // doesnt send packets
 	if err == nil {
 		defer cc.Close()
 		return cc.LocalAddr().(*net.UDPAddr).IP
@@ -1701,10 +1781,10 @@ func getDefRouteIntfAddrIPv6() net.IP {
 }
 
 func getDefRouteIntfAddrIPv4() net.IP {
-	const googleDNSIPv4 = "8.8.8.8:8080"
-	cc, err := net.Dial("udp4", googleDNSIPv4)
+	const googleDNSIPv4 = "8.8.8.8:8080"       // not important, does not hit the wire
+	cc, err := net.Dial("udp4", googleDNSIPv4) // doesnt send packets
 	if err == nil {
-		defer cc.Close()
+		cc.Close()
 		return cc.LocalAddr().(*net.UDPAddr).IP
 	}
 	return nil
@@ -1792,4 +1872,30 @@ func IsPrivate(ip net.IP) bool {
 	//   following block of the IPv6 address space for local internets:
 	//     FC00::  -  FDFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF (FC00::/7 prefix)
 	return len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc
+}
+
+// To implement this, requires we run an API that 'calls-back' to see if ports are open
+// let's see if users are happy with curl directions on checking access for now:
+// curl -v telnet://127.0.0.1:22
+func IsAccessibleFromInternet(addrPort string) bool {
+	return false
+}
+
+var _ = IsAccessibleFromInternet
+
+var _ = getMyIpV4
+
+func getMyIpV4() net.IP {
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	res, err := client.Get("https://api.ipify.org")
+	if err != nil {
+		return nil
+	}
+	ipraw, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil
+	}
+	return net.ParseIP(string(ipraw))
 }
