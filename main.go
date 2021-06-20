@@ -224,13 +224,15 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
-const urlsFlagName = "http-urls"
+var interfaceAddr = flag.String("http-interface", "", "Use the given binding address for HTTP,HTTPS. A V4 or V6 addr is okay.")
+
+const urlsFlagName = "urls"
 const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
 
-var private = flag.Bool("https-private", true, "Auto-detect my LOCAL IP address, and register it with DDNS using HTTPS hostname")
-var public = flag.Bool("https-public", false, "Auto-detect my PUBLIC IP address, and register it with DDNS using HTTPS hostname")
-var enableDDNS = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
 var enableCaddy = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
+var enableDDNS = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
+var private = flag.Bool("https-private", true, "Auto-detect my LOCAL IP address, and register in DDNS using the HTTPS hostname")
+var public = flag.Bool("https-public", false, "Auto-detect my PUBLIC IP address, and register in DDNS using the HTTPS hostname")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
@@ -249,13 +251,6 @@ var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound
 var obsStudio = flag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
 var helpAll = flag.Bool("all", false, "Show the full set of advanced flags\n")
 var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
-
-//var domain = flag.String("domain", "", "Domain name for either: DDNS registration or HTTPS ACME/Let's encrypt")
-var interfaceAddr = flag.String("interface", "", "The ipv4/v6 interface to bind the web server, ie: 192.168.2.99")
-
-//var ddnsFlag = flag.Bool("ddns-domain", false, "Use -domain <name> to register IP addresses for: A/AAAA DNS records")
-
-//var acmeFlag = flag.Bool("acme-domain", false, "Use -domain <name> to get HTTPS/Acme/Let's-encrypt certificate")
 
 //var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
