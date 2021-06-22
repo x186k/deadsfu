@@ -1046,10 +1046,13 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	err = peerConnection.SetLocalDescription(sessdesc)
 	checkPanic(err)
 
+	t0 := time.Now()
 	// Block until ICE Gathering is complete, disabling trickle ICE
 	// we do this because we only can exchange one signaling message
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
+
+	log.Println("ICE gather time is ", time.Since(t0).String())
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	ansrtcsd := peerConnection.LocalDescription()
