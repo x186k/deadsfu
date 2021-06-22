@@ -58,6 +58,9 @@ import (
 //go:embed html/index.html
 var indexHtml []byte
 
+//go:embed html/favicon.svg
+var favicon []byte
+
 //go:embed sfu1-binaries/idle.screen.h264.pcapng
 var idleScreenH264Pcapng []byte
 
@@ -200,6 +203,12 @@ func slashHandler(w http.ResponseWriter, r *http.Request) {
 
 	// if we can't redirect to https, we fall to here
 
+	if r.URL.Path == "/favicon.svg" {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = w.Write(favicon)
+		return
+	}
+
 	if r.URL.Path != "/" {
 		http.Error(w, "404 - page not found", http.StatusNotFound)
 		return
@@ -225,9 +234,9 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
-
 const urlsFlagName = "urls"
 const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
+
 var httpInterfaceFlag = flag.String("http-interface", "", "Use the given binding address for HTTP,HTTPS. A V4 or V6 addr is okay.")
 var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
 var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
