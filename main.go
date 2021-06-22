@@ -185,19 +185,34 @@ func checkPanic(err error) {
 
 func slashHandler(w http.ResponseWriter, r *http.Request) {
 
-	if r.URL.Scheme == "http" {
+	// http vs https https://github.com/golang/go/issues/28940
+	isHttp := r.TLS == nil
+	isIPAddr := net.ParseIP(r.Host) != nil
+	reqhost, _, _ := net.SplitHostPort(r.Host)
+	if reqhost == "" {
+		reqhost = r.Host
+	}
 
-		//can we redirect this to https?
-		if net.ParseIP(r.Host) == nil { // performance-hack, if it is not an IP address see if it is a hostname
+	port := 0
+	a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if ok {
+		ta, ok := a.(*net.TCPAddr)
+		if !ok {
+			panic("not tcp")
+		}
+		port = ta.Port
+	}
 
-			for _, u := range urlsFlag {
-				if u.Scheme == "https" && u.Host == r.Host {
-					uri := "https://" + r.Host + ":" + u.Port() + r.RequestURI
-					log.Println("Redirecting HTTP req to ", uri)
-					http.Redirect(w, r, uri, http.StatusMovedPermanently)
-					return
-				}
+	// if this is a port 80 http request, can we find an https endpoint to redirect it to?
+	if isHttp && !isIPAddr && port == 80 {
+		for _, u := range urlsFlag {
+			if u.Scheme == "https" && u.Hostname() == reqhost {
+				uri := "https://" + u.Hostname() + ":" + getPort(u) + r.RequestURI
+				log.Println("Redirecting HTTP req to ", uri)
+				http.Redirect(w, r, uri, http.StatusMovedPermanently)
+				return
 			}
+
 		}
 	}
 
@@ -530,11 +545,9 @@ func main() {
 	if *httpsDetectIPFlag == "public" && *httpsOpenPortsFlag {
 		// if you are using automatic public IP detection
 		// we also will check your firewall ports
-		for _, url := range urlsFlag {
-			//if url.Scheme != "https" {
-			//	continue
-			//}
-			go reportOpenPorts(url)
+
+		for _, u := range urlsFlag {
+			go reportOpenPorts(u)
 		}
 	}
 
@@ -567,13 +580,14 @@ func main() {
 }
 
 func reportOpenPorts(u *url.URL) {
-	ok, _ := canConnectThroughProxy(socks5callbackProxy, u.Host+":"+getPort(u))
+	hostport := getExplicitHostPort(u)
+	ok, _ := canConnectThroughProxy(socks5callbackProxy, hostport)
 
 	msg := "NOT OPEN"
 	if ok {
 		msg = "OPEN"
 	}
-	elog.Printf("External Socks5 proxy check: Host/port IS %s from the Internet", msg)
+	elog.Printf("Internet Socks5 open port check: %v IS %s from the Internet", hostport, msg)
 
 }
 
@@ -625,6 +639,10 @@ func initMediaHandlerState(t TrackCounts) {
 	initRxid2state(t.numVideo, XVideo)
 	initRxid2state(t.numIdleVideo, XIdleVideo)
 	//	initRxid2state(t.numIdleVideo, Xidleaudio
+}
+
+func getExplicitHostPort(u *url.URL) string {
+	return u.Hostname() + ":" + getPort(u)
 }
 
 func getPort(u *url.URL) string {
