@@ -573,7 +573,7 @@ func reportOpenPorts(u *url.URL) {
 	if ok {
 		msg = "OPEN"
 	}
-	elog.Printf("External Socks5 proxy check: Host/port is %s from the Internet", msg)
+	elog.Printf("External Socks5 proxy check: Host/port IS %s from the Internet", msg)
 
 }
 
