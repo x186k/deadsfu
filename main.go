@@ -231,7 +231,7 @@ const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate.
 var httpInterfaceFlag = flag.String("http-interface", "", "Use the given binding address for HTTP,HTTPS. A V4 or V6 addr is okay.")
 var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
 var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
-var httpsDetectIPFlag = flag.String("https-detect-ip", "local", "One of: local, public, none\nHow to auto-detect IP addresses: local=detect my local interface addr\npubic=detect my Internet IP address\nnone=do not detect")
+var httpsDetectIPFlag = flag.String("https-detect-ip", "local", "One of: local, public, none.  Controls auto-detection of IP addresses\nlocal: Auto-detect my local interface IP addresses. Default value.\npublic: Auto-detect my public Internet IP addresses (TCP to Internet)\nnone: Do not auto-detect IP addresses\n")
 var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-detect-ip=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
