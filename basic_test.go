@@ -81,6 +81,7 @@ func TestPubSub(t *testing.T) {
 	var numvid int32 = 0
 
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		_ = receiver
 		//panic("--ontrack")
 
 		mimetype := track.Codec().MimeType
@@ -192,7 +193,6 @@ func startMultiTrackPublisher(t *testing.T) {
 	go processRTCP(rtpSender)
 
 	go func() {
-
 
 	}()
 
