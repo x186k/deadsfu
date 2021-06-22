@@ -84,13 +84,14 @@ var rtpPacketPool = sync.Pool{
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	mediaStreamId = "x186k"
-	ddns5Suffix   = ".ddns5.com"
-	duckdnsSuffix = ".duckdns.org"
-	videoMimeType = "video/h264"
-	audioMimeType = "audio/opus"
-	pubPath       = "/pub"
-	subPath       = "/sub" // 2nd slash important
+	mediaStreamId       = "x186k"
+	ddns5Suffix         = ".ddns5.com"
+	duckdnsSuffix       = ".duckdns.org"
+	videoMimeType       = "video/h264"
+	audioMimeType       = "audio/opus"
+	pubPath             = "/pub"
+	subPath             = "/sub" // 2nd slash important
+	socks5callbackProxy = "socks5-callback-server.com:60000"
 )
 
 var (
@@ -224,15 +225,14 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
-var interfaceAddr = flag.String("http-interface", "", "Use the given binding address for HTTP,HTTPS. A V4 or V6 addr is okay.")
 
 const urlsFlagName = "urls"
 const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
-
-var enableCaddy = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
-var enableDDNS = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
-var private = flag.Bool("https-private", true, "Auto-detect my LOCAL IP address, and register in DDNS using the HTTPS hostname")
-var public = flag.Bool("https-public", false, "Auto-detect my PUBLIC IP address, and register in DDNS using the HTTPS hostname")
+var httpInterfaceFlag = flag.String("http-interface", "", "Use the given binding address for HTTP,HTTPS. A V4 or V6 addr is okay.")
+var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
+var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
+var httpsDetectIPFlag = flag.String("https-detect-ip", "local", "One of: local, public, none\nHow to auto-detect IP addresses: local=detect my local interface addr\npubic=detect my Internet IP address\nnone=do not detect")
+var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-detect-ip=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
@@ -308,7 +308,7 @@ func (i *urlset) Set(value string) error {
 		}
 		u.Path = "" //normalize
 
-		log.Printf("-urls got: %#v", u)
+		//log.Printf("-urls got: %#v", u)  //!! before flags.parse, always on!
 		u.Path = ""
 		*i = append(*i, u)
 	}
@@ -417,43 +417,20 @@ func main() {
 	}
 
 	var localAddrs []net.IP
-	if len(*interfaceAddr) > 0 {
-		localAddrs = []net.IP{net.ParseIP(*interfaceAddr)}
+	if len(*httpInterfaceFlag) > 0 {
+		addr := net.ParseIP(*httpInterfaceFlag)
+		if addr == nil {
+			elog.Fatal("-http-interface is not valid a IP address")
+		}
+		localAddrs = []net.IP{addr}
 	} else {
 		localAddrs = getDefaultRouteInterfaceAddresses()
-	} // privateaddrs := true
-	// for _,v:=range addrs {
-	// 	if v.To4() != nil {
-	// 		if !IsPrivate(v4) {
-	// 			privateaddrs=fal
-
-	// 		}
-
-	// }
-
-	//var ipaddrURL = flag.String("url-ip-addr", "", "HTTP URL for signalling. The URL IP address is not registered with DNS.")
-	// if privateaddrs {
-	// 	if !*private && !*public {
-	// 		elog.Fatal("FATAL: use the -private flag to continue on this system.")
-	// 	} else if *public {
-
-	// 	} else if *private {
-
-	// 	}
-
-	var publicAddr net.IP = nil
-	if *public {
-		//go get my public address
-		publicAddr = getMyPublicIpV4()
 	}
 
-	if *public && *private {
-		for _, v := range localAddrs {
-			if publicAddr.Equal(v) {
-				elog.Println("INFO: -public flag not necessary, -private addresses include public")
-				*private = false
-			}
-		}
+	var publicAddr net.IP = nil
+	if *httpsDetectIPFlag == "public" {
+		//go get my public address
+		publicAddr = getMyPublicIpV4()
 	}
 
 	log.Println("urlsFlag", urlsFlag)
@@ -467,18 +444,21 @@ func main() {
 		elog.Printf("%v/pub is ingress signalling URL", url)
 		elog.Printf("%v/sub is egress signalling URL", url)
 
-
-		if *enableDDNS {
-			if *private {
+		if *httpsDDNSFlag {
+			switch *httpsDetectIPFlag {
+			case "local":
 				registerDDNS(url, localAddrs)
-			}
-			if *public {
+				elog.Printf("Registered DNS host:%v addrs:%v", url.Host, localAddrs)
+			case "public":
 				registerDDNS(url, []net.IP{publicAddr})
+				elog.Printf("Registered DNS host:%v addr:%v", url.Host, publicAddr)
+			case "none":
+				elog.Printf("Registered NO DNS hosts.")
 			}
 		}
 
 		var tlsConfig *tls.Config = nil
-		if *enableCaddy {
+		if *httpsCaddyFlag {
 			tlsConfig, err = certmagic.TLS([]string{url.Host})
 			checkPanic(err)
 		} else {
@@ -491,8 +471,17 @@ func main() {
 
 		}
 
-		laddr := *interfaceAddr + ":" + getPort(url)
-		spawnHTTPSServer(tlsConfig, mux, laddr)
+		if *obsStudio { /// XXX to work with OBS studio for now
+			tlsConfig.MinVersion = 0
+		}
+
+		laddr := *httpInterfaceFlag + ":" + getPort(url)
+		go func() {
+			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
+			checkPanic(err)
+			panic(http.Serve(httpsLn, mux))
+		}()
+		elog.Printf("HTTPS listener started on %v", laddr)
 	}
 
 	//http next
@@ -504,8 +493,8 @@ func main() {
 		elog.Printf("%v/pub is ingress signalling URL", url)
 		elog.Printf("%v/sub is egress signalling URL", url)
 
-		if len(*interfaceAddr) > 0 {
-			intfAddr := net.ParseIP(*interfaceAddr)
+		if len(*httpInterfaceFlag) > 0 {
+			intfAddr := net.ParseIP(*httpInterfaceFlag)
 			if intfAddr == nil {
 				elog.Fatal("Invalid IP address for -http-interface")
 			}
@@ -518,15 +507,26 @@ func main() {
 			}
 		}
 
-
-
-		laddr := *interfaceAddr + ":" + getPort(url)
+		laddr := *httpInterfaceFlag + ":" + getPort(url)
 		go func() {
 			// httpLn, err := net.Listen("tcp", laddr)
 			err := http.ListenAndServe(laddr, certmagic.DefaultACME.HTTPChallengeHandler(mux))
 			panic(err)
 		}()
-		elog.Printf("HTTP listener started")
+		elog.Printf("HTTP listener started on %v", laddr)
+	}
+
+	// http and https listeners are started
+	// we want to check
+	if *httpsDetectIPFlag == "public" && *httpsOpenPortsFlag {
+		// if you are using automatic public IP detection
+		// we also will check your firewall ports
+		for _, url := range urlsFlag {
+			//if url.Scheme != "https" {
+			//	continue
+			//}
+			go reportOpenPorts(url)
+		}
 	}
 
 	//the user can specify zero for port, and Linux/etc will choose a port
@@ -557,24 +557,15 @@ func main() {
 	println("profiling done, exit")
 }
 
-func spawnHTTPSServer(tlsConfig *tls.Config, mux *http.ServeMux, laddr string) {
-	//tlsConfig := certmagic.NewDefault().TLSConfig()
-	// tlsConfig, err := certmagic.TLS([]string{domain})
-	// checkPanic(err)
+func reportOpenPorts(u *url.URL) {
+	ok, _ := canConnectThroughProxy(socks5callbackProxy, u.Host+":"+getPort(u))
 
-	if *obsStudio {
-
-		/// XXX to work with OBS studio for now
-		tlsConfig.MinVersion = 0
+	msg := "NOT OPEN"
+	if ok {
+		msg = "OPEN"
 	}
+	elog.Printf("External Socks5 proxy check: Host/port is %s from the Internet", msg)
 
-	go func() {
-
-		httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
-		checkPanic(err)
-		panic(http.Serve(httpsLn, mux))
-	}()
-	elog.Printf("HTTPS listener started")
 }
 
 func registerDDNS(u *url.URL, addrs []net.IP) {
@@ -667,7 +658,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		if IsPrivate(v) {
 			pubpriv = "Private"
 		}
-		elog.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
+		log.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
 
 		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
@@ -1782,7 +1773,7 @@ func getDefRouteIntfAddrIPv6() net.IP {
 	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080" // not important, does not hit the wire
 	cc, err := net.Dial("udp6", googleDNSIPv6)          // doesnt send packets
 	if err == nil {
-		defer cc.Close()
+		cc.Close()
 		return cc.LocalAddr().(*net.UDPAddr).IP
 	}
 	return nil
