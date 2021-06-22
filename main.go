@@ -339,6 +339,7 @@ func init() {
 	if !istest {
 		flag.Usage = Usage // my own usage handle
 		flag.Parse()
+		flagsValidation()
 
 		if *debug {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
@@ -365,6 +366,12 @@ func init() {
 	go idleLoopPlayer(p)
 
 	go msgLoop()
+}
+
+func flagsValidation() {
+	if *httpsDetectIPFlag != "local" && *httpsDetectIPFlag != "public" && *httpsDetectIPFlag != "none" {
+		elog.Fatal("Invalid value for -https-detect-ip flag")
+	}
 }
 
 func silenceLogger(l *log.Logger) {
