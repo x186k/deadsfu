@@ -204,14 +204,14 @@
         // ];
         // sender.setParameters(parameters);
 
-        let desc = await pc.createOffer()
+        await pc.createOffer()
         await pc.setLocalDescription(desc)
 
         // XXXX consider wrapping with timeout promise
         const t0 = performance.now()
         await waitToCompleteIceGathering(pc)
+        const desc = pc.localDescription
         console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
-
 
         console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
         let fetchopt =
@@ -267,16 +267,16 @@
         pc.addTransceiver('video', { 'direction': 'recvonly' })
         pc.addTransceiver('audio', { 'direction': 'recvonly' })
 
-        let desc = await pc.createOffer()
+        await pc.createOffer()
 
         await pc.setLocalDescription(desc)
 
         // XXXX consider wrapping with timeout promise
         const t0 = performance.now()
         await waitToCompleteIceGathering(pc)
+        const desc = pc.localDescription
         console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
 
-        desc = pc.localDescription
         //console.debug('got all ice ms:', performance.now() - t0)
 
         console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
