@@ -236,6 +236,12 @@
     }
 
 
+    function waitToCompleteIceGathering(pc) {
+      return new Promise(resolve => {
+        pc.addEventListener('icegatheringstatechange', e => (e.target.iceGatheringState === 'complete') && resolve(pc.localDescription));
+      });
+    }
+
     async function receive() {
       console.log("--receive x3")
 
@@ -258,19 +264,13 @@
 
         let desc = await pc.createOffer()
 
-        //xxxxx
-
-
-
-
         await pc.setLocalDescription(desc)
 
+        // XXXX consider wrapping with timeout promise
+        await waitToCompleteIceGathering(pc)
 
-
-
-        //  pc.addTransceiver('audio')//{ 'direction': 'recvonly' })
-
-
+        desc = pc.localDescription
+        //console.debug('got all ice ms:', performance.now() - t0)
 
         console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
         let fetchopt =
