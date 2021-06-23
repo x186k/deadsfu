@@ -602,14 +602,14 @@ func registerDDNS(u *url.URL, addrs []net.IP) {
 		ddnsProvider := &ddns5libdns.Provider{}
 		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
 
-		acmeConfigureProvider(ddnsProvider)
+		enableCertmagicForDNSChallenge(ddnsProvider)
 	} else if strings.HasSuffix(domain, duckdnsSuffix) {
 		token := duckdnsorg_Token()
 
 		ddnsProvider := &duckdns.Provider{APIToken: token}
 		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
 
-		acmeConfigureProvider(ddnsProvider)
+		enableCertmagicForDNSChallenge(ddnsProvider)
 	} else if *cloudflareDDNS {
 
 		token := cloudflare_Token()
@@ -617,7 +617,7 @@ func registerDDNS(u *url.URL, addrs []net.IP) {
 		ddnsProvider := &cloudflare.Provider{APIToken: token}
 		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
 
-		acmeConfigureProvider(ddnsProvider)
+		enableCertmagicForDNSChallenge(ddnsProvider)
 	} else {
 		elog.Println("For hostname:", domain)
 		elog.Fatal(`Unable to determine which DDNS provider to use: ddns5.com, duckdns.org, or Cloudflare\n
@@ -739,7 +739,7 @@ func cloudflare_Token() string {
 // and then allow Alice to create bob.ddns5.com/TXT/xxxxxxxxx
 // if we did, Alice could get a cert for bob.ddns5.com
 
-func acmeConfigureProvider(provider interface{}) {
+func enableCertmagicForDNSChallenge(provider interface{}) {
 	foo := provider.(certmagic.ACMEDNSProvider)
 
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
