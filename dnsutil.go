@@ -132,9 +132,12 @@ func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (
 	var err error
 	for _, ns := range nameservers {
 		in, err = sendDNSQuery(m, ns)
-		ddnslog.Printf("sendDNSQuery(%v) retrn hasansr:%v nilerr:%v", ns, len(in.Answer) > 0, err == nil)
 
-		if err == nil && len(in.Answer) > 0 {
+		gotansr := err == nil && in != nil && len(in.Answer) > 0
+
+		ddnslog.Printf("sendDNSQuery(%v) retrn gotansr:%v nilerr:%v", ns, gotansr, err == nil)
+
+		if gotansr {
 			return in, nil
 		}
 	}
