@@ -242,15 +242,16 @@ var httpsDetectIPFlag = flag.String("https-detect-ip", "local", "One of: local, 
 var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-detect-ip=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
+var htmlFromDiskFlag = flag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
 var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
-var debug = flag.Bool("z-debug", false, "enable debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
+var debug = flag.Bool("z-debug", false, "enable debug output")
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
-var nohtml = flag.Bool("no-html", false, "do not serve any html files, only allow pub/sub API")
+var disableHtml = flag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
 var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
@@ -422,14 +423,18 @@ func main() {
 	// MUX setup
 	mux := http.NewServeMux()
 
-	if !*nohtml {
-		//mux.HandleFunc("/", slashHandler)
-		//mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(content))))
-		fsys, err := fs.Sub(htmlContent, "html")
-		checkPanic(err)
+	if !*disableHtml {
 
-		//mux.Handle("/", http.FileServer(http.FS(fsys)))
-		mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(fsys))))
+		var f fs.FS
+
+		if *htmlFromDiskFlag {
+			f = os.DirFS("html")
+		} else {
+			f, err = fs.Sub(htmlContent, "html")
+			checkPanic(err)
+		}
+
+		mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(f))))
 
 	}
 	mux.HandleFunc(subPath, SubHandler)
