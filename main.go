@@ -6,11 +6,13 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
+	"embed"
 	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"runtime"
@@ -54,12 +56,8 @@ import (
 	"github.com/x186k/sfu1/rtpstuff"
 )
 
-// content is our static web server content.
-//go:embed html/index.html
-var indexHtml []byte
-
-//go:embed html/favicon.svg
-var favicon []byte
+//go:embed html/*
+var htmlContent embed.FS
 
 //go:embed sfu1-binaries/idle.screen.h264.pcapng
 var idleScreenH264Pcapng []byte
@@ -183,57 +181,42 @@ func checkPanic(err error) {
 	}
 }
 
-func slashHandler(w http.ResponseWriter, r *http.Request) {
-
-	// http vs https https://github.com/golang/go/issues/28940
-	isHttp := r.TLS == nil
-	isIPAddr := net.ParseIP(r.Host) != nil
-	reqhost, _, _ := net.SplitHostPort(r.Host)
-	if reqhost == "" {
-		reqhost = r.Host
-	}
-
-	port := 0
-	a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-	if ok {
-		ta, ok := a.(*net.TCPAddr)
-		if !ok {
-			panic("not tcp")
+func redirectHttpToHttpsHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// http vs https https://github.com/golang/go/issues/28940
+		isHttp := r.TLS == nil
+		isIPAddr := net.ParseIP(r.Host) != nil
+		reqhost, _, _ := net.SplitHostPort(r.Host)
+		if reqhost == "" {
+			reqhost = r.Host
 		}
-		port = ta.Port
-	}
 
-	// if this is a port 80 http request, can we find an https endpoint to redirect it to?
-	if isHttp && !isIPAddr && port == 80 {
-		for _, u := range urlsFlag {
-			if u.Scheme == "https" && u.Hostname() == reqhost {
-				uri := "https://" + u.Hostname() + ":" + getPort(u) + r.RequestURI
-				log.Println("Redirecting HTTP req to ", uri)
-				http.Redirect(w, r, uri, http.StatusMovedPermanently)
-				return
+		port := 0
+		a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+		if ok {
+			ta, ok := a.(*net.TCPAddr)
+			if !ok {
+				panic("not tcp")
 			}
-
+			port = ta.Port
 		}
-	}
 
-	// if we can't redirect to https, we fall to here
+		// if this is a port 80 http request, can we find an https endpoint to redirect it to?
+		if isHttp && !isIPAddr && port == 80 {
+			for _, u := range urlsFlag {
+				if u.Scheme == "https" && u.Hostname() == reqhost {
+					uri := "https://" + u.Hostname() + ":" + getPort(u) + r.RequestURI
+					log.Println("Redirecting HTTP req to ", uri)
+					http.Redirect(w, r, uri, http.StatusMovedPermanently)
+					return
+				}
 
-	if r.URL.Path == "/favicon.svg" {
-		w.Header().Set("Content-Type", "image/svg+xml")
-		_, _ = w.Write(favicon)
-		return
-	}
+			}
+		}
 
-	if r.URL.Path != "/" {
-		http.Error(w, "404 - page not found", http.StatusNotFound)
-		return
-	}
-
-	//serve index.html as embeded
-
-	w.Header().Set("Content-Type", "text/html")
-	_, _ = w.Write(indexHtml)
-
+		//w.Header().Set("Foo", "Bar")
+		h.ServeHTTP(w, r)
+	})
 }
 
 type TrackCounts struct {
@@ -351,7 +334,14 @@ var urlsFlag urlset
 func init() {
 	flag.Var(&urlsFlag, urlsFlagName, urlsFlagUsage)
 
-	if len(indexHtml) == 0 {
+	// dir, err := content.ReadDir(".")
+	// checkPanic(err)
+	// for k, v := range dir {
+	// 	println(88, k, v.Name())
+	// }
+	// panic(99)
+
+	if _, err := htmlContent.ReadFile("html/index.html"); err != nil {
 		panic("index.html failed to embed correctly")
 	}
 
@@ -433,7 +423,14 @@ func main() {
 	mux := http.NewServeMux()
 
 	if !*nohtml {
-		mux.HandleFunc("/", slashHandler)
+		//mux.HandleFunc("/", slashHandler)
+		//mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(content))))
+		fsys, err := fs.Sub(htmlContent, "html")
+		checkPanic(err)
+
+		//mux.Handle("/", http.FileServer(http.FS(fsys)))
+		mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(fsys))))
+
 	}
 	mux.HandleFunc(subPath, SubHandler)
 	if *dialIngressURL == "" {
