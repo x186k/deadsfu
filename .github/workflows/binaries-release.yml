@@ -1,0 +1,48 @@
+name: Binaries Release
+
+on:
+  release:
+    types: [created]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+
+  releases-matrix:
+    name: Release Go Binary
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/386, darwin/amd64 
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+    # https://github.com/actions/checkout#checkout-multiple-repos-nested
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Checkout binaries
+      uses: actions/checkout@v2
+      with:
+        repository: x186k/sfu1-binaries
+        path: sfu1-binaries
+        ref: main
+    - uses: wangyoucao577/go-release-action@v1.18
+      with:
+        ldflags: -X main.Version=${{ github.event.release.tag_name }}
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: ${{ matrix.goos }}
+        goarch: ${{ matrix.goarch }}
+ #      goversion: "https://dl.google.com/go/go1.15.6.linux-amd64.tar.gz"
+        goversion: "1.16.5"
+        project_path: "."
+        binary_name: "sfu1"
+        asset_name: sfu1-${{ matrix.goos }}-${{ matrix.goarch }}
+# default is ${BINARY_NAME}-${RELEASE_TAG}-${GOOS}-${GOARCH}
+# but my version allows direct downloads using:
+# https://github.com/x186k/sfu1/releases/latest/download/sfu1-linux-amd64.tar.gz
+# https://github.com/x186k/sfu1/releases/latest/download/sfu1-darwin-amd64.tar.gz
+# https://github.com/x186k/sfu1/releases/latest/download/sfu1-darwin-arm64.tar.gz
+# https://github.com/x186k/sfu1/releases/latest/download/sfu1-windows-amd64.tar.gz
+# etc
