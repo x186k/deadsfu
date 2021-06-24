@@ -232,7 +232,10 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
-var ACMEEmailFlag = flag.String("acme-email", "no-email", "This is the email to provide to the ACME certifcate provider.")
+// Docker,systemd have Stdin from null, so there is no explicit prompt for ACME terms.
+// Just like Caddy under Docker and Caddy under Systemd
+var ACMEAgreed = flag.Bool("acme-agree", true, "Default: true. You AGREE with the CA's terms. ie, LetsEncrypt,\nwhen you are using this software with a CA, like LetsEncrypt.")
+var ACMEEmailFlag = flag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
 
 const urlsFlagName = "urls"
 const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
@@ -487,7 +490,14 @@ func main() {
 
 		var tlsConfig *tls.Config = nil
 		if *httpsCaddyFlag {
+			if *ACMEAgreed {
+				f, err := os.Open(os.DevNull) // no need: defer f.Close()
+				checkPanic(err)
+				os.Stdin = f
+			}
+
 			certmagic.DefaultACME.Email = *ACMEEmailFlag
+			certmagic.DefaultACME.Agreed = *ACMEAgreed
 			tlsConfig, err = certmagic.TLS([]string{url.Host})
 			checkPanic(err)
 		} else {
