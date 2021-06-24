@@ -598,19 +598,19 @@ func reportOpenPorts(u *url.URL) {
 
 func registerDDNS(u *url.URL, addrs []net.IP) {
 
-	domain := u.Host
+	hostname := u.Hostname()
 
-	if strings.HasSuffix(domain, ddns5Suffix) {
+	if strings.HasSuffix(hostname, ddns5Suffix) {
 
 		ddnsProvider := &ddns5libdns.Provider{}
-		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
+		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
 
 		enableCertmagicForDNSChallenge(ddnsProvider)
-	} else if strings.HasSuffix(domain, duckdnsSuffix) {
+	} else if strings.HasSuffix(hostname, duckdnsSuffix) {
 		token := duckdnsorg_Token()
 
 		ddnsProvider := &duckdns.Provider{APIToken: token}
-		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
+		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
 
 		enableCertmagicForDNSChallenge(ddnsProvider)
 	} else if *cloudflareDDNS {
@@ -618,11 +618,11 @@ func registerDDNS(u *url.URL, addrs []net.IP) {
 		token := cloudflare_Token()
 
 		ddnsProvider := &cloudflare.Provider{APIToken: token}
-		ddnsRegisterIPAddresses(ddnsProvider, domain, 2, addrs)
+		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
 
 		enableCertmagicForDNSChallenge(ddnsProvider)
 	} else {
-		elog.Println("For hostname:", domain)
+		elog.Println("For hostname:", hostname)
 		elog.Fatal(`Unable to determine which DDNS provider to use: ddns5.com, duckdns.org, or Cloudflare\n
 	Names ending ddns5.com indicate ddns5, ending duckdns indicate duckdns, Cloudflare is selected using a param flag`)
 	}
