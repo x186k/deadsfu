@@ -232,6 +232,8 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
+var ACMEEmailFlag = flag.String("acme-email", "no-email", "This is the email to provide to the ACME certifcate provider.")
+
 const urlsFlagName = "urls"
 const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
 
@@ -485,6 +487,7 @@ func main() {
 
 		var tlsConfig *tls.Config = nil
 		if *httpsCaddyFlag {
+			certmagic.DefaultACME.Email = *ACMEEmailFlag
 			tlsConfig, err = certmagic.TLS([]string{url.Host})
 			checkPanic(err)
 		} else {
