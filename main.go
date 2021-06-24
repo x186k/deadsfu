@@ -171,7 +171,7 @@ var txtracks []*Track
 
 func checkFatal(err error) {
 	if err != nil {
-		elog.Fatal(err)
+		logFatal.Fatal(err)
 	}
 }
 
@@ -270,6 +270,8 @@ var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS
 // var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 // var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
+// This should allow us to use checkFatal() more, and checkPanic() less
+var logFatal = log.New(os.Stderr, "Fatal", log.Lmicroseconds|log.LUTC|log.Lshortfile)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 var ddnslog = log.New(os.Stderr, "X ", log.Lmicroseconds|log.LUTC)
 
