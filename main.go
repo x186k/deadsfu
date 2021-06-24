@@ -493,7 +493,7 @@ func main() {
 			if *ACMEAgreed {
 				f, err := os.Open(os.DevNull) // no need: defer f.Close()
 				checkPanic(err)
-				os.Stdin = f
+				*os.Stdin = *f
 			}
 
 			certmagic.DefaultACME.Email = *ACMEEmailFlag
