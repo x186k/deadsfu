@@ -11,7 +11,7 @@ import (
 )
 
 // order not important
-//var minmalUsage = []string{"https-url", "http-url", "https-detect-ip", "all"}
+//var minmalUsage = []string{"https-url", "http-url", "https-auto", "all"}
 
 var Usage = func() {
 	fmt.Fprintf(xflag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -20,10 +20,8 @@ var Usage = func() {
 	} else {
 		printFlagUsage("all", os.Stderr)
 		printFlagUsage("https-url", os.Stderr)
-		printFlagUsage("https-detect-ip", os.Stderr)
+		printFlagUsage("https-auto", os.Stderr)
 		printFlagUsage("http-url", os.Stderr)
-
-		
 
 	}
 }

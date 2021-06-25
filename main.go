@@ -271,13 +271,13 @@ var interfaceAddress net.IP
 
 //var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
 var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
-var httpsDetectIPFlag = flag.String("https-detect-ip", "local",
+var httpsAutoFlag = flag.String("https-auto", "local",
 	`One of: 'local', 'public', or 'none'.   The default is 'local'.
 This controls which IP addresses will be auto-detected for HTTPS usage.
 local: Detect my local on-system IP addresses.
 public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
 none: Do not detect IP addresses`)
-var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-detect-ip=public")
+var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-auto=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var htmlFromDiskFlag = flag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
@@ -421,8 +421,8 @@ func flagParseAndValidate() {
 		}
 	}
 
-	if *httpsDetectIPFlag != "local" && *httpsDetectIPFlag != "public" && *httpsDetectIPFlag != "none" {
-		elog.Fatal("Invalid value for -https-detect-ip flag")
+	if *httpsAutoFlag != "local" && *httpsAutoFlag != "public" && *httpsAutoFlag != "none" {
+		elog.Fatal("Invalid value for -https-auto flag")
 	}
 
 }
@@ -485,7 +485,7 @@ func main() {
 
 		if *httpsDDNSFlag {
 			var addrs []net.IP
-			switch *httpsDetectIPFlag {
+			switch *httpsAutoFlag {
 			case "local":
 
 				if len(*httpsInterfaceFlag) > 0 {
@@ -500,7 +500,7 @@ func main() {
 
 			case "public":
 				if *httpsInterfaceFlag != "" {
-					checkFatal(fmt.Errorf("Cannot combine -https-detect-ip=public -https-interface=true."))
+					checkFatal(fmt.Errorf("Cannot combine -https-auto=public -https-interface=true."))
 				}
 				x := getMyPublicIpV4()
 				if x != nil {
@@ -511,7 +511,7 @@ func main() {
 			}
 			registerDDNS(httpsUrl, addrs)
 			for _, v := range addrs {
-				elog.Printf("DNS registered name:%v addr:%v  %v", httpsUrl.Hostname(), v, routableMessage(v))
+				elog.Printf("DNS registered %v  %v  %v", httpsUrl.Hostname(), v, routableMessage(v))
 			}
 		}
 
@@ -582,7 +582,7 @@ func main() {
 
 	// http and https listeners are started
 	// we want to check
-	if *httpsDetectIPFlag == "public" && *httpsOpenPortsFlag {
+	if *httpsAutoFlag == "public" && *httpsOpenPortsFlag {
 		// if you are using automatic public IP detection
 		// we also will check your firewall ports
 
@@ -624,12 +624,12 @@ func main() {
 
 func routableMessage(ip net.IP) string {
 	if ip.To4() == nil {
-		return "an IPv6 addr"
+		return "an IPv6 address"
 	} else {
 		if IsPrivate(ip) {
-			return "an IPv4 RFC1918 PRIVATE, NOT-INET ROUTABLE address"
+			return "an RFC1918 PRIVATE, NOT-ROUTABLE address"
 		} else {
-			return "an IPv4 NOT-RFC1918 PUBLIC, ROUTABLE address"
+			return "an NON-RFC1918 PUBLIC, ROUTABLE address"
 		}
 	}
 }
