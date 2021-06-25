@@ -283,7 +283,7 @@ var htmlFromDiskFlag = flag.Bool("z-html-from-disk", false, "do not use embed ht
 var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 var debug = flag.Bool("z-debug", false, "enable debug output")
-
+var debugCertmagic = flag.Bool("z-debug-certmagic", false, "enable debug output for certmagic and letsencrypt")
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 
@@ -528,7 +528,7 @@ func main() {
 			DisableTLSALPNChallenge: false,
 		}
 		magic := certmagic.NewDefault()
-		if true {
+		if *debug || *debugCertmagic {
 			magic.OnEvent = func(s string, i interface{}) { println("certmagic:", s, i) }
 			zaplog, err := zap.NewProduction()
 			checkFatal(err)
