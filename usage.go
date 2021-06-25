@@ -1,22 +1,39 @@
 package main
 
 import (
+	"flag"
 	xflag "flag"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
 )
 
 // order not important
-var minmalUsage = []string{"urls", "https-detect-ip", "all"}
+//var minmalUsage = []string{"https-url", "http-url", "https-detect-ip", "all"}
 
 var Usage = func() {
 	fmt.Fprintf(xflag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
-	PrintDefaults(xflag.CommandLine, *helpAll)
+	if *helpAll {
+		PrintDefaults(xflag.CommandLine)
+	} else {
+		printFlagUsage("all", os.Stderr)
+		printFlagUsage("https-url", os.Stderr)
+		printFlagUsage("https-detect-ip", os.Stderr)
+		printFlagUsage("http-url", os.Stderr)
+
+		
+
+	}
 }
 
-func printFlagUsage(flag *xflag.Flag, f *xflag.FlagSet) {
+func printFlagUsage(name string, writer io.Writer) {
+	flag := flag.Lookup(name)
+	if flag == nil {
+		fmt.Fprintf(writer, "invalid flag name: %s\n", name)
+		return
+	}
 	s := fmt.Sprintf("  -%s", flag.Name) // Two spaces before -; see next two comments.
 	name, usage := xflag.UnquoteUsage(flag)
 	if len(name) > 0 {
@@ -42,38 +59,31 @@ func printFlagUsage(flag *xflag.Flag, f *xflag.FlagSet) {
 			s += fmt.Sprintf(" (default %v)", flag.DefValue)
 		}
 	}
-	fmt.Fprint(f.Output(), s, "\n")
+	fmt.Fprint(writer, s, "\n")
 }
 
-func basicFlags(f *xflag.FlagSet) map[string]bool {
+// func basicFlags(f *xflag.FlagSet) map[string]bool {
 
-	m := make(map[string]bool)
+// 	m := make(map[string]bool)
 
-	for _, v := range minmalUsage {
-		if f.Lookup(v) == nil {
-			panic(fmt.Errorf("Invalid basic flag name %s", v))
-		}
-		m[v] = true
-	}
-	return m
-}
+// 	for _, v := range minmalUsage {
+// 		if f.Lookup(v) == nil {
+// 			panic(fmt.Errorf("Invalid basic flag name %s", v))
+// 		}
+// 		m[v] = true
+// 	}
+// 	return m
+// }
 
 // PrintDefaults prints, to standard error unless configured otherwise, the
 // default values of all defined command-line flags in the set. See the
 // documentation for the global function PrintDefaults for more information.
-func PrintDefaults(f *xflag.FlagSet, full bool) {
-
-	basicNamemap := basicFlags(f)
+func PrintDefaults(f *xflag.FlagSet) {
 
 	f.VisitAll(func(flag *xflag.Flag) {
-		if full {
-			printFlagUsage(flag, f)
-		} else {
-			if basicNamemap[flag.Name] {
-				printFlagUsage(flag, f)
-			}
-		}
+		printFlagUsage(flag.Name, os.Stderr)
 	})
+
 }
 
 // isZeroValue determines whether the string represents the zero
