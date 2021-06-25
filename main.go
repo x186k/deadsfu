@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -33,6 +34,7 @@ import (
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/duckdns"
 	"github.com/miekg/dns"
+	"go.uber.org/zap"
 
 	"github.com/pkg/profile"
 	//"github.com/x186k/dynamicdns"
@@ -173,7 +175,7 @@ var txtracks []*Track
 func checkFatal(err error) {
 	if err != nil {
 		_, fileName, fileLine, _ := runtime.Caller(1)
-		elog.Fatalf("FATAL %s:%d %v",filepath.Base(fileName), fileLine, err)
+		elog.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
 	}
 }
 
@@ -187,33 +189,29 @@ func redirectHttpToHttpsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// http vs https https://github.com/golang/go/issues/28940
 		isHttp := r.TLS == nil
-		isIPAddr := net.ParseIP(r.Host) != nil
-		reqhost, _, _ := net.SplitHostPort(r.Host)
-		if reqhost == "" {
-			reqhost = r.Host
-		}
+		//isIPAddr := net.ParseIP(r.Host) != nil
+		// reqhost, _, _ := net.SplitHostPort(r.Host)
+		// if reqhost == "" {
+		// 	reqhost = r.Host
+		// }
 
-		port := 0
-		a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-		if ok {
-			ta, ok := a.(*net.TCPAddr)
-			if !ok {
-				panic("not tcp")
-			}
-			port = ta.Port
-		}
+		// port := 0
+		// a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+		// if ok {
+		// 	ta, ok := a.(*net.TCPAddr)
+		// 	if !ok {
+		// 		panic("not tcp")
+		// 	}
+		// 	port = ta.Port
+		// }
 
 		// if this is a port 80 http request, can we find an https endpoint to redirect it to?
-		if isHttp && !isIPAddr && port == 80 {
-			for _, u := range urlsFlag {
-				if u.Scheme == "https" && u.Hostname() == reqhost {
-					uri := "https://" + u.Hostname() + ":" + getPort(u) + r.RequestURI
-					log.Println("Redirecting HTTP req to ", uri)
-					http.Redirect(w, r, uri, http.StatusMovedPermanently)
-					return
-				}
-
-			}
+		if httpsUrl != nil && isHttp {
+			//if  httpsUrl.Hostname() == reqhost {
+			uri := "https://" + httpsUrl.Host + r.RequestURI
+			log.Println("Redirecting HTTP req to ", uri)
+			http.Redirect(w, r, uri, http.StatusMovedPermanently)
+			return
 		}
 
 		//w.Header().Set("Foo", "Bar")
@@ -234,18 +232,51 @@ var trackCounts = TrackCounts{
 
 var Version = "version-unset"
 
+// var urlsFlag urlset
+// const urlsFlagName = "urls"
+// const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
+
 // Docker,systemd have Stdin from null, so there is no explicit prompt for ACME terms.
 // Just like Caddy under Docker and Caddy under Systemd
 var ACMEAgreed = flag.Bool("acme-agree", true, "Default: true. You AGREE with the CA's terms. ie, LetsEncrypt,\nwhen you are using this software with a CA, like LetsEncrypt.")
 var ACMEEmailFlag = flag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
 
-const urlsFlagName = "urls"
-const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
+var httpUrlFlag = flag.String("http-url", "", 
+`The URL for HTTP connections.
+Examples: http://[::]:8080   http://0.0.0.0     # wildcard ipv6 and then wildcard ipv4
+Examples: http://192.168.2.1                    # one interface, port 80
+/ path only.
+`)
+var httpsUrlFlag = flag.String("https-url", "", 
+`The URL for HTTPS connections.  Most commonly used flag.
+Usually this is all you need.
+Examples: https://cameron77.ddns5.com:8443  https://foo78.duckdns.org  https://mycloudflaredomain.com
+Domain names only, no IP addresses.
+Use: *.ddns5.com, for free no-signup dynamic DNS. Quickest way to run your SFU.
+Use: *.duckdns.org, for free-signup dynamic DNS. Good alternative to ddns5.com, must set DUCKDNS_TOKEN
+Use: *.mycloudflaredomain.com, for Cloudflare DNS. Must set env var: CLOUDFLARE_TOKEN.
+See -https-interface for advance binding.
+/ path only.`)
+var httpUrl, httpsUrl *url.URL
 
-var httpInterfaceFlag = flag.String("http-interface", "", "Use the given binding address for HTTP,HTTPS. A V4 or V6 addr is okay.")
-var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
-var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register IP addresses using DDNS")
-var httpsDetectIPFlag = flag.String("https-detect-ip", "local", "One of: local, public, none.  Controls auto-detection of IP addresses\nlocal: Auto-detect my local interface IP addresses. Default value.\npublic: Auto-detect my public Internet IP addresses (TCP to Internet)\nnone: Do not auto-detect IP addresses\n")
+var httpsInterfaceFlag = flag.String("https-interface", "", 
+`Specify the interface bind IP address for HTTPS, not for HTTP.
+This is an advanced setting.
+The default should work for most users. 
+A V4 or V6 IP address is okay.
+Do not provide port infomation here, use -https-url for port information.
+Examples: '[::]'  '0.0.0.0' '192.168.2.1'  '10.1.2.3'  '2001:0db8:85a3:0000:0000:8a2e:0370:7334'
+Defaults to [::] (all interfaces)`)
+var interfaceAddress net.IP
+
+//var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
+var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
+var httpsDetectIPFlag = flag.String("https-detect-ip", "local", 
+`One of: 'local', 'public', or 'none'.   The default is 'local'.
+This controls which IP addresses will be auto-detected for HTTPS usage.
+local: Detect my local on-system IP addresses.
+public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
+none: Do not detect IP addresses`)
 var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-detect-ip=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
@@ -264,8 +295,9 @@ var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
 var obsStudio = flag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
-var helpAll = flag.Bool("all", false, "Show the full set of advanced flags\n")
+var helpAll = flag.Bool("all", false, "Show the full set of advanced flags")
 var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
+var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
 //var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
@@ -288,51 +320,6 @@ func logGoroutineCountToDebugLog() {
 	}
 }
 
-var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
-
-// Example 3: A user-defined flag type, a slice of durations.
-type urlset []*url.URL
-
-// String is the method to format the flag's value, part of the flag.Value interface.
-// The String method's output will be used in diagnostics.
-func (i *urlset) String() string {
-	return fmt.Sprint(*i)
-}
-
-// Set is the method to set the flag value, part of the flag.Value interface.
-// Set's argument is a string to be parsed to set the flag.
-// It's a comma-separated list, so we split it.
-func (i *urlset) Set(value string) error {
-	// If we wanted to allow the flag to be set multiple times,
-	// accumulating values, we would delete this if statement.
-	// That would permit usages such as
-	//	-deltaT 10s -deltaT 15s
-	// and other combinations.
-	if len(*i) > 0 {
-		return errors.New("urlset flag already set")
-	}
-	for _, rawurl := range strings.Split(value, ",") {
-		u, err := url.Parse(rawurl)
-		if err != nil {
-			elog.Fatal("Cannot parse url:", rawurl)
-		}
-		if u.Scheme != "http" && u.Scheme != "https" {
-			elog.Fatal("URL scheme/proto must be either http or https. input=", rawurl)
-		}
-		if u.Path != "" && u.Path != "/" {
-			elog.Fatal("URL path must be /", rawurl)
-		}
-		u.Path = "" //normalize
-
-		//log.Printf("-urls got: %#v", u)  //!! before flags.parse, always on!
-		u.Path = ""
-		*i = append(*i, u)
-	}
-	return nil
-}
-
-var urlsFlag urlset
-
 // should this be 'init' or 'initXXX'
 // if we want this func to be called everyttime we run tests, then
 // it should be init(), otherwise initXXX()
@@ -341,7 +328,6 @@ var urlsFlag urlset
 // But! this means we need to determine if we are a test or not,
 // so we can not call flag.Parse() or not
 func init() {
-	flag.Var(&urlsFlag, urlsFlagName, urlsFlagUsage)
 
 	// dir, err := content.ReadDir(".")
 	// checkPanic(err)
@@ -362,7 +348,7 @@ func init() {
 	if !istest {
 		flag.Usage = Usage // my own usage handle
 		flag.Parse()
-		flagsValidation()
+		flagParseAndValidate()
 
 		if *debug {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
@@ -391,10 +377,54 @@ func init() {
 	go msgLoop()
 }
 
-func flagsValidation() {
+func flagParseAndValidate() {
+	var err error
+
+	if len(*httpUrlFlag) == 0 && len(*httpsUrlFlag) == 0 && !*helpAll {
+		checkFatal(fmt.Errorf("One of -http-url or -https-url or -all must be given."))
+	}
+
+	if len(*httpUrlFlag) > 0 {
+		httpUrl, err = url.Parse(*httpUrlFlag)
+		checkFatal(err)
+		if httpUrl.Scheme != "http" {
+			checkFatal(fmt.Errorf("-http-url flag must start with 'http:'"))
+		}
+
+		if httpUrl.Path != "" && httpUrl.Path != "/" {
+			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", httpUrl))
+		}
+	}
+
+	// if net.ParseIP(httpsUrl.Hostname()) != nil {
+	// 	checkFatal(fmt.Errorf("Can ONLY IP addresses for HTTP URLs: %v, please use :: or 0.0.0.0, for all interfaces. ie http://::/", httpsUrl.Hostname()))
+	// }
+
+	if len(*httpsInterfaceFlag) > 0 {
+		interfaceAddress = net.ParseIP(*httpsInterfaceFlag)
+		if interfaceAddress == nil {
+			elog.Fatal("Invalid IP address for -https-interface")
+		}
+	}
+
+	if len(*httpsUrlFlag) > 0 {
+		httpsUrl, err = url.Parse(*httpsUrlFlag)
+		checkFatal(err)
+		if httpsUrl.Scheme != "https" {
+			checkFatal(fmt.Errorf("-https-url flag must start with 'https:'"))
+		}
+		if httpsUrl.Path != "" && httpsUrl.Path != "/" {
+			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", httpsUrl))
+		}
+		if net.ParseIP(httpsUrl.Hostname()) != nil {
+			checkFatal(fmt.Errorf("Cannot use IP addresses for HTTPS urls:%v", httpsUrl.Hostname()))
+		}
+	}
+
 	if *httpsDetectIPFlag != "local" && *httpsDetectIPFlag != "public" && *httpsDetectIPFlag != "none" {
 		elog.Fatal("Invalid value for -https-detect-ip flag")
 	}
+
 }
 
 func silenceLogger(l *log.Logger) {
@@ -451,8 +481,8 @@ func main() {
 	}
 
 	var localAddrs []net.IP
-	if len(*httpInterfaceFlag) > 0 {
-		addr := net.ParseIP(*httpInterfaceFlag)
+	if len(*httpsInterfaceFlag) > 0 {
+		addr := net.ParseIP(*httpsInterfaceFlag)
 		if addr == nil {
 			elog.Fatal("-http-interface is not valid a IP address")
 		}
@@ -467,63 +497,70 @@ func main() {
 		publicAddr = getMyPublicIpV4()
 	}
 
-	log.Println("urlsFlag", urlsFlag)
+	httpsDomainNames := []string{}
 
 	//https first
-	for _, url := range urlsFlag {
-		if url.Scheme != "https" {
-			continue
-		}
-		elog.Printf("%v is BROWSER URL", url)
-		elog.Printf("%v/pub is ingress signalling URL", url)
-		elog.Printf("%v/sub is egress signalling URL", url)
+	if httpsUrl != nil {
+		elog.Printf("%v is BROWSER URL, /pub and /sub for ingress, egress API. WHIP, WHEP", httpsUrl.String())
 
 		if *httpsDDNSFlag {
 			switch *httpsDetectIPFlag {
 			case "local":
-				registerDDNS(url, localAddrs)
-				elog.Printf("Registered DNS host:%v addrs:%v", url.Host, localAddrs)
+				registerDDNS(httpsUrl, localAddrs)
+				elog.Printf("Registered DNS host:%v addrs:%v", httpsUrl.Hostname(), localAddrs)
 			case "public":
-				registerDDNS(url, []net.IP{publicAddr})
-				elog.Printf("Registered DNS host:%v addr:%v", url.Host, publicAddr)
+				registerDDNS(httpsUrl, []net.IP{publicAddr})
+				elog.Printf("Registered DNS host:%v addr:%v", httpsUrl.Hostname(), publicAddr)
 			case "none":
 				elog.Printf("Registered NO DNS hosts.")
 			}
 		}
 
 		var tlsConfig *tls.Config = nil
-		if *httpsCaddyFlag {
-			if *ACMEAgreed {
-				f, err := os.Open(os.DevNull) // no need: defer f.Close()
-				checkPanic(err)
-				*os.Stdin = *f
-			}
 
-			certmagic.DefaultACME.Email = *ACMEEmailFlag
-			certmagic.DefaultACME.Agreed = *ACMEAgreed
-			tlsConfig, err = certmagic.TLS([]string{url.Host})
-			checkPanic(err)
-		} else {
-			// XXXXXX use caddy here, as we get OSCP stapling
-			tlsConfig = &tls.Config{
-				Certificates: []tls.Certificate{},
-				RootCAs:      nil,
-			}
-			tlsConfig.BuildNameToCertificate()
-			// use certmsgic for manual certificates, as it
-			// will manage oscp stapling
-			// CacheUnmanagedCertificatePEMBytes()
-			// CacheUnmanagedCertificatePEMFile()
-			// CacheUnmanagedTLSCertificate()
-			panic("cert files code unfinished")
+		ca := certmagic.LetsEncryptStagingCA
+		//ca = certmagic.LetsEncryptProductionCA
 
+		mgrTemplate := certmagic.ACMEManager{
+			CA:                      ca,
+			Email:                   *ACMEEmailFlag,
+			Agreed:                  *ACMEAgreed,
+			DisableHTTPChallenge:    false,
+			DisableTLSALPNChallenge: false,
+			ListenHost:              "",
+			AltHTTPPort:             0,
+			AltTLSALPNPort:          0,
+			DNS01Solver:             nil,
+			TrustedRoots:            &x509.CertPool{},
+			CertObtainTimeout:       0,
+			Resolver:                "",
 		}
+		magic := certmagic.NewDefault()
+		if *debug {
+			magic.OnEvent = func(s string, i interface{}) { println("certmagic:", s, i) }
+			zaplog, err := zap.NewProduction()
+			checkFatal(err)
+			mgrTemplate.Logger = zaplog
+		}
+		// use certmsgic for manual certificates, as it
+		// will manage oscp stapling
+		// CacheUnmanagedCertificatePEMBytes()
+		// CacheUnmanagedCertificatePEMFile()
+		// CacheUnmanagedTLSCertificate()
+		myACME := certmagic.NewACMEManager(magic, mgrTemplate)
+		magic.Issuers = []certmagic.Issuer{myACME}
+
+		// this call is why we don't use higher level certmagic functions
+		// so agreement isn't always so verbose
+		err = magic.ManageAsync(context.Background(), httpsDomainNames)
+		checkFatal(err)
+		tlsConfig = magic.TLSConfig()
 
 		if *obsStudio { /// XXX to work with OBS studio for now
 			tlsConfig.MinVersion = 0
 		}
 
-		laddr := *httpInterfaceFlag + ":" + getPort(url)
+		laddr := *httpsInterfaceFlag + ":" + getPort(httpsUrl)
 		go func() {
 			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
 			checkPanic(err)
@@ -533,35 +570,15 @@ func main() {
 	}
 
 	//http next
-	for _, url := range urlsFlag {
-		if url.Scheme != "http" {
-			continue
-		}
-		elog.Printf("%v is BROWSER URL", url)
-		elog.Printf("%v/pub is ingress signalling URL", url)
-		elog.Printf("%v/sub is egress signalling URL", url)
+	if httpUrl != nil {
+		elog.Printf("%v is BROWSER URL, /pub and /sub for ingress, egress API. WHIP, WHEP", httpUrl.String())
 
-		if len(*httpInterfaceFlag) > 0 {
-			intfAddr := net.ParseIP(*httpInterfaceFlag)
-			if intfAddr == nil {
-				elog.Fatal("Invalid IP address for -http-interface")
-			}
-			hostAddr := net.ParseIP(url.Host)
-			if intfAddr == nil {
-				elog.Fatal("HTTP URLs must contain valid, numeric IPs when using the flag: -http-interface")
-			}
-			if !intfAddr.Equal(hostAddr) {
-				elog.Fatal("HTTP URLs must contain the same IP address, when using the flag: -http-interface")
-			}
-		}
-
-		laddr := *httpInterfaceFlag + ":" + getPort(url)
 		go func() {
 			// httpLn, err := net.Listen("tcp", laddr)
-			err := http.ListenAndServe(laddr, certmagic.DefaultACME.HTTPChallengeHandler(mux))
+			err := http.ListenAndServe(httpUrl.Host, certmagic.DefaultACME.HTTPChallengeHandler(mux))
 			panic(err)
 		}()
-		elog.Printf("HTTP listener started on %v", laddr)
+		elog.Printf("HTTP listener started on %v", httpUrl.String())
 	}
 
 	// http and https listeners are started
@@ -570,8 +587,11 @@ func main() {
 		// if you are using automatic public IP detection
 		// we also will check your firewall ports
 
-		for _, u := range urlsFlag {
-			go reportOpenPorts(u)
+		if httpUrl != nil {
+			go reportOpenPorts(httpUrl)
+		}
+		if httpsUrl != nil {
+			go reportOpenPorts(httpsUrl)
 		}
 	}
 
