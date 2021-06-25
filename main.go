@@ -241,14 +241,14 @@ var Version = "version-unset"
 var ACMEAgreed = flag.Bool("acme-agree", true, "Default: true. You AGREE with the CA's terms. ie, LetsEncrypt,\nwhen you are using this software with a CA, like LetsEncrypt.")
 var ACMEEmailFlag = flag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
 
-var httpUrlFlag = flag.String("http-url", "", 
-`The URL for HTTP connections.
+var httpUrlFlag = flag.String("http-url", "",
+	`The URL for HTTP connections.
 Examples: http://[::]:8080   http://0.0.0.0     # wildcard ipv6 and then wildcard ipv4
 Examples: http://192.168.2.1                    # one interface, port 80
 / path only.
 `)
-var httpsUrlFlag = flag.String("https-url", "", 
-`The URL for HTTPS connections.  Most commonly used flag.
+var httpsUrlFlag = flag.String("https-url", "",
+	`The URL for HTTPS connections.  Most commonly used flag.
 Usually this is all you need.
 Examples: https://cameron77.ddns5.com:8443  https://foo78.duckdns.org  https://mycloudflaredomain.com
 Domain names only, no IP addresses.
@@ -259,8 +259,8 @@ See -https-interface for advance binding.
 / path only.`)
 var httpUrl, httpsUrl *url.URL
 
-var httpsInterfaceFlag = flag.String("https-interface", "", 
-`Specify the interface bind IP address for HTTPS, not for HTTP.
+var httpsInterfaceFlag = flag.String("https-interface", "",
+	`Specify the interface bind IP address for HTTPS, not for HTTP.
 This is an advanced setting.
 The default should work for most users. 
 A V4 or V6 IP address is okay.
@@ -271,8 +271,8 @@ var interfaceAddress net.IP
 
 //var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
 var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
-var httpsDetectIPFlag = flag.String("https-detect-ip", "local", 
-`One of: 'local', 'public', or 'none'.   The default is 'local'.
+var httpsDetectIPFlag = flag.String("https-detect-ip", "local",
+	`One of: 'local', 'public', or 'none'.   The default is 'local'.
 This controls which IP addresses will be auto-detected for HTTPS usage.
 local: Detect my local on-system IP addresses.
 public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
@@ -480,39 +480,38 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
-	var localAddrs []net.IP
-	if len(*httpsInterfaceFlag) > 0 {
-		addr := net.ParseIP(*httpsInterfaceFlag)
-		if addr == nil {
-			elog.Fatal("-http-interface is not valid a IP address")
-		}
-		localAddrs = []net.IP{addr}
-	} else {
-		localAddrs = getDefaultRouteInterfaceAddresses()
-	}
-
-	var publicAddr net.IP = nil
-	if *httpsDetectIPFlag == "public" {
-		//go get my public address
-		publicAddr = getMyPublicIpV4()
-	}
-
-	httpsDomainNames := []string{}
-
 	//https first
 	if httpsUrl != nil {
-		elog.Printf("%v is BROWSER URL, /pub and /sub for ingress, egress API. WHIP, WHEP", httpsUrl.String())
 
 		if *httpsDDNSFlag {
+			var addrs []net.IP
 			switch *httpsDetectIPFlag {
 			case "local":
-				registerDDNS(httpsUrl, localAddrs)
-				elog.Printf("Registered DNS host:%v addrs:%v", httpsUrl.Hostname(), localAddrs)
+
+				if len(*httpsInterfaceFlag) > 0 {
+					addr := net.ParseIP(*httpsInterfaceFlag)
+					if addr == nil {
+						elog.Fatal("-http-interface is not valid a IP address")
+					}
+					addrs = []net.IP{addr}
+				} else {
+					addrs = getDefaultRouteInterfaceAddresses()
+				}
+
 			case "public":
-				registerDDNS(httpsUrl, []net.IP{publicAddr})
-				elog.Printf("Registered DNS host:%v addr:%v", httpsUrl.Hostname(), publicAddr)
+				if *httpsInterfaceFlag != "" {
+					checkFatal(fmt.Errorf("Cannot combine -https-detect-ip=public -https-interface=true."))
+				}
+				x := getMyPublicIpV4()
+				if x != nil {
+					addrs = []net.IP{}
+				}
 			case "none":
 				elog.Printf("Registered NO DNS hosts.")
+			}
+			registerDDNS(httpsUrl, addrs)
+			for _, v := range addrs {
+				elog.Printf("DNS registered name:%v addr:%v  %v", httpsUrl.Hostname(), v, routableMessage(v))
 			}
 		}
 
@@ -552,7 +551,7 @@ func main() {
 
 		// this call is why we don't use higher level certmagic functions
 		// so agreement isn't always so verbose
-		err = magic.ManageAsync(context.Background(), httpsDomainNames)
+		err = magic.ManageAsync(context.Background(), []string{httpsUrl.Host})
 		checkFatal(err)
 		tlsConfig = magic.TLSConfig()
 
@@ -566,19 +565,19 @@ func main() {
 			checkPanic(err)
 			panic(http.Serve(httpsLn, mux))
 		}()
-		elog.Printf("HTTPS listener started on %v", laddr)
+		elog.Printf("%v IS READY", httpsUrl.String())
+
 	}
 
 	//http next
 	if httpUrl != nil {
-		elog.Printf("%v is BROWSER URL, /pub and /sub for ingress, egress API. WHIP, WHEP", httpUrl.String())
 
 		go func() {
 			// httpLn, err := net.Listen("tcp", laddr)
 			err := http.ListenAndServe(httpUrl.Host, certmagic.DefaultACME.HTTPChallengeHandler(mux))
 			panic(err)
 		}()
-		elog.Printf("HTTP listener started on %v", httpUrl.String())
+		elog.Printf("%v IS READY", httpUrl.String())
 	}
 
 	// http and https listeners are started
@@ -621,6 +620,18 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
+}
+
+func routableMessage(ip net.IP) string {
+	if ip.To4() == nil {
+		return "an IPv6 addr"
+	} else {
+		if IsPrivate(ip) {
+			return "an IPv4 RFC1918 PRIVATE, NOT-INET ROUTABLE address"
+		} else {
+			return "an IPv4 NOT-RFC1918 PUBLIC, ROUTABLE address"
+		}
+	}
 }
 
 func reportOpenPorts(u *url.URL) {
