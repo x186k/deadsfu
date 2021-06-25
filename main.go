@@ -6,7 +6,6 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -487,7 +486,6 @@ func main() {
 			var addrs []net.IP
 			switch *httpsAutoFlag {
 			case "local":
-
 				if len(*httpsInterfaceFlag) > 0 {
 					addr := net.ParseIP(*httpsInterfaceFlag)
 					if addr == nil {
@@ -504,10 +502,12 @@ func main() {
 				}
 				x := getMyPublicIpV4()
 				if x != nil {
-					addrs = []net.IP{}
+					addrs = []net.IP{x}
 				}
 			case "none":
-				elog.Printf("Registered NO DNS hosts.")
+				elog.Printf("Registering NO DNS hosts.")
+			default:
+				checkFatal(fmt.Errorf("Invalid value for -https-auto: %s", *httpsAutoFlag))
 			}
 			registerDDNS(httpsUrl, addrs)
 			for _, v := range addrs {
@@ -517,8 +517,8 @@ func main() {
 
 		var tlsConfig *tls.Config = nil
 
-		ca := certmagic.LetsEncryptStagingCA
-		//ca = certmagic.LetsEncryptProductionCA
+		//ca := certmagic.LetsEncryptStagingCA
+		ca := certmagic.LetsEncryptProductionCA
 
 		mgrTemplate := certmagic.ACMEManager{
 			CA:                      ca,
@@ -526,16 +526,9 @@ func main() {
 			Agreed:                  *ACMEAgreed,
 			DisableHTTPChallenge:    false,
 			DisableTLSALPNChallenge: false,
-			ListenHost:              "",
-			AltHTTPPort:             0,
-			AltTLSALPNPort:          0,
-			DNS01Solver:             nil,
-			TrustedRoots:            &x509.CertPool{},
-			CertObtainTimeout:       0,
-			Resolver:                "",
 		}
 		magic := certmagic.NewDefault()
-		if *debug {
+		if true {
 			magic.OnEvent = func(s string, i interface{}) { println("certmagic:", s, i) }
 			zaplog, err := zap.NewProduction()
 			checkFatal(err)
