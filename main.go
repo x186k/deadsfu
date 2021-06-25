@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"io/ioutil"
 	"log"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -171,7 +172,8 @@ var txtracks []*Track
 
 func checkFatal(err error) {
 	if err != nil {
-		logFatal.Fatal(err)
+		_, fileName, fileLine, _ := runtime.Caller(1)
+		elog.Fatalf("FATAL %s:%d %v",filepath.Base(fileName), fileLine, err)
 	}
 }
 
@@ -271,7 +273,6 @@ var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS
 // var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
 // This should allow us to use checkFatal() more, and checkPanic() less
-var logFatal = log.New(os.Stderr, "Fatal", log.Lmicroseconds|log.LUTC|log.Lshortfile)
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 var ddnslog = log.New(os.Stderr, "X ", log.Lmicroseconds|log.LUTC)
 
@@ -503,11 +504,17 @@ func main() {
 			tlsConfig, err = certmagic.TLS([]string{url.Host})
 			checkPanic(err)
 		} else {
+			// XXXXXX use caddy here, as we get OSCP stapling
 			tlsConfig = &tls.Config{
 				Certificates: []tls.Certificate{},
 				RootCAs:      nil,
 			}
 			tlsConfig.BuildNameToCertificate()
+			// use certmsgic for manual certificates, as it
+			// will manage oscp stapling
+			// CacheUnmanagedCertificatePEMBytes()
+			// CacheUnmanagedCertificatePEMFile()
+			// CacheUnmanagedTLSCertificate()
 			panic("cert files code unfinished")
 
 		}
