@@ -229,6 +229,25 @@ If the SFU only has private IP then we require the user to indicate whether the 
 If the user.indicates public, then we query a service like xxx.aws.com to find their public IP.
 With regards to helping the user discover the openness their ip,
 
+## 6/27/21 We do not provide -https-auto auto
+
+I was thinking about four options for -https-auto: none, public, local, *and auto*
+Where 'auto' would decide automatically betwen local and public.
+But how much value vs complexity does it really offer?
+After thinking it through, not enough value in exchange for complexity.
+*So I am killing -https-auto auto*
+
+## 6/27/21 Should we do our own 'port 80 open' and 'port 443 open' checks??
+
+We could check for the openness of port 80 and 443 prior to invoking certmagic.
+This does have the advantage of more easily providing explicit messaging about
+a fatal condition.
+*The downside is* everything becomes .2 to 2.0 seconds slower for everybody. :(
+*One upside is* our checks will probably be much faster than failure detected by LE.
+*Decision* Let's code for both, and decide based upon empirical experiece.
+
+
+
 
 
 

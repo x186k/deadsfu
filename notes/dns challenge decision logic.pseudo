@@ -1,0 +1,21 @@
+// How do we decide whether to do DNS ACME challenge?
+
+
+switch(httpsAutoFlag) do
+    case "none":
+    dnsChallenge = false
+    case "public":
+        dnsChallenge = false
+        if httpport != 80 && httpsport != 443 do
+            dnsChallenge = true
+            info("Using DNS challenge due to port choices")
+        else 
+            if !http80Open() && !https443Open() do
+                fatal("http nor https open to Internet, cannot proceed with 'public'")
+            end
+        end
+
+    case "local":
+        dnsChallenge = true
+    //case "auto": //no: the value isn't worth the new-user learning burden, for this option
+end
