@@ -284,6 +284,8 @@ var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 var debug = flag.Bool("z-debug", false, "enable debug output")
 var debugCertmagic = flag.Bool("z-debug-certmagic", false, "enable debug output for certmagic and letsencrypt")
+var debugStagingCertificate = flag.Bool("z-debug-staging", false, "use the LetsEncrypt staging certificate")
+
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 
@@ -517,8 +519,10 @@ func main() {
 
 		var tlsConfig *tls.Config = nil
 
-		//ca := certmagic.LetsEncryptStagingCA
 		ca := certmagic.LetsEncryptProductionCA
+		if *debugStagingCertificate {
+			ca = certmagic.LetsEncryptStagingCA
+		}
 
 		mgrTemplate := certmagic.ACMEManager{
 			CA:                      ca,
