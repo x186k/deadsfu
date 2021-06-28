@@ -89,7 +89,8 @@
     <div class="collapse show" id="collapseExample">
       <div class="card">
         <div class="card-body py-1">
-          <span id="rxtx"> 0/0 rx/tx kbps </span>
+          <span id="rxtx"> 0/0 rx/tx kbps </span>&nbsp;&nbsp;&nbsp;
+          <span id="xstate">disconnected</span>
         </div>
       </div>
     </div>
@@ -153,6 +154,8 @@
         //console.debug("delay of " + (performance.now() - t0) + "ms")
         let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
         pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
+        const xstate = document.getElementById('xstate')
+        pc.onconnectionstatechange = e => xstate.innerText = pc.connectionState
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
 
@@ -256,6 +259,8 @@
 
         let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
         pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
+        const xstate = document.getElementById('xstate')
+        pc.onconnectionstatechange = e => xstate.innerText = pc.connectionState
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
         //must have addtransceiver to get m=video in sdp
