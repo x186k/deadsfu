@@ -22,7 +22,6 @@ require (
 	github.com/x186k/ddns5libdns v0.0.0-20210601224053-e288019a9d55
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0
-	golang.org/x/net v0.0.0-20210331212208-0fccb6fa2b5c
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/text v0.3.5 // indirect
 	golang.org/x/tools v0.0.0-20200513154647-78b527d18275 // indirect
