@@ -532,8 +532,23 @@ func main() {
 			DisableTLSALPNChallenge: false,
 		}
 		magic := certmagic.NewDefault()
+		magic.OnEvent = func(s string, i interface{}) {
+			switch s {
+			case "cert_obtained":
+				elog.Println("Let's Encrypt Certificate Aquired")
+			case "cached_managed_cert":
+				elog.Println("sfu1 HTTPS READY: TLS Certificate Available")
+			case "tls_handshake_started":
+				//silent
+			case "tls_handshake_completed":
+				//silent
+			default:
+				elog.Println("certmagic event:", s) //, i)
+			}
+		}
+
 		if *debug || *debugCertmagic {
-			magic.OnEvent = func(s string, i interface{}) { println("certmagic:", s, i) }
+
 			zaplog, err := zap.NewProduction()
 			checkFatal(err)
 			mgrTemplate.Logger = zaplog
