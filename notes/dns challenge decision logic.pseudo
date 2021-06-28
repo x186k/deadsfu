@@ -2,21 +2,22 @@
 // How do we decide whether to do DNS ACME challenge?
 
 
+// Decision: do not do port open checking. just report on certifcage progress.
+// part of the reason for this, is the port 80 http challenge can work
+// even when we are not running an HTTP server that we instantiate.
+// and if cert cannot be obtained in 8 seconds, send message to user
+
+
 switch(httpsAutoFlag) do
     case "none":
-    dnsChallenge = false
+        // no registerDDNS()
     case "public":
-        dnsChallenge = false
         if httpport != 80 && httpsport != 443 do
-            dnsChallenge = true
             info("Using DNS challenge due to port choices")
-        else 
-            if !http80Open() && !https443Open() do
-                fatal("http nor https open to Internet, cannot proceed with 'public'")
-            end
+            registerDDNS()
         end
 
     case "local":
-        dnsChallenge = true
+         registerDDNS()
     //case "auto": //no: the value isn't worth the new-user learning burden, for this option
 end
