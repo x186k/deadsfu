@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,31 +9,32 @@ import (
 
 func TestProxyDialInvalidOrDownProxy(t *testing.T) {
 	const (
-		PROXY_ADDR    = "socks5-callback-server.com:60000"
-		BADPROXY_ADDR = "socks5-callback-server.com:6000"
-		URL           = "http://google.com"
-		SERVER        = "google.com:80"
-		BADSERVER        = "google.com:80"
+		PROXYGOOD = "socks5-callback-server.com:60000"
+		PROXYBAD  = "socks5-callback-server.com:6000"
 	)
 
-	_, err := canConnectThroughProxy(BADPROXY_ADDR, SERVER)
-	assert.Contains(t, err.Error(), "timeout")
+	hostportgood := getMyPublicIpV4().String() + ":80"
+	hostportbad := getMyPublicIpV4().String() + ":9999"
 
-	_, err = canConnectThroughProxy(PROXY_ADDR, SERVER)
-	assert.Equal(t, true, errors.Is(err, io.EOF))
+	var proxyok, portopen bool
 
-	_, err = canConnectThroughProxy(PROXY_ADDR, BADSERVER)
-	assert.Equal(t, true, errors.Is(err, io.EOF))
+	// uncomment these 5 lines for testing of the working situation, AND open port 80
+	// leave this commented out for commited code
+	// http.HandleFunc("/hello", func(w http.ResponseWriter, req *http.Request) { fmt.Fprintf(w, "hello\n") })
+	// go func() { panic(http.ListenAndServe(":80", nil)) }()
+	// proxyok, portopen = canConnectThroughProxy(PROXYGOOD, hostportgood)
+	// assert.Equal(t, true, proxyok)
+	// assert.Equal(t, true, portopen)
 
+	proxyok, portopen = canConnectThroughProxy(PROXYGOOD, hostportbad)
+	assert.Equal(t, true, proxyok)
+	assert.Equal(t, false, portopen)
 
-	// this could be the test case where you get ok==true
-	// to hard to test!
-	// ok, err := canConnectThroughProxy(PROXY_ADDR, SERVER)
-	// assert.Equal(t, err, nil)
-	// assert.Equal(t, ok, true)
+	proxyok, portopen = canConnectThroughProxy(PROXYBAD, hostportbad)
+	assert.Equal(t, false, proxyok)
+	assert.Equal(t, false, portopen) //this is false when proxy fails
 
-	// fmt.Printf("%#v\n", ok)
-	// fmt.Printf("%#v\n", err)
-	// fmt.Printf("%v\n", err.Error())
-
+	proxyok, portopen = canConnectThroughProxy(PROXYBAD, hostportgood)
+	assert.Equal(t, false, proxyok)
+	assert.Equal(t, false, portopen) //this is false when proxy fails
 }
