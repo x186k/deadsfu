@@ -94,7 +94,6 @@ const (
 	audioMimeType       = "audio/opus"
 	pubPath             = "/pub"
 	subPath             = "/sub" // 2nd slash important
-	socks5callbackProxy = "socks5-callback-server.com:60000"
 )
 
 var (
@@ -714,9 +713,9 @@ func initMediaHandlerState(t TrackCounts) {
 	//	initRxid2state(t.numIdleVideo, Xidleaudio
 }
 
-func getExplicitHostPort(u *url.URL) string {
-	return u.Hostname() + ":" + getPort(u)
-}
+// func getExplicitHostPort(u *url.URL) string {
+// 	return u.Hostname() + ":" + getPort(u)
+// }
 
 func getPort(u *url.URL) string {
 	if u.Scheme == "https" {
@@ -2009,22 +2008,31 @@ func getMyPublicIpV4() net.IP {
 
 func reportHttpsReadyness() {
 
-	const sleepdur = 5
+	const interval = 5
+	for i := 0; ; i += interval {
 
-	for i := 5; i <= 15; i += 5 {
-		time.Sleep(time.Second * sleepdur)
+		time.Sleep(time.Second * interval)
 
 		if httpsHasCertificate {
 			return
 		}
 
-		m := fmt.Sprintf("NO HTTPS certificate at %d seconds.", i)
-		if httpsUsingDDNS {
-			elog.Printf("%v Please check DNS setup, or change DDNS provider", m)
-		} else {
-			elog.Printf("%v Please check firewall port 80 and/or 443", m)
+		if i < 5 {
+			continue
 		}
+
+		elog.Printf("No HTTPS certificate: Waiting %d seconds.", i)
+
+		if httpsUsingDDNS && i > 30 {
+			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")
+			break
+		}
+		if !httpsUsingDDNS && i > 15 {
+			elog.Printf("No HTTPS certificate: Please check firewall port 80 and/or 443")
+			break
+		}
+
 	}
 
-	elog.Printf("Last message, No more messages about failure to aquire HTTPS certificate")
+	elog.Printf("No HTTPS certificate: Ceasing status messages about certificate.")
 }
