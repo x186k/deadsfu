@@ -665,9 +665,9 @@ func routableMessage(ip net.IP) string {
 		return "an IPv6 address"
 	} else {
 		if IsPrivate(ip) {
-			return "an RFC1918 PRIVATE, NOT-ROUTABLE address"
+			return "a PRIVATE, NON-INET-ROUTABLE, RFC1918 address"
 		} else {
-			return "a NON-RFC1918 PUBLIC, ROUTABLE address"
+			return "a PUBLIC, INET-ROUTABLE, NON-RFC1918 address"
 		}
 	}
 }
