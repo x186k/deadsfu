@@ -105,6 +105,9 @@ var (
 
 var ticker = time.NewTicker(100 * time.Millisecond)
 
+var httpsUsingDDNS = false
+var httpsHasCertificate = false
+
 type Subid uint64
 
 type MsgRxPacket struct {
@@ -486,11 +489,13 @@ func main() {
 
 	//https first
 	if httpsUrl != nil {
+		go reportHttpsReadyness()
 
 		switch *httpsAutoFlag {
 		case "local":
 			addrs, err := getLocalIPAddresses()
 			checkFatal(err)
+			httpsUsingDDNS = true
 			registerDDNS(httpsUrl, addrs)
 
 		case "public":
@@ -499,18 +504,23 @@ func main() {
 			}
 
 			// if the ACME port 80 and port 443 challenges can't possibly work
-			httpsOn443 := httpsUrl.Port() == "" || httpsUrl.Port() == "443"
-			httpOn80 := httpUrl != nil && (httpUrl.Port() == "" || httpUrl.Port() == "80")
+			//httpsOn443 := httpsUrl.Port() == "" || httpsUrl.Port() == "443"
+			//httpOn80 := httpUrl != nil && (httpUrl.Port() == "" || httpUrl.Port() == "80")
 
-			if !httpOn80 && !httpsOn443 {
-				// the TCP/HTTPx challenges won't work
-				elog.Printf("Using ACME DNS01 for LetsEncrypt: Port 443, and Port 80 is not in use.")
-				x := getMyPublicIpV4()
-				if x == nil {
-					checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
-				}
-				registerDDNS(httpsUrl, []net.IP{x})
-			}
+			// DO NOT CHECK if http is running on 80, as certmagic will run its own
+			// WE USED TO CHECK IF WE ARE RUNNING HTTP on 80, thinking this is necessary for certmagic.
+			// IT IS NOT, certmagic run's it's own http on 80, if we do not
+			// if  !httpsOn443 {
+			// if !httpOn80 && !httpsOn443 {
+			// 	// the TCP/HTTPx challenges won't work
+			// 	elog.Printf("Using ACME DNS01 for LetsEncrypt: Port 443, and Port 80 is not in use.")
+			// 	x := getMyPublicIpV4()
+			// 	if x == nil {
+			// 		checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
+			// 	}
+			// 	httpsUsingDDNS = true
+			// 	registerDDNS(httpsUrl, []net.IP{x})
+			// }
 
 		case "none":
 			elog.Printf("Registering NO DNS hosts.")
@@ -535,9 +545,12 @@ func main() {
 		magic := certmagic.NewDefault()
 		magic.OnEvent = func(s string, i interface{}) {
 			switch s {
+			// called at time of challenge passing
 			case "cert_obtained":
-				elog.Println("Let's Encrypt Certificate Aquired")
+				//elog.Println("Let's Encrypt Certificate Aquired")
+			// called every run where cert is found in cache including when the challenge passes
 			case "cached_managed_cert":
+				httpsHasCertificate = true
 				elog.Println("sfu1 HTTPS READY: TLS Certificate Available")
 			case "tls_handshake_started":
 				//silent
@@ -641,7 +654,7 @@ func routableMessage(ip net.IP) string {
 		return "an IPv6 address"
 	} else {
 		if IsPrivate(ip) {
-			return "a RFC1918 PRIVATE, NOT-ROUTABLE address"
+			return "an RFC1918 PRIVATE, NOT-ROUTABLE address"
 		} else {
 			return "a NON-RFC1918 PUBLIC, ROUTABLE address"
 		}
@@ -1992,4 +2005,26 @@ func getMyPublicIpV4() net.IP {
 		}
 	}
 	return nil
+}
+
+func reportHttpsReadyness() {
+
+	const sleepdur = 5
+
+	for i := 5; i <= 15; i += 5 {
+		time.Sleep(time.Second * sleepdur)
+
+		if httpsHasCertificate {
+			return
+		}
+
+		m := fmt.Sprintf("NO HTTPS certificate at %d seconds.", i)
+		if httpsUsingDDNS {
+			elog.Printf("%v Please check DNS setup, or change DDNS provider", m)
+		} else {
+			elog.Printf("%v Please check firewall port 80 and/or 443", m)
+		}
+	}
+
+	elog.Printf("Last message, No more messages about failure to aquire HTTPS certificate")
 }
