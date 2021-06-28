@@ -12,10 +12,12 @@ switch(httpsAutoFlag) do
     case "none":
         // no registerDDNS()
     case "public":
-        if httpport != 80 && httpsport != 443 do
-            info("Using DNS challenge due to port choices")
-            registerDDNS()
-        end
+        // NO LONGER :
+        // if httpport != 80 && httpsport != 443 do
+        //     info("Using DNS challenge due to port choices")
+        //     registerDDNS()
+        // end
+        // if you use -http-auto public, you must have 80 or 443 open
 
     case "local":
          registerDDNS()
