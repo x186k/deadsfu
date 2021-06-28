@@ -511,27 +511,11 @@ func main() {
 				checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
 			}
 			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, []net.IP{myipv4})
+			ddnsEnableDNS01Challenge(ddnsProvider)
 
 			// NO LONGER DO ANY PORT OPENNESS CHECKING
-			// NOR CHECK WHETHER
-			// if the ACME port 80 and port 443 challenges can't possibly work
-			//httpsOn443 := httpsUrl.Port() == "" || httpsUrl.Port() == "443"
-			//httpOn80 := httpUrl != nil && (httpUrl.Port() == "" || httpUrl.Port() == "80")
-
-			// DO NOT CHECK if http is running on 80, as certmagic will run its own
-			// WE USED TO CHECK IF WE ARE RUNNING HTTP on 80, thinking this is necessary for certmagic.
-			// IT IS NOT, certmagic run's it's own http on 80, if we do not
-			// if  !httpsOn443 {
-			// if !httpOn80 && !httpsOn443 {
-			// 	// the TCP/HTTPx challenges won't work
-			// 	elog.Printf("Using ACME DNS01 for LetsEncrypt: Port 443, and Port 80 is not in use.")
-			// 	x := getMyPublicIpV4()
-			// 	if x == nil {
-			// 		checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
-			// 	}
-			// 	httpsUsingDDNS = true
-			// 	registerDDNS(httpsUrl, []net.IP{x})
-			// }
+			// See the diary on why we gave up on the port 80/443 ACME challenges
+		
 
 		case "none":
 			elog.Printf("Registering NO DNS hosts.")

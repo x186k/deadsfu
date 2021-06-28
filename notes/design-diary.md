@@ -261,6 +261,14 @@ Internet based open port checking is complex:
 *Decision* We no longer do any open port checking.
 *Decision* We no longer check the ports of the Http URL, nor HTTPS URL to report whether LetsEncrypt will fail. Letsencrypt and certmagic can still pass challenges with https not on 443, and http not on 80.
 
+## 6/28/21 Whether to use dns01 or port80/443 challenges
+
+As we are observing today on AWS-Lightsail/Ubuntu, there are two major issues with port80/443 challenges:
+1) you need root 2) may need to tweak the firewall for 80/443
+1. You often must be root to bind and listen on 443/80
+2. You sometimes have go tweak the firewall. (If you want to run on 8443, you still need to tweak the firewall to get port 80||443 open, for the 80/443 challenges)
+
+*Decision* We will default to DNS01 challenge for both -https-auto public and local.
 
 
 
