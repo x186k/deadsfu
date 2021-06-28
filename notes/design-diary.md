@@ -246,6 +246,21 @@ a fatal condition.
 *One upside is* our checks will probably be much faster than failure detected by LE.
 *Decision* Let's code for both, and decide based upon empirical experiece.
 
+## 6/27/21 Internet based open port checking
+
+Internet based open port checking is complex:
+- minus: we need to run and pay for a DO server running a proxy forever
+- minus: certmagic can successfully challenge using port 80, even when we the end-user code is not running an http server on port 80.
+- minus: to check port 80, we need to run a server and not conflict with certmagic
+- point: using timers and observing certmagic events, we can report whether a cert has been aquired or not, given the elapsed time. this messaging, while not be certain about port issues, can raise the issue for the end-user
+
+*Decision* We kill the proxy, and the sfu1 proxy code, and take down the socks5 proxy.
+
+
+
+
+
+
 
 
 
