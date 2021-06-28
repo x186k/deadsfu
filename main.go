@@ -2038,4 +2038,5 @@ func reportHttpsReadyness() {
 	}
 
 	elog.Printf("No HTTPS certificate: Ceasing status messages about certificate.")
+	elog.Printf("No HTTPS certificate: Will print update if certificate is aquired.")
 }
