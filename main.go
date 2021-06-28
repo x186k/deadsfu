@@ -105,7 +105,7 @@ var (
 
 var ticker = time.NewTicker(100 * time.Millisecond)
 
-var httpsUsingDDNS = false
+var usingDNS01ACMEChallenge = false
 var httpsHasCertificate = false
 
 type Subid uint64
@@ -498,7 +498,6 @@ func main() {
 		case "local":
 			addrs, err := getLocalIPAddresses()
 			checkFatal(err)
-			httpsUsingDDNS = true
 			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, addrs)
 			ddnsEnableDNS01Challenge(ddnsProvider)
 
@@ -515,8 +514,6 @@ func main() {
 
 			// NO LONGER DO ANY PORT OPENNESS CHECKING
 			// See the diary on why we gave up on the port 80/443 ACME challenges
-		
-
 		case "none":
 			elog.Printf("Registering NO DNS hosts.")
 		default:
@@ -799,7 +796,7 @@ func cloudflare_Token() string {
 // if we did, Alice could get a cert for bob.ddns5.com
 
 func ddnsEnableDNS01Challenge(foo certmagic.ACMEDNSProvider) {
-
+	usingDNS01ACMEChallenge = true
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
 		//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
 		DNSProvider:        foo,
@@ -2011,11 +2008,11 @@ func reportHttpsReadyness() {
 
 		elog.Printf("sfu1 HTTPS NOT READY: Waited %d seconds.", i)
 
-		if httpsUsingDDNS && i > 30 {
+		if usingDNS01ACMEChallenge && i > 30 {
 			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")
 			break
 		}
-		if !httpsUsingDDNS && i > 15 {
+		if !usingDNS01ACMEChallenge && i > 15 {
 			elog.Printf("No HTTPS certificate: Please check firewall port 80 and/or 443")
 			break
 		}
