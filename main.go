@@ -442,6 +442,7 @@ func silenceLogger(l *log.Logger) {
 
 func main() {
 	var err error
+	println("sfu1 Version "+Version)
 
 	if false {
 		go func() {
