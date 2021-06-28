@@ -256,6 +256,13 @@ Internet based open port checking is complex:
 
 *Decision* We kill the proxy, and the sfu1 proxy code, and take down the socks5 proxy.
 
+## 6/27/21 More on Open Port Checking and HTTP-Bound and HTTPS-Bound Checking
+
+*Decision* We no longer do any open port checking.
+*Decision* We no longer check the ports of the Http URL, nor HTTPS URL to report whether LetsEncrypt will fail. Letsencrypt and certmagic can still pass challenges with https not on 443, and http not on 80.
+
+
+
 
 
 
