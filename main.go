@@ -32,6 +32,7 @@ import (
 	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/duckdns"
+	"github.com/libdns/libdns"
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
 
@@ -87,13 +88,13 @@ var rtpPacketPool = sync.Pool{
 // msid:streamid trackid/appdata
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
-	mediaStreamId       = "x186k"
-	ddns5Suffix         = ".ddns5.com"
-	duckdnsSuffix       = ".duckdns.org"
-	videoMimeType       = "video/h264"
-	audioMimeType       = "audio/opus"
-	pubPath             = "/pub"
-	subPath             = "/sub" // 2nd slash important
+	mediaStreamId = "x186k"
+	ddns5Suffix   = ".ddns5.com"
+	duckdnsSuffix = ".duckdns.org"
+	videoMimeType = "video/h264"
+	audioMimeType = "audio/opus"
+	pubPath       = "/pub"
+	subPath       = "/sub" // 2nd slash important
 )
 
 var (
@@ -490,18 +491,28 @@ func main() {
 	if httpsUrl != nil {
 		go reportHttpsReadyness()
 
+		ddnsProvider := ddnsDetermineProvider(httpsUrl)
+
 		switch *httpsAutoFlag {
 		case "local":
 			addrs, err := getLocalIPAddresses()
 			checkFatal(err)
 			httpsUsingDDNS = true
-			registerDDNS(httpsUrl, addrs)
+			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, addrs)
+			ddnsEnableDNS01Challenge(ddnsProvider)
 
 		case "public":
 			if *httpsInterfaceFlag != "" {
 				checkFatal(fmt.Errorf("Cannot combine -https-auto=public -https-interface."))
 			}
+			myipv4 := getMyPublicIpV4()
+			if myipv4 == nil {
+				checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
+			}
+			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, []net.IP{myipv4})
 
+			// NO LONGER DO ANY PORT OPENNESS CHECKING
+			// NOR CHECK WHETHER
 			// if the ACME port 80 and port 443 challenges can't possibly work
 			//httpsOn443 := httpsUrl.Port() == "" || httpsUrl.Port() == "443"
 			//httpOn80 := httpUrl != nil && (httpUrl.Port() == "" || httpUrl.Port() == "80")
@@ -546,11 +557,12 @@ func main() {
 			switch s {
 			// called at time of challenge passing
 			case "cert_obtained":
-				//elog.Println("Let's Encrypt Certificate Aquired")
-			// called every run where cert is found in cache including when the challenge passes
+				// elog.Println("Let's Encrypt Certificate Aquired")
+				// called every run where cert is found in cache including when the challenge passes
+				// since the followed gets called for both obained and found in cache, we use that
 			case "cached_managed_cert":
 				httpsHasCertificate = true
-				elog.Println("sfu1 HTTPS READY: TLS Certificate Available")
+				elog.Println("sfu1 HTTPS READY: TLS Certificate Acquired")
 			case "tls_handshake_started":
 				//silent
 			case "tls_handshake_completed":
@@ -660,39 +672,30 @@ func routableMessage(ip net.IP) string {
 	}
 }
 
-func registerDDNS(u *url.URL, addrs []net.IP) {
+type DDNSUnion interface {
+	libdns.RecordAppender
+	libdns.RecordDeleter
+	libdns.RecordSetter
+}
 
-	hostname := u.Hostname()
+func ddnsDetermineProvider(u *url.URL) DDNSUnion {
 
-	if strings.HasSuffix(hostname, ddns5Suffix) {
-
-		ddnsProvider := &ddns5libdns.Provider{}
-		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
-		enableCertmagicForDNSChallenge(ddnsProvider)
-
-	} else if strings.HasSuffix(hostname, duckdnsSuffix) {
-
+	if strings.HasSuffix(u.Hostname(), ddns5Suffix) {
+		return &ddns5libdns.Provider{}
+	} else if strings.HasSuffix(u.Hostname(), duckdnsSuffix) {
 		token := duckdnsorg_Token()
-		ddnsProvider := &duckdns.Provider{APIToken: token}
-		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
-		enableCertmagicForDNSChallenge(ddnsProvider)
-
+		return &duckdns.Provider{APIToken: token}
 	} else if *cloudflareDDNS {
-
 		token := cloudflare_Token()
-		ddnsProvider := &cloudflare.Provider{APIToken: token}
-		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
-		enableCertmagicForDNSChallenge(ddnsProvider)
-
-	} else {
-		elog.Println("For hostname:", hostname)
-		elog.Fatal(
-			`Not able to determine which DDNS provider to use:
+		return &cloudflare.Provider{APIToken: token}
+	}
+	elog.Fatal(
+		`Not able to determine which DDNS provider to use:
 *.ddns5.com indicates: ddns5.com
 *.duckdns.org indicates: DuckDNS
 * with the flag -cloudflare indicates: Cloudflare.
 `)
-	}
+	panic("no")
 }
 
 func initRxid2state(n int, id TrackId) {
@@ -736,7 +739,7 @@ func getPort(u *url.URL) string {
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
 // zone might be duckdns.org
 // subname might be server01
-func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int, addrs []net.IP) {
+func ddnsRegisterIPAddresses(provider certmagic.ACMEDNSProvider, fqdn string, suffixCount int, addrs []net.IP) {
 
 	//timestr := strconv.FormatInt(time.Now().UnixNano(), 10)
 	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
@@ -759,8 +762,9 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		}
 		log.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
 
+		x := provider.(DDNSProvider)
 		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
-		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
+		err := ddnsSetRecord(context.Background(), x, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
 		log.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
@@ -809,8 +813,7 @@ func cloudflare_Token() string {
 // and then allow Alice to create bob.ddns5.com/TXT/xxxxxxxxx
 // if we did, Alice could get a cert for bob.ddns5.com
 
-func enableCertmagicForDNSChallenge(provider interface{}) {
-	foo := provider.(certmagic.ACMEDNSProvider)
+func ddnsEnableDNS01Challenge(foo certmagic.ACMEDNSProvider) {
 
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
 		//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
@@ -2021,7 +2024,7 @@ func reportHttpsReadyness() {
 			continue
 		}
 
-		elog.Printf("No HTTPS certificate: Waiting %d seconds.", i)
+		elog.Printf("sfu1 HTTPS NOT READY: Waited %d seconds.", i)
 
 		if httpsUsingDDNS && i > 30 {
 			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")
