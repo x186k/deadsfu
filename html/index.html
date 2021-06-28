@@ -243,6 +243,7 @@
 
     function waitToCompleteIceGathering(pc) {
       return new Promise(resolve => {
+        setTimeout(resolve(pc.localDescription), 250)
         pc.addEventListener('icegatheringstatechange', e => (e.target.iceGatheringState === 'complete') && resolve(pc.localDescription));
       });
     }
