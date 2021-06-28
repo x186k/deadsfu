@@ -498,8 +498,6 @@ func main() {
 				checkFatal(fmt.Errorf("Cannot combine -https-auto=public -https-interface."))
 			}
 
-			go reportOpenPort(httpsUrl)
-
 			// if the ACME port 80 and port 443 challenges can't possibly work
 			httpsOn443 := httpsUrl.Port() == "" || httpsUrl.Port() == "443"
 			httpOn80 := httpUrl != nil && (httpUrl.Port() == "" || httpUrl.Port() == "80")
@@ -513,8 +511,6 @@ func main() {
 				}
 				registerDDNS(httpsUrl, []net.IP{x})
 			}
-
-
 
 		case "none":
 			elog.Printf("Registering NO DNS hosts.")
@@ -589,8 +585,6 @@ func main() {
 	//http next
 	if httpUrl != nil {
 
-		go reportOpenPort(httpUrl)
-
 		go func() {
 			// httpLn, err := net.Listen("tcp", laddr)
 			err := http.ListenAndServe(httpUrl.Host, certmagic.DefaultACME.HTTPChallengeHandler(mux))
@@ -652,24 +646,6 @@ func routableMessage(ip net.IP) string {
 			return "a NON-RFC1918 PUBLIC, ROUTABLE address"
 		}
 	}
-}
-
-func reportOpenPort(u *url.URL) {
-	hostport := getExplicitHostPort(u)
-	proxyok, iamopen := canConnectThroughProxy(socks5callbackProxy, hostport)
-
-	println(99,proxyok,iamopen)
-	if !proxyok {
-		//just be silent about proxy errors, Cameron didn't pay his bill
-		return
-	}
-
-	if iamopen {
-		elog.Printf("sfu1 %v : port %v IS OPEN from Internet", strings.ToUpper(u.Scheme), u.Port())
-	} else {
-		elog.Printf("sfu1 %v : port %v NOT OPEN from Internet", strings.ToUpper(u.Scheme), u.Port())
-	}
-
 }
 
 func registerDDNS(u *url.URL, addrs []net.IP) {
