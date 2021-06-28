@@ -269,14 +269,17 @@ Defaults to [::] (all interfaces)`)
 var interfaceAddress net.IP
 
 //var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
-var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
+// NO/reduce complexity.
+//var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
 var httpsAutoFlag = flag.String("https-auto", "local",
 	`One of: 'local', 'public', or 'none'.   The default is 'local'.
 This controls which IP addresses will be auto-detected for HTTPS usage.
 local: Detect my local on-system IP addresses.
 public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
 none: Do not detect IP addresses`)
-var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-auto=public")
+
+// reduce complexity, removed
+//var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-auto=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var htmlFromDiskFlag = flag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
@@ -357,7 +360,7 @@ func init() {
 			log.SetOutput(os.Stdout)
 			log.Printf("debug output IS enabled Version=%s", Version)
 		} else {
-			elog.Println("debug output NOT enabled")
+			//elog.Println("debug output NOT enabled")
 			silenceLogger(log.Default())
 		}
 	}
@@ -484,37 +487,39 @@ func main() {
 	//https first
 	if httpsUrl != nil {
 
-		if *httpsDDNSFlag {
-			var addrs []net.IP
-			switch *httpsAutoFlag {
-			case "local":
-				if len(*httpsInterfaceFlag) > 0 {
-					addr := net.ParseIP(*httpsInterfaceFlag)
-					if addr == nil {
-						elog.Fatal("-http-interface is not valid a IP address")
-					}
-					addrs = []net.IP{addr}
-				} else {
-					addrs = getDefaultRouteInterfaceAddresses()
-				}
-
-			case "public":
-				if *httpsInterfaceFlag != "" {
-					checkFatal(fmt.Errorf("Cannot combine -https-auto=public -https-interface=true."))
-				}
-				x := getMyPublicIpV4()
-				if x != nil {
-					addrs = []net.IP{x}
-				}
-			case "none":
-				elog.Printf("Registering NO DNS hosts.")
-			default:
-				checkFatal(fmt.Errorf("Invalid value for -https-auto: %s", *httpsAutoFlag))
-			}
+		switch *httpsAutoFlag {
+		case "local":
+			addrs, err := getLocalIPAddresses()
+			checkFatal(err)
 			registerDDNS(httpsUrl, addrs)
-			for _, v := range addrs {
-				elog.Printf("DNS registered %v  %v  %v", httpsUrl.Hostname(), v, routableMessage(v))
+
+		case "public":
+			if *httpsInterfaceFlag != "" {
+				checkFatal(fmt.Errorf("Cannot combine -https-auto=public -https-interface."))
 			}
+
+			go reportOpenPort(httpsUrl)
+
+			// if the ACME port 80 and port 443 challenges can't possibly work
+			httpsOn443 := httpsUrl.Port() == "" || httpsUrl.Port() == "443"
+			httpOn80 := httpUrl != nil && (httpUrl.Port() == "" || httpUrl.Port() == "80")
+
+			if !httpOn80 && !httpsOn443 {
+				// the TCP/HTTPx challenges won't work
+				elog.Printf("Using ACME DNS01 for LetsEncrypt: Port 443, and Port 80 is not in use.")
+				x := getMyPublicIpV4()
+				if x == nil {
+					checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
+				}
+				registerDDNS(httpsUrl, []net.IP{x})
+			}
+
+
+
+		case "none":
+			elog.Printf("Registering NO DNS hosts.")
+		default:
+			checkFatal(fmt.Errorf("Invalid value for -https-auto: %s", *httpsAutoFlag))
 		}
 
 		var tlsConfig *tls.Config = nil
@@ -577,12 +582,14 @@ func main() {
 			checkPanic(err)
 			panic(http.Serve(httpsLn, mux))
 		}()
-		elog.Printf("%v IS READY", httpsUrl.String())
+		//elog.Printf("%v IS READY", httpsUrl.String())
 
 	}
 
 	//http next
 	if httpUrl != nil {
+
+		go reportOpenPort(httpUrl)
 
 		go func() {
 			// httpLn, err := net.Listen("tcp", laddr)
@@ -590,20 +597,6 @@ func main() {
 			panic(err)
 		}()
 		elog.Printf("%v IS READY", httpUrl.String())
-	}
-
-	// http and https listeners are started
-	// we want to check
-	if *httpsAutoFlag == "public" && *httpsOpenPortsFlag {
-		// if you are using automatic public IP detection
-		// we also will check your firewall ports
-
-		if httpUrl != nil {
-			go reportOpenPorts(httpUrl)
-		}
-		if httpsUrl != nil {
-			go reportOpenPorts(httpsUrl)
-		}
 	}
 
 	//the user can specify zero for port, and Linux/etc will choose a port
@@ -634,27 +627,48 @@ func main() {
 	println("profiling done, exit")
 }
 
+func getLocalIPAddresses() ([]net.IP, error) {
+	if len(*httpsInterfaceFlag) > 0 {
+		addr := net.ParseIP(*httpsInterfaceFlag)
+		if addr == nil {
+			elog.Fatal("-http-interface is not valid a IP address")
+		}
+		return []net.IP{addr}, nil
+	}
+	z := getDefaultRouteInterfaceAddresses()
+	if z == nil {
+		return nil, errors.New("Cannot auto-detect any IP addresses on this system")
+	}
+	return z, nil
+}
+
 func routableMessage(ip net.IP) string {
 	if ip.To4() == nil {
 		return "an IPv6 address"
 	} else {
 		if IsPrivate(ip) {
-			return "an RFC1918 PRIVATE, NOT-ROUTABLE address"
+			return "a RFC1918 PRIVATE, NOT-ROUTABLE address"
 		} else {
-			return "an NON-RFC1918 PUBLIC, ROUTABLE address"
+			return "a NON-RFC1918 PUBLIC, ROUTABLE address"
 		}
 	}
 }
 
-func reportOpenPorts(u *url.URL) {
+func reportOpenPort(u *url.URL) {
 	hostport := getExplicitHostPort(u)
-	ok, _ := canConnectThroughProxy(socks5callbackProxy, hostport)
+	proxyok, iamopen := canConnectThroughProxy(socks5callbackProxy, hostport)
 
-	msg := "NOT OPEN"
-	if ok {
-		msg = "OPEN"
+	println(99,proxyok,iamopen)
+	if !proxyok {
+		//just be silent about proxy errors, Cameron didn't pay his bill
+		return
 	}
-	elog.Printf("Internet Socks5 open port check: %v IS %s from the Internet", hostport, msg)
+
+	if iamopen {
+		elog.Printf("sfu1 %v : port %v IS OPEN from Internet", strings.ToUpper(u.Scheme), u.Port())
+	} else {
+		elog.Printf("sfu1 %v : port %v NOT OPEN from Internet", strings.ToUpper(u.Scheme), u.Port())
+	}
 
 }
 
@@ -666,27 +680,30 @@ func registerDDNS(u *url.URL, addrs []net.IP) {
 
 		ddnsProvider := &ddns5libdns.Provider{}
 		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
-
 		enableCertmagicForDNSChallenge(ddnsProvider)
-	} else if strings.HasSuffix(hostname, duckdnsSuffix) {
-		token := duckdnsorg_Token()
 
+	} else if strings.HasSuffix(hostname, duckdnsSuffix) {
+
+		token := duckdnsorg_Token()
 		ddnsProvider := &duckdns.Provider{APIToken: token}
 		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
-
 		enableCertmagicForDNSChallenge(ddnsProvider)
+
 	} else if *cloudflareDDNS {
 
 		token := cloudflare_Token()
-
 		ddnsProvider := &cloudflare.Provider{APIToken: token}
 		ddnsRegisterIPAddresses(ddnsProvider, hostname, 2, addrs)
-
 		enableCertmagicForDNSChallenge(ddnsProvider)
+
 	} else {
 		elog.Println("For hostname:", hostname)
-		elog.Fatal(`Unable to determine which DDNS provider to use: ddns5.com, duckdns.org, or Cloudflare\n
-	Names ending ddns5.com indicate ddns5, ending duckdns indicate duckdns, Cloudflare is selected using a param flag`)
+		elog.Fatal(
+			`Not able to determine which DDNS provider to use:
+*.ddns5.com indicates: ddns5.com
+*.duckdns.org indicates: DuckDNS
+* with the flag -cloudflare indicates: Cloudflare.
+`)
 	}
 }
 
@@ -762,10 +779,10 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
+		elog.Printf("DNS registered %v  %v  %v", httpsUrl.Hostname(), v, routableMessage(v))
+
 		//log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
-
 	}
-
 }
 
 func duckdnsorg_Token() string {
@@ -1860,7 +1877,7 @@ func getDefaultRouteInterfaceAddresses() []net.IP {
 	}
 
 	if len(ipaddrs) == 0 {
-		elog.Fatal("cant find any IP addresses")
+		return nil
 	}
 
 	return ipaddrs
@@ -1977,13 +1994,12 @@ func IsAccessibleFromInternet(addrPort string) bool {
 
 var _ = IsAccessibleFromInternet
 
-var _ = getMyPublicIpV4
-
+// returns nil on failure
 func getMyPublicIpV4() net.IP {
 	var publicmyip []string = []string{"https://api.ipify.org", "http://checkip.amazonaws.com/"}
 
 	client := http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: 3 * time.Second,
 	}
 	for _, v := range publicmyip {
 		res, err := client.Get(v)
@@ -2000,5 +2016,4 @@ func getMyPublicIpV4() net.IP {
 		}
 	}
 	return nil
-
 }
