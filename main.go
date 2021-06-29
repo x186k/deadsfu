@@ -769,13 +769,14 @@ func ddnsRegisterIPAddresses(provider certmagic.ACMEDNSProvider, fqdn string, su
 }
 
 func duckdnsorg_Token() string {
-	token := os.Getenv("DUCKDNS_TOKEN")
+	const name = "DUCKDNS_TOKEN"
+	token := os.Getenv(name)
 	if len(token) > 0 {
-		log.Println("Got Duckdns token from env: DUCKDNS_TOKEN ")
+		log.Println("Got Duckdns token from env: ", "DUCKDNS_TOKEN")
 		return token
 	}
 
-	elog.Fatal("You must set the environment variable: DDNS5_TOKEN to use Duckdns.org")
+	elog.Fatalf("You must set the environment variable: %v to use Duckdns.org", "DUCKDNS_TOKEN")
 	panic("no")
 }
 
