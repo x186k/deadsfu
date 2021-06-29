@@ -581,7 +581,7 @@ func main() {
 
 		// this call is why we don't use higher level certmagic functions
 		// so agreement isn't always so verbose
-		err = magic.ManageAsync(context.Background(), []string{httpsUrl.Host})
+		err = magic.ManageAsync(context.Background(), []string{httpsUrl.Hostname()})
 		checkFatal(err)
 		tlsConfig = magic.TLSConfig()
 
