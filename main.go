@@ -564,10 +564,12 @@ func main() {
 		}
 
 		if *debug || *debugCertmagic {
-
-			zaplog, err := zap.NewProduction()
-			checkFatal(err)
-			mgrTemplate.Logger = zaplog
+			logger := zap.NewExample()
+			if true { // maybe put behind flag
+				logger = logger.Named("obtain")
+				logger.Info("zap detailed obtain logger enabled")
+			}
+			mgrTemplate.Logger = logger
 		}
 		// use certmsgic for manual certificates, as it
 		// will manage oscp stapling
