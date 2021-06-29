@@ -256,7 +256,7 @@ Examples: https://cameron77.ddns5.com:8443  https://foo78.duckdns.org  https://m
 Domain names only, no IP addresses.
 Use: *.ddns5.com, for free no-signup dynamic DNS. Quickest way to run your SFU.
 Use: *.duckdns.org, for free-signup dynamic DNS. Good alternative to ddns5.com, must set DUCKDNS_TOKEN
-Use: *.mycloudflaredomain.com, for Cloudflare DNS. Must set env var: CLOUDFLARE_TOKEN.
+Use: *.mycloudflaredomain.com, for Cloudflare DNS. Must set env var: CLOUDFLARE_TOKEN and -cloudflare flag.
 See -https-interface for advance binding.
 / path only.`)
 var httpUrl, httpsUrl *url.URL
