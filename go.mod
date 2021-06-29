@@ -3,7 +3,7 @@ module github.com/x186k/sfu1
 go 1.16
 
 require (
-	github.com/caddyserver/certmagic v0.14.0
+	github.com/caddyserver/certmagic v0.14.1-0.20210616191643-647f27cf265e
 	github.com/google/gopacket v1.1.19
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libdns/cloudflare v0.1.0
