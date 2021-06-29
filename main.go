@@ -527,12 +527,21 @@ func main() {
 			ca = certmagic.LetsEncryptStagingCA
 		}
 
+		acmesolver := &certmagic.DNS01Solver{
+			//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
+			DNSProvider:        ddnsProvider,
+			TTL:                0,
+			PropagationTimeout: 0,
+			Resolvers:          []string{},
+		}
+
 		mgrTemplate := certmagic.ACMEManager{
 			CA:                      ca,
 			Email:                   *ACMEEmailFlag,
 			Agreed:                  *ACMEAgreed,
 			DisableHTTPChallenge:    false,
 			DisableTLSALPNChallenge: false,
+			DNS01Solver:             acmesolver,
 		}
 		magic := certmagic.NewDefault()
 		magic.OnEvent = func(s string, i interface{}) {
