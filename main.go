@@ -672,8 +672,14 @@ type DDNSUnion interface {
 func ddnsDetermineProvider(u *url.URL) DDNSUnion {
 
 	if strings.HasSuffix(u.Hostname(), ddns5Suffix) {
+		if *cloudflareDDNS {
+			elog.Fatal(fmt.Errorf("Cannot use ddns5 hostname: %v with -cloudflare flag", u.Hostname()))
+		}
 		return &ddns5libdns.Provider{}
 	} else if strings.HasSuffix(u.Hostname(), duckdnsSuffix) {
+		if *cloudflareDDNS {
+			elog.Fatal(fmt.Errorf("Cannot use duckdns hostname: %v with -cloudflare flag", u.Hostname()))
+		}
 		token := duckdnsorg_Token()
 		return &duckdns.Provider{APIToken: token}
 	} else if *cloudflareDDNS {
