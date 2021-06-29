@@ -289,7 +289,8 @@ var htmlFromDiskFlag = flag.Bool("z-html-from-disk", false, "do not use embed ht
 var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
 var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 var debug = flag.Bool("z-debug", false, "enable debug output")
-var debugCertmagic = flag.Bool("z-debug-certmagic", false, "enable debug output for certmagic and letsencrypt")
+
+//var debugCertmagic = flag.Bool("z-debug-certmagic", false, "enable debug output for certmagic and letsencrypt")
 var debugStagingCertificate = flag.Bool("z-debug-staging", false, "use the LetsEncrypt staging certificate")
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
@@ -527,21 +528,12 @@ func main() {
 			ca = certmagic.LetsEncryptStagingCA
 		}
 
-		acmesolver := &certmagic.DNS01Solver{
-			//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
-			DNSProvider:        ddnsProvider,
-			TTL:                0,
-			PropagationTimeout: 0,
-			Resolvers:          []string{},
-		}
-
 		mgrTemplate := certmagic.ACMEManager{
 			CA:                      ca,
 			Email:                   *ACMEEmailFlag,
 			Agreed:                  *ACMEAgreed,
 			DisableHTTPChallenge:    false,
 			DisableTLSALPNChallenge: false,
-			DNS01Solver:             acmesolver,
 		}
 		magic := certmagic.NewDefault()
 		magic.OnEvent = func(s string, i interface{}) {
@@ -563,7 +555,7 @@ func main() {
 			}
 		}
 
-		if *debug || *debugCertmagic {
+		if *debug {
 			logger := zap.NewExample()
 			if true { // maybe put behind flag
 				logger = logger.Named("obtain")
