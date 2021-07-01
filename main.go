@@ -11,7 +11,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"errors"
-	"flag"
+
 	"fmt"
 	"io"
 	"io/fs"
@@ -30,6 +30,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/spf13/pflag"
 
 	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
@@ -228,8 +230,8 @@ type TrackCounts struct {
 }
 
 var trackCounts = TrackCounts{
-	numVideo:     *flag.Int("num-video", 10, "number of video tracks"),
-	numAudio:     *flag.Int("num-audio", 1, "number of audio tracks"),
+	numVideo:     *pflag.Int("num-video", 10, "number of video tracks"),
+	numAudio:     1, //*pflag.Int("num-audio", 1, "number of audio tracks"),
 	numIdleVideo: 1,
 	numIdleAudio: 0,
 }
@@ -242,16 +244,16 @@ var Version = "version-unset"
 
 // Docker,systemd have Stdin from null, so there is no explicit prompt for ACME terms.
 // Just like Caddy under Docker and Caddy under Systemd
-var ACMEAgreed = flag.Bool("acme-agree", true, "Default: true. You AGREE with the CA's terms. ie, LetsEncrypt,\nwhen you are using this software with a CA, like LetsEncrypt.")
-var ACMEEmailFlag = flag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
+var ACMEAgreed = pflag.Bool("acme-agree", true, "You AGREE with the CA's terms. ie, LetsEncrypt.")
+var ACMEEmailFlag = pflag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
 
-var httpUrlFlag = flag.String("http-url", "",
+var httpUrlFlag = pflag.StringP("http-url", "p", "",
 	`The URL for HTTP connections.
-Examples: http://[::]:8080   http://0.0.0.0     # wildcard ipv6 and then wildcard ipv4
+Examples: http://[::]:8080   http://0.0.0.0     # all ipv6 network interfaces, all ipv4 network interfaces
 Examples: http://192.168.2.1                    # one interface, port 80
 / path only.
 `)
-var httpsUrlFlag = flag.String("https-url", "",
+var httpsUrlFlag = pflag.StringP("https-url", "s", "",
 	`The URL for HTTPS connections.  Most commonly used flag.
 Usually this is all you need.
 Examples: https://cameron77.ddns5.com:8443  https://foo78.duckdns.org  https://mycloudflaredomain.com
@@ -263,7 +265,7 @@ See -https-interface for advance binding.
 / path only.`)
 var httpUrl, httpsUrl *url.URL
 
-var httpsInterfaceFlag = flag.String("https-interface", "",
+var httpsInterfaceFlag = pflag.String("https-interface", "",
 	`Specify the interface bind IP address for HTTPS, not for HTTP.
 This is an advanced setting.
 The default should work for most users. 
@@ -276,8 +278,8 @@ var interfaceAddress net.IP
 //var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
 // NO/reduce complexity.
 //var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
-var httpsAutoFlag = flag.String("https-auto", "local",
-	`One of: 'local', 'public', or 'none'.   The default is 'local'.
+var httpsAutoFlag = pflag.StringP("https-auto", "x", "local",
+	`One of: 'local', 'public', or 'none'.
 This controls which IP addresses will be auto-detected for HTTPS usage.
 local: Detect my local on-system IP addresses.
 public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
@@ -287,27 +289,28 @@ none: Do not detect IP addresses`)
 //var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-auto=public")
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
-var htmlFromDiskFlag = flag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
-var ddnsutilDebug = flag.Bool("z-ddns-debug", false, "enable ddns debug output")
-var cpuprofile = flag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
-var debug = flag.Bool("z-debug", false, "enable debug output")
+var htmlFromDiskFlag = pflag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
+var ddnsutilDebug = pflag.Bool("z-ddns-debug", false, "enable ddns debug output")
+var cpuprofile = pflag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
+var debug = pflag.Bool("z-debug", false, "enable debug output")
 
 //var debugCertmagic = flag.Bool("z-debug-certmagic", false, "enable debug output for certmagic and letsencrypt")
-var debugStagingCertificate = flag.Bool("z-debug-staging", false, "use the LetsEncrypt staging certificate")
+var debugStagingCertificate = pflag.Bool("z-debug-staging", false, "use the LetsEncrypt staging certificate")
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
-var disableHtml = flag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
-var dialIngressURL = flag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
+var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
+var dialIngressURL = pflag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
-var obsStudio = flag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
-var helpAll = flag.Bool("all", false, "Show the full set of advanced flags")
-var cloudflareDDNS = flag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
-var stunServer = flag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
+var obsStudio = pflag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
+var helpAll = pflag.BoolP("all", "a", false, "Print usage on all flags")
+var help = pflag.BoolP("help", "h", false, "Print usage on the most common flags")
+var cloudflareDDNS = pflag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
+var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
 //var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
@@ -356,8 +359,12 @@ func init() {
 
 	istest := strings.HasSuffix(os.Args[0], ".test")
 	if !istest {
-		flag.Usage = Usage // my own usage handle
-		flag.Parse()
+		pflag.Usage = Usage // my own usage handle
+		pflag.Parse()
+		if *help {
+			Usage()
+			os.Exit(0)
+		}
 		flagParseAndValidate()
 
 		if *debug {
@@ -391,7 +398,8 @@ func flagParseAndValidate() {
 	var err error
 
 	if len(*httpUrlFlag) == 0 && len(*httpsUrlFlag) == 0 && !*helpAll {
-		checkFatal(fmt.Errorf("One of -http-url or -https-url or -all must be given."))
+		Usage()
+		os.Exit(-1)
 	}
 
 	if len(*httpUrlFlag) > 0 {
@@ -460,7 +468,7 @@ func main() {
 	}
 
 	if *helpAll {
-		flag.Usage()
+		pflag.Usage()
 		os.Exit(0)
 	}
 

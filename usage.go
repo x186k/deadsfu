@@ -1,107 +1,38 @@
 package main
 
 import (
-	"flag"
-	xflag "flag"
+
+	//xflag "flag"
 	"fmt"
-	"io"
 	"os"
-	"reflect"
-	"strings"
+
+	"github.com/spf13/pflag"
 )
 
 // order not important
 //var minmalUsage = []string{"https-url", "http-url", "https-auto", "all"}
 
 var Usage = func() {
-	fmt.Fprintf(xflag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage of %s:\n\n", os.Args[0])
+
+	fmt.Fprintf(os.Stderr, "At a minimum, -s (-https-url) or -p (-http-url) are required\n\n")
+
 	if *helpAll {
-		PrintDefaults(xflag.CommandLine)
+		pflag.PrintDefaults()
 	} else {
-		printFlagUsage("all", os.Stderr)
-		printFlagUsage("https-url", os.Stderr)
-		printFlagUsage("https-auto", os.Stderr)
-		printFlagUsage("http-url", os.Stderr)
+
+		fs := pflag.NewFlagSet("foo", pflag.ExitOnError)
+		fs.SortFlags = false
+		fs.AddFlag(pflag.CommandLine.Lookup("https-url"))
+		fs.AddFlag(pflag.CommandLine.Lookup("https-auto"))
+		fs.AddFlag(pflag.CommandLine.Lookup("http-url"))
+		fs.AddFlag(pflag.CommandLine.ShorthandLookup("a"))
+		fs.PrintDefaults()
+
+		// printFlagUsage("all", os.Stderr)
+		// printFlagUsage("https-url", os.Stderr)
+		// printFlagUsage("https-auto", os.Stderr)
+		// printFlagUsage("http-url", os.Stderr)
 
 	}
-}
-
-func printFlagUsage(name string, writer io.Writer) {
-	flag := flag.Lookup(name)
-	if flag == nil {
-		fmt.Fprintf(writer, "invalid flag name: %s\n", name)
-		return
-	}
-	s := fmt.Sprintf("  -%s", flag.Name) // Two spaces before -; see next two comments.
-	name, usage := xflag.UnquoteUsage(flag)
-	if len(name) > 0 {
-		s += " " + name
-	}
-	// Boolean flags of one ASCII letter are so common we
-	// treat them specially, putting their usage on the same line.
-	if len(s) <= 4 { // space, space, '-', 'x'.
-		s += "\t"
-	} else {
-		// Four spaces before the tab triggers good alignment
-		// for both 4- and 8-space tab stops.
-		s += "\n    \t"
-	}
-	s += strings.ReplaceAll(usage, "\n", "\n    \t")
-
-	if !isZeroValue(flag, flag.DefValue) {
-		getter := flag.Value.(xflag.Getter)
-		if _, ok := getter.Get().(string); ok {
-			// put quotes on the value
-			s += fmt.Sprintf(" (default %q)", flag.DefValue)
-		} else {
-			s += fmt.Sprintf(" (default %v)", flag.DefValue)
-		}
-	}
-	fmt.Fprint(writer, s, "\n")
-}
-
-// func basicFlags(f *xflag.FlagSet) map[string]bool {
-
-// 	m := make(map[string]bool)
-
-// 	for _, v := range minmalUsage {
-// 		if f.Lookup(v) == nil {
-// 			panic(fmt.Errorf("Invalid basic flag name %s", v))
-// 		}
-// 		m[v] = true
-// 	}
-// 	return m
-// }
-
-// PrintDefaults prints, to standard error unless configured otherwise, the
-// default values of all defined command-line flags in the set. See the
-// documentation for the global function PrintDefaults for more information.
-func PrintDefaults(f *xflag.FlagSet) {
-
-	f.VisitAll(func(flag *xflag.Flag) {
-		printFlagUsage(flag.Name, os.Stderr)
-	})
-
-}
-
-// isZeroValue determines whether the string represents the zero
-// value for a flag.
-func isZeroValue(flag *xflag.Flag, value string) bool {
-	// Build a zero value of the flag's Value type, and see if the
-	// result of calling its String method equals the value passed in.
-	// This works unless the Value type is itself an interface type.
-	typ := reflect.TypeOf(flag.Value)
-	var z reflect.Value
-	if typ.Kind() == reflect.Ptr {
-		z = reflect.New(typ.Elem())
-	} else {
-		z = reflect.Zero(typ)
-	}
-	return value == z.Interface().(Value).String()
-}
-
-// Blah
-type Value interface {
-	String() string
-	Set(string) error
 }
