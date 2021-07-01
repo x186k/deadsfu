@@ -212,7 +212,7 @@ func redirectHttpToHttpsHandler(h http.Handler) http.Handler {
 		// }
 
 		// if this is a port 80 http request, can we find an https endpoint to redirect it to?
-		if httpsUrl != nil && isHttp {
+		if httpsUrl.Scheme != "" && isHttp {
 			//if  httpsUrl.Hostname() == reqhost {
 			uri := "https://" + httpsUrl.Host + r.RequestURI
 			log.Println("Redirecting HTTP req to ", uri)
@@ -244,75 +244,6 @@ var Version = "version-unset"
 
 // Docker,systemd have Stdin from null, so there is no explicit prompt for ACME terms.
 // Just like Caddy under Docker and Caddy under Systemd
-var ACMEAgreed = pflag.Bool("acme-agree", true, "You AGREE with the CA's terms. ie, LetsEncrypt.")
-var ACMEEmailFlag = pflag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
-
-var httpUrlFlag = pflag.StringP("http-url", "p", "",
-	`The URL for HTTP connections.
-Examples: http://[::]:8080   http://0.0.0.0     # all ipv6 network interfaces, all ipv4 network interfaces
-Examples: http://192.168.2.1                    # one interface, port 80
-/ path only.
-`)
-var httpsUrlFlag = pflag.StringP("https-url", "s", "",
-	`The URL for HTTPS connections.  Most commonly used flag.
-Usually this is all you need.
-Examples: https://cameron77.ddns5.com:8443  https://foo78.duckdns.org  https://mycloudflaredomain.com
-Domain names only, no IP addresses.
-Use: *.ddns5.com, for free no-signup dynamic DNS. Quickest way to run your SFU.
-Use: *.duckdns.org, for free-signup dynamic DNS. Good alternative to ddns5.com, must set DUCKDNS_TOKEN
-Use: *.mycloudflaredomain.com, for Cloudflare DNS. Must set env var: CLOUDFLARE_TOKEN and -cloudflare flag.
-See -https-interface for advance binding.
-/ path only.`)
-var httpUrl, httpsUrl *url.URL
-
-var httpsInterfaceFlag = pflag.String("https-interface", "",
-	`Specify the interface bind IP address for HTTPS, not for HTTP.
-This is an advanced setting.
-The default should work for most users. 
-A V4 or V6 IP address is okay.
-Do not provide port infomation here, use -https-url for port information.
-Examples: '[::]'  '0.0.0.0' '192.168.2.1'  '10.1.2.3'  '2001:0db8:85a3:0000:0000:8a2e:0370:7334'
-Defaults to [::] (all interfaces)`)
-var interfaceAddress net.IP
-
-//var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
-// NO/reduce complexity.
-//var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
-var httpsAutoFlag = pflag.StringP("https-auto", "x", "local",
-	`One of: 'local', 'public', or 'none'.
-This controls which IP addresses will be auto-detected for HTTPS usage.
-local: Detect my local on-system IP addresses.
-public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
-none: Do not detect IP addresses`)
-
-// reduce complexity, removed
-//var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-auto=public")
-
-//var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
-var htmlFromDiskFlag = pflag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
-var ddnsutilDebug = pflag.Bool("z-ddns-debug", false, "enable ddns debug output")
-var cpuprofile = pflag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
-var debug = pflag.Bool("z-debug", false, "enable debug output")
-
-//var debugCertmagic = flag.Bool("z-debug-certmagic", false, "enable debug output for certmagic and letsencrypt")
-var debugStagingCertificate = pflag.Bool("z-debug-staging", false, "use the LetsEncrypt staging certificate")
-
-// var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
-// var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
-
-// egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
-var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
-var dialIngressURL = pflag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
-
-//var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
-
-var obsStudio = pflag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
-var helpAll = pflag.BoolP("all", "a", false, "Print usage on all flags")
-var help = pflag.BoolP("help", "h", false, "Print usage on the most common flags")
-var cloudflareDDNS = pflag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
-var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
-
-//var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
 // var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 // var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
@@ -359,6 +290,7 @@ func init() {
 
 	istest := strings.HasSuffix(os.Args[0], ".test")
 	if !istest {
+		initFlags()
 		pflag.Usage = Usage // my own usage handle
 		pflag.Parse()
 		if *help {
@@ -392,57 +324,6 @@ func init() {
 	go idleLoopPlayer(p)
 
 	go msgLoop()
-}
-
-func flagParseAndValidate() {
-	var err error
-
-	if len(*httpUrlFlag) == 0 && len(*httpsUrlFlag) == 0 && !*helpAll {
-		Usage()
-		os.Exit(-1)
-	}
-
-	if len(*httpUrlFlag) > 0 {
-		httpUrl, err = url.Parse(*httpUrlFlag)
-		checkFatal(err)
-		if httpUrl.Scheme != "http" {
-			checkFatal(fmt.Errorf("-http-url flag must start with 'http:'"))
-		}
-
-		if httpUrl.Path != "" && httpUrl.Path != "/" {
-			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", httpUrl))
-		}
-	}
-
-	// if net.ParseIP(httpsUrl.Hostname()) != nil {
-	// 	checkFatal(fmt.Errorf("Can ONLY IP addresses for HTTP URLs: %v, please use :: or 0.0.0.0, for all interfaces. ie http://::/", httpsUrl.Hostname()))
-	// }
-
-	if len(*httpsInterfaceFlag) > 0 {
-		interfaceAddress = net.ParseIP(*httpsInterfaceFlag)
-		if interfaceAddress == nil {
-			elog.Fatal("Invalid IP address for -https-interface")
-		}
-	}
-
-	if len(*httpsUrlFlag) > 0 {
-		httpsUrl, err = url.Parse(*httpsUrlFlag)
-		checkFatal(err)
-		if httpsUrl.Scheme != "https" {
-			checkFatal(fmt.Errorf("-https-url flag must start with 'https:'"))
-		}
-		if httpsUrl.Path != "" && httpsUrl.Path != "/" {
-			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", httpsUrl))
-		}
-		if net.ParseIP(httpsUrl.Hostname()) != nil {
-			checkFatal(fmt.Errorf("Cannot use IP addresses for HTTPS urls:%v", httpsUrl.Hostname()))
-		}
-	}
-
-	if *httpsAutoFlag != "local" && *httpsAutoFlag != "public" && *httpsAutoFlag != "none" {
-		elog.Fatal("Invalid value for -https-auto flag")
-	}
-
 }
 
 func silenceLogger(l *log.Logger) {
@@ -500,10 +381,10 @@ func main() {
 	}
 
 	//https first
-	if httpsUrl != nil {
+	if httpsUrl.Scheme != "" {
 		go reportHttpsReadyness()
 
-		ddnsProvider := ddnsDetermineProvider(httpsUrl)
+		ddnsProvider := ddnsDetermineProvider(&httpsUrl)
 
 		switch *httpsAutoFlag {
 		case "local":
@@ -591,7 +472,7 @@ func main() {
 			tlsConfig.MinVersion = 0
 		}
 
-		laddr := *httpsInterfaceFlag + ":" + getPort(httpsUrl)
+		laddr := *httpsInterfaceFlag + ":" + getPort(&httpsUrl)
 		go func() {
 			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
 			checkPanic(err)
@@ -602,7 +483,7 @@ func main() {
 	}
 
 	//http next
-	if httpUrl != nil {
+	if httpUrl.Scheme != "" {
 
 		go func() {
 			// httpLn, err := net.Listen("tcp", laddr)
