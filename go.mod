@@ -1,4 +1,4 @@
-module github.com/x186k/sfu1
+module github.com/x186k/deadsfu
 
 go 1.16
 

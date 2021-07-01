@@ -1,7 +1,7 @@
 core
 .vscode
 workspace.code-workspace
-sfu1
+deadsfu
 embed
 
 # do not track intermediate files used for making idle screens

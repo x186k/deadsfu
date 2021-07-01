@@ -23,7 +23,7 @@ open -a "Google Chrome" --args \
 
 # then 
 # run the sfu
-# go run . -debug -https-hostname foo.sfu1.com -log-packets > moz.log
+# go run . -debug -https-hostname foo.deadsfu.com -log-packets > moz.log
 # egrep '(RTP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 # chop away on rtp.pcap with wireshark
 # using the wireshark display filter: 'h264.seq_parameter_set_id' can be helpful

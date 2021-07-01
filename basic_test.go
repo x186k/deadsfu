@@ -17,9 +17,9 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/x186k/sfu1/rtpstuff"
+	"github.com/x186k/deadsfu/rtpstuff"
 	//this is kinda weird, but works, so we use it.
-	//main "github.com/x186k/sfu1"
+	//main "github.com/x186k/deadsfu"
 )
 
 // func TestMain(m *testing.M) {

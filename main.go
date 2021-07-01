@@ -58,13 +58,13 @@ import (
 	"github.com/pion/webrtc/v3"
 
 	"github.com/x186k/ddns5libdns"
-	"github.com/x186k/sfu1/rtpstuff"
+	"github.com/x186k/deadsfu/rtpstuff"
 )
 
 //go:embed html/*
 var htmlContent embed.FS
 
-//go:embed sfu1-binaries/idle.screen.h264.pcapng
+//go:embed deadsfu-binaries/idle.screen.h264.pcapng
 var idleScreenH264Pcapng []byte
 
 var peerConnectionConfig = webrtc.Configuration{
@@ -445,7 +445,7 @@ func silenceLogger(l *log.Logger) {
 
 func main() {
 	var err error
-	println("sfu1 Version " + Version)
+	println("deadsfu Version " + Version)
 
 	if false {
 		go func() {
@@ -547,7 +547,7 @@ func main() {
 				// since the followed gets called for both obained and found in cache, we use that
 			case "cached_managed_cert":
 				httpsHasCertificate = true
-				elog.Println("sfu1 HTTPS READY: TLS Certificate Acquired")
+				elog.Println("deadsfu HTTPS READY: TLS Certificate Acquired")
 			case "tls_handshake_started":
 				//silent
 			case "tls_handshake_completed":
@@ -2018,7 +2018,7 @@ func reportHttpsReadyness() {
 			continue
 		}
 
-		elog.Printf("sfu1 HTTPS NOT READY: Waited %d seconds.", i)
+		elog.Printf("deadsfu HTTPS NOT READY: Waited %d seconds.", i)
 
 		if usingDNS01ACMEChallenge && i > 30 {
 			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")

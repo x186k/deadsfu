@@ -212,7 +212,7 @@ Big recap of major questions for media/switching engine:
 
 ## 6/18/21 Handing Usage from private-ip only situations
 
-When sfu1 detects the default route/interface only has private IPv4 addresses, this means:
+When deadsfu detects the default route/interface only has private IPv4 addresses, this means:
 - The system is or is not on the Internet, we don't know
 - If it is on the Internet, it will have a public-IP, which is brittle to detect.
 - We also, don't want to detect the public-IP.
@@ -222,8 +222,8 @@ In this situation (only private IPv4 addrs), we want the user to clarify whether
 want the system to be accessed via it's private-ip, or presumable public-ip.
 There is involved steps we could do to detect an open public-ip port, but lets keep it simple for now.
 
-So, we have two flags: '-public: for the DNS hostname, sfu1 will detect and register public IP-addresses'
-and '-private: for the DNS hostname, sfu1 will detect and register the private IP-addresses'
+So, we have two flags: '-public: for the DNS hostname, deadsfu will detect and register public IP-addresses'
+and '-private: for the DNS hostname, deadsfu will detect and register the private IP-addresses'
 
 If the SFU only has private IP then we require the user to indicate whether the hostname should use the private IP or the public IP.
 If the user.indicates public, then we query a service like xxx.aws.com to find their public IP.
@@ -254,7 +254,7 @@ Internet based open port checking is complex:
 - minus: to check port 80, we need to run a server and not conflict with certmagic
 - point: using timers and observing certmagic events, we can report whether a cert has been aquired or not, given the elapsed time. this messaging, while not be certain about port issues, can raise the issue for the end-user
 
-*Decision* We kill the proxy, and the sfu1 proxy code, and take down the socks5 proxy.
+*Decision* We kill the proxy, and the deadsfu proxy code, and take down the socks5 proxy.
 
 ## 6/27/21 More on Open Port Checking and HTTP-Bound and HTTPS-Bound Checking
 
