@@ -17,12 +17,15 @@ require (
 	github.com/pion/sdp/v3 v3.0.4
 	github.com/pion/webrtc/v3 v3.0.21
 	github.com/pkg/profile v1.5.0
+	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	github.com/x186k/ddns5libdns v0.0.0-20210601224053-e288019a9d55
 	go.uber.org/zap v1.17.0
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )
+
+replace github.com/spf13/pflag => ../pflag
 
 // replace github.com/libdns/duckdns => ../duckdns
 //replace github.com/libdns/cloudflare => ../cloudflare
