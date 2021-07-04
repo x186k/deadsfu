@@ -54,7 +54,7 @@ var debugStagingCertificate = pflag.Bool("z-debug-staging", false, "use the Lets
 
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
-var dialIngressURL = pflag.String("dial-ingress", "", "Specify a URL for outbound dial for ingress")
+var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress")
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
