@@ -158,6 +158,8 @@
 
     async function transmit() {
       console.log("--transmit5")
+      document.getElementById("sendbutton").disabled = true
+      document.getElementById("receivebutton").disabled = true
 
 
       try {
@@ -271,6 +273,8 @@
 
     async function receive() {
       console.log("--receive x3")
+      document.getElementById("sendbutton").disabled = true
+      document.getElementById("receivebutton").disabled = true
 
       try {
         const url = suburl + '?txid=' + txid
