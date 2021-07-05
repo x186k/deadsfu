@@ -160,6 +160,7 @@
       console.log("--transmit5")
       document.getElementById("sendbutton").disabled = true
       document.getElementById("receivebutton").disabled = true
+      document.getElementById("video1").removeAttribute("poster")
 
 
       try {
@@ -275,6 +276,7 @@
       console.log("--receive x3")
       document.getElementById("sendbutton").disabled = true
       document.getElementById("receivebutton").disabled = true
+      document.getElementById("video1").removeAttribute("poster")
 
       try {
         const url = suburl + '?txid=' + txid
