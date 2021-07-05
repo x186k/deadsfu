@@ -41,7 +41,7 @@
 
 <body>
 
-  <div class="container">
+  <div class="container text-center">
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
       <div class="container-fluid">
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarTogglerDemo01"
@@ -76,63 +76,58 @@
               DeadSFU
             </span>
           </a>
-  
+
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
             <li class="nav-item">
-              <button type="button" class="mx-1 my-1 btn btn-primary active" aria-current="page">Send</button>
+              <button id="sendbutton" type="button" class="mx-1 my-1 btn btn-primary" onclick="transmit()">Send</button>
             </li>
             <li class="nav-item">
-              <button type="button" class="mx-1 my-1 btn btn-primary">Receive</button>
+              <button id="receivebutton" type="button" class="mx-1 my-1 btn btn-primary"
+                onclick="receive()">Receive</button>
             </li>
-  
+
             <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle xdisabled my-1" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-disabled="true" aria-expanded="false">
+              <a class="nav-link dropdown-toggle xdisabled my-1" href="#" id="navbarDropdown" role="button"
+                data-bs-toggle="dropdown" aria-disabled="true" aria-expanded="false">
                 Channel
               </a>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <li><a class="dropdown-item" href="#">Action</a></li>
                 <li><a class="dropdown-item" href="#">Another action</a></li>
-                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <hr class="dropdown-divider">
+                </li>
                 <li><a class="dropdown-item" href="#">Something else here</a></li>
               </ul>
             </li>
           </ul>
-  
+
           <form class="d-flex">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-  
+
               <span id="rxtx" class="navbar-text me-2"> 0/0 rx/tx kbps </span>
-  
+
               <span id="xstate" class="navbar-text">disconnected</span>
-  
+
               <li class="nav-item">
                 <a class="nav-link" style="color: #0053fa;" href="#" tabindex="-1" aria-disabled="true">Help</a>
               </li>
-  
+
             </ul>
           </form>
         </div>
       </div>
     </nav>
 
+    <br />
 
+    <!-- removing muted means Safari (maybe others will be black/worn autoplay) -->
+    <!-- you should keep muted attribute present-->
+    <!-- controls helps user turn on audio -->
 
-  <br />
-
-
-
-
-
-    <figure class="image is-16by9 text-center">
-      <!-- removing muted means Safari (maybe others will be black/worn autoplay) -->
-      <!-- you should keep muted attribute present-->
-      <!-- controls helps user turn on audio -->
-
-      <video id="video1" autoplay controls muted class="has-ratio" width="1024" frameborder="2" poster="cam.svg"
-        allowfullscreen style="background-color: #0053fa;">
-      </video>
-    </figure>
-
+    <video id="video1" class="" autoplay controls muted width="1024" frameborder="2" poster="cam.svg" allowfullscreen
+      style="background-color: #0053fa;">
+    </video>
   </div>
 
 
