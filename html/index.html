@@ -170,9 +170,9 @@
     }
 
 
-    async function level(ll) {
-      const url = suburl + '?txid=' + txid + '&level=' + ll
-      console.debug('before level fetch')
+    async function channel(ll) {
+      const url = suburl + '?txid=' + txid + '&channel=' + ll
+      console.debug('before channel fetch')
       fetch(url)
     }
 
