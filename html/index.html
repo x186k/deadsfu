@@ -87,17 +87,31 @@
             </li>
 
             <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle xdisabled my-1" href="#" id="navbarDropdown" role="button"
-                data-bs-toggle="dropdown" aria-disabled="true" aria-expanded="false">
+              <!-- <a id="channeldrop" class="disabled nav-link dropdown-toggle my-1" href="#" id="navbarDropdown"
+                role="button" data-bs-toggle="dropdown" aria-expanded="false">
                 Channel
-              </a>
+              </a> -->
+              <button id="channeldrop" class="disabled btn btn-secondary dropdown-toggle my-1" type="button"
+                id="navbarDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                Channel
+              </button>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                <li><a class="dropdown-item" href="#">Action</a></li>
-                <li><a class="dropdown-item" href="#">Another action</a></li>
-                <li>
+                <li><a class="dropdown-item" onclick="channel('video0')">Channel 0</a></li>
+                <li><a class="dropdown-item" onclick="channel('video1')">Channel 1</a></li>
+                <li><a class="dropdown-item" onclick="channel('video2')">Channel 2</a></li>
+                <li><a class="dropdown-item" onclick="channel('video3')">Channel 3</a></li>
+                <li><a class="dropdown-item" onclick="channel('video4')">Channel 4</a></li>
+                <li><a class="dropdown-item" onclick="channel('video5')">Channel 5</a></li>
+                <li><a class="dropdown-item" onclick="channel('video6')">Channel 6</a></li>
+                <li><a class="dropdown-item" onclick="channel('video7')">Channel 7</a></li>
+                <li><a class="dropdown-item" onclick="channel('video8')">Channel 8</a></li>
+                <li><a class="dropdown-item" onclick="channel('video9')">Channel 9</a></li>
+
+
+                <!-- <li>
                   <hr class="dropdown-divider">
                 </li>
-                <li><a class="dropdown-item" href="#">Something else here</a></li>
+                <li><a class="dropdown-item" href="#">Something else here</a></li> -->
               </ul>
             </li>
           </ul>
@@ -284,6 +298,9 @@
       document.getElementById("sendbutton").disabled = true
       document.getElementById("receivebutton").disabled = true
       document.getElementById("video1").removeAttribute("poster")
+      //document.getElementById("channeldrop").disabled = false
+      //document.getElementById("channeldrop").removeAttribute('disabled')
+      document.getElementById("channeldrop").classList.remove("disabled");
 
       try {
         const url = suburl + '?txid=' + txid
