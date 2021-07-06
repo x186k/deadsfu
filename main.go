@@ -846,7 +846,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	_, foundTxid := txidMap[txid]
 	txidMapMutex.Unlock()
 
-	rid := httpreq.URL.Query().Get("level")
+	rid := httpreq.URL.Query().Get("channel")
 	//issfu := httpreq.URL.Query().Get("issfu") != ""
 
 	if rid != "" {
@@ -888,7 +888,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	}
 
 	if httpreq.Header.Get("Content-Type") != "application/sdp" {
-		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /sub when not ?level=..."))
+		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /sub when not ?channel=..."))
 		return
 	}
 
