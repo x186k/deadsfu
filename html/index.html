@@ -173,7 +173,7 @@
       let resptext = await resp.text()
       if (resp.status != 202) {
         let m = `Channel change fail: ${resptext} ${resp.status}`
-        document.getElementById('errortext').textContent = m
+        //document.getElementById('errortext').textContent = m
         alert(m)
       }
     }
@@ -282,7 +282,7 @@
 
       } catch (error) {
         console.error('Send Error:', error)
-        document.getElementById('errortext').textContent = error
+        //document.getElementById('errortext').textContent = error
         alert(error)
       }
     }
@@ -378,7 +378,7 @@
 
       } catch (error) {
         console.error('Receive Error:', error)
-        document.getElementById('errortext').textContent = error
+        //document.getElementById('errortext').textContent = error
         alert(error)
       }
     }
