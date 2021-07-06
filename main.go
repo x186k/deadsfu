@@ -105,6 +105,7 @@ var (
 	ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 	txidMap          = make(map[uint64]struct{})       // no concurrent
 	txidMapMutex     sync.Mutex
+	maxVidChans      int32 = int32(XVideo)
 )
 
 var ticker = time.NewTicker(100 * time.Millisecond)
@@ -428,6 +429,7 @@ func main() {
 		}
 		magic := certmagic.NewDefault()
 		magic.OnEvent = func(s string, i interface{}) {
+			_ = i
 			switch s {
 			// called at time of challenge passing
 			case "cert_obtained":
@@ -866,6 +868,11 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 		if _, ok := rxid2state[trackid]; !ok {
 			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. rid=%v not found", rid))
 			return
+		}
+
+		nn := atomic.LoadInt32(&maxVidChans)
+		if int32(trackid) > nn {
+			teeErrorStderrHttp(w, fmt.Errorf("channel %d not available", trackid-XVideo))
 		}
 
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
@@ -1370,6 +1377,11 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	rxid, err := parseTrackid(trackname)
 	checkPanic(err)
 
+	nn := atomic.LoadInt32(&maxVidChans)
+	if nn < int32(rxid) {
+		atomic.CompareAndSwapInt32(&maxVidChans, nn, int32(rxid))
+	}
+
 	s, ok := rxid2state[rxid]
 	if !ok {
 		elog.Printf("invalid track name: %s, will not read/forward track", trackname)
@@ -1728,6 +1740,7 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
 			ingressSemaphore.Release(1)
+			maxVidChans = int32(XVideo)
 		}
 	})
 }
