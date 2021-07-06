@@ -438,7 +438,7 @@ func main() {
 				// since the followed gets called for both obained and found in cache, we use that
 			case "cached_managed_cert":
 				httpsHasCertificate = true
-				elog.Println("deadsfu HTTPS READY: TLS Certificate Acquired")
+				elog.Println("deadsfu HTTPS READY: HTTPS Certificate Acquired")
 			case "tls_handshake_started":
 				//silent
 			case "tls_handshake_completed":
