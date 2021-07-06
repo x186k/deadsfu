@@ -134,7 +134,7 @@
     </nav>
 
 
-    <div>
+    <div class="text-center">
       <span style="color:darkred" id="errortext">&nbsp;</span>
     </div>
 
@@ -195,7 +195,7 @@
         let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
         pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
         const xstate = document.getElementById('xstate')
-        pc.onconnectionstatechange = e => xstate.innerText = pc.connectionState
+        pc.onconnectionstatechange = e => xstate.textContent = pc.connectionState
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
 
@@ -266,20 +266,22 @@
         let resp = await fetch(puburl, fetchopt)
         let resptext = await resp.text()
         if (resp.status != 202) {
-          console.error('sfu http error', resp.status, resptext)
-          pc.close()
-          return
+          throw `SFU error: ${resptext} ${resp.status}`
+          // pc.close()
+          // return
         }
         console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
 
         while (true) {
-          document.getElementById('rxtx').innerText = await getRxTxRate(pc)
+          document.getElementById('rxtx').textContent = await getRxTxRate(pc)
           await new Promise(r => setTimeout(r, 3000))
         }
 
       } catch (error) {
-        console.error('pub error', error)
+        console.error('Send Error:', error)
+        document.getElementById('errortext').textContent = error
+        alert(error)
       }
     }
 
@@ -308,7 +310,7 @@
         let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
         pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
         const xstate = document.getElementById('xstate')
-        pc.onconnectionstatechange = e => xstate.innerText = pc.connectionState
+        pc.onconnectionstatechange = e => xstate.textContent = pc.connectionState
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
         //must have addtransceiver to get m=video in sdp
@@ -341,9 +343,9 @@
         let resp = await fetch(url, fetchopt)
         let resptext = await resp.text()
         if (resp.status != 202) {
-          console.error('sfu http error', resp.status, resptext)
-          pc.close()
-          return
+          throw `SFU error: ${resptext} ${resp.status}`
+          // pc.close()
+          // return
         }
         console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
 
@@ -367,14 +369,15 @@
         // pc.addTransceiver('video', { 'direction': 'recvonly' })
 
         while (true) {
-          document.getElementById('rxtx').innerText = await getRxTxRate(pc)
+          document.getElementById('rxtx').textContent = await getRxTxRate(pc)
           await new Promise(r => setTimeout(r, 3000))
         }
 
 
       } catch (error) {
-        console.error('Error:', error)
-        alert('Error:' + error)
+        console.error('Receive Error:', error)
+        document.getElementById('errortext').textContent = error
+        alert(error)
       }
     }
 
