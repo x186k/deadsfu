@@ -34,9 +34,9 @@ const ddnsPublicFlagName = "ddns-public"
 var ddnsPublicFlag = pflag.BoolP(ddnsPublicFlagName, "k", false,
 	`Which IP to use for dynamic DNS reg. 'false': use local IP address. 'true': use Public/NATTED IP address.`)
 
-const ddnsRegisterEnabledName = "ddns-register-enabled"
+const ddnsRegisterName = "ddns-register"
 
-var ddnsRegisterEnabled = pflag.BoolP(ddnsRegisterEnabledName, "f", true,
+var ddnsRegisterEnabled = pflag.BoolP(ddnsRegisterName, "f", true,
 	`Enable Dynamic DNS registration for HTTPS hostnames.
 When true:
 1) IPv4/IPv6 addresses will be detected.
@@ -178,8 +178,8 @@ var Usage = func() {
 		fs := pflag.NewFlagSet("foo", pflag.ExitOnError)
 		fs.SortFlags = false
 		fs.AddFlag(pflag.CommandLine.Lookup("https-url"))
-		fs.AddFlag(pflag.CommandLine.Lookup("ddns-public"))
-		fs.AddFlag(pflag.CommandLine.Lookup("ddns-register-enabled"))
+		fs.AddFlag(pflag.CommandLine.Lookup(ddnsPublicFlagName))
+		fs.AddFlag(pflag.CommandLine.Lookup(ddnsRegisterName))
 		fs.AddFlag(pflag.CommandLine.Lookup("http-url"))
 		fs.AddFlag(pflag.CommandLine.ShorthandLookup("a"))
 		fs.PrintDefaults()
