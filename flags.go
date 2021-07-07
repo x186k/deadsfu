@@ -17,7 +17,9 @@ var ACMEEmailFlag = pflag.String("acme-email", "", "This is the email to provide
 var httpUrl = url.URL{}
 var httpsUrl = url.URL{}
 
-var httpsInterfaceFlag = pflag.String("https-interface", "",
+const httpsInterfaceFlagname = "https-interface"
+
+var httpsInterfaceFlag = pflag.String(httpsInterfaceFlagname, "",
 	`Specify the interface bind IP address for HTTPS, not for HTTP.
 This is an advanced setting.
 The default should work for most users. 
@@ -27,18 +29,25 @@ Examples: '[::]'  '0.0.0.0' '192.168.2.1'  '10.1.2.3'  '2001:0db8:85a3:0000:0000
 Defaults to [::] (all interfaces)`)
 var interfaceAddress net.IP
 
-//var httpsCaddyFlag = flag.Bool("https-caddy", true, "Aquire HTTPS certificates auto-magically using Caddy and Letsencrypt")
-// NO/reduce complexity.
-//var httpsDDNSFlag = flag.Bool("https-ddns", true, "Register HTTPS IP addresses using DDNS")
-var httpsAutoFlag = pflag.StringP("https-auto", "x", "local",
-	`One of: 'local', 'public', or 'none'.
-This controls which IP addresses will be auto-detected for HTTPS usage.
-local: Detect my local on-system IP addresses.
-public: Detect my public (natted or local) Internet IP addresses (TCP to Internet)
-none: Do not detect IP addresses`)
+const ddnsPublicFlagName = "ddns-public"
+
+var ddnsPublicFlag = pflag.BoolP(ddnsPublicFlagName, "k", false,
+	`Which IP to use for dynamic DNS reg. 'false': use local IP address. 'true': use Public/NATTED IP address.`)
+
+const ddnsRegisterEnabledName = "ddns-register-enabled"
+
+var ddnsRegisterEnabled = pflag.BoolP(ddnsRegisterEnabledName, "f", true,
+	`Enable Dynamic DNS registration for HTTPS hostnames.
+When true:
+1) IPv4/IPv6 addresses will be detected.
+2) They will be registered for the given HTTPS hostname.
+For Duckdns, the hostname must be already created on the Web.
+For Cloudflare, ddns5, the hostname will be created if possible. (Flag -cloudflare may be needed)
+When false:
+You need to have configured DNS and your IPv4/IPv6 (A/AAAA) addrs yourself`)
 
 // reduce complexity, removed
-//var httpsOpenPortsFlag = flag.Bool("https-open-ports", true, "Use Stun5 Proxy server to show if my HTTPS ports are open.\nOnly when -https-auto=public")
+//var httpsOpenPortsFlag =
 
 //var silenceJanus = flag.Bool("silence-janus", false, "if true will throw away janus output")
 var htmlFromDiskFlag = pflag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
@@ -155,11 +164,6 @@ func flagParseAndValidate() {
 			checkFatal(fmt.Errorf("Cannot use IP addresses for HTTPS urls:%v", httpsUrl.Hostname()))
 		}
 	}
-
-	if *httpsAutoFlag != "local" && *httpsAutoFlag != "public" && *httpsAutoFlag != "none" {
-		elog.Fatal("Invalid value for -https-auto flag")
-	}
-
 }
 
 var Usage = func() {
@@ -174,7 +178,8 @@ var Usage = func() {
 		fs := pflag.NewFlagSet("foo", pflag.ExitOnError)
 		fs.SortFlags = false
 		fs.AddFlag(pflag.CommandLine.Lookup("https-url"))
-		fs.AddFlag(pflag.CommandLine.Lookup("https-auto"))
+		fs.AddFlag(pflag.CommandLine.Lookup("ddns-public"))
+		fs.AddFlag(pflag.CommandLine.Lookup("ddns-register-enabled"))
 		fs.AddFlag(pflag.CommandLine.Lookup("http-url"))
 		fs.AddFlag(pflag.CommandLine.ShorthandLookup("a"))
 		fs.PrintDefaults()

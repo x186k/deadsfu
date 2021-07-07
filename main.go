@@ -387,30 +387,44 @@ func main() {
 
 		ddnsProvider := ddnsDetermineProvider(&httpsUrl)
 
-		switch *httpsAutoFlag {
-		case "local":
-			addrs, err := getLocalIPAddresses()
-			checkFatal(err)
+		if *ddnsRegisterEnabled {
+			var addrs []net.IP
+
+			if len(*httpsInterfaceFlag) > 0 {
+				addr := net.ParseIP(*httpsInterfaceFlag)
+				if addr == nil {
+					elog.Fatalf("-%s is not valid a IP address", httpsInterfaceFlagname)
+				}
+				addrs = []net.IP{addr}
+			} else {
+				if *ddnsPublicFlag {
+					if *httpsInterfaceFlag != "" {
+						checkFatal(fmt.Errorf("Cannot combine -%s and -%s.", ddnsPublicFlagName, httpsInterfaceFlagname))
+					}
+					myipv4 := getMyPublicIpV4()
+					if myipv4 == nil {
+						checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
+					}
+					addrs = []net.IP{myipv4}
+
+					// NO LONGER DO ANY PORT OPENNESS CHECKING
+					// See the diary on why we gave up on the port 80/443 ACME challenges
+				} else {
+
+					addrs = getDefaultRouteInterfaceAddresses()
+					if len(addrs) == 0 {
+						checkFatal(fmt.Errorf("Cannot auto-detect any IP addresses on this system"))
+					}
+
+					checkFatal(err)
+				}
+			}
+
 			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, addrs)
 			ddnsEnableDNS01Challenge(ddnsProvider)
 
-		case "public":
-			if *httpsInterfaceFlag != "" {
-				checkFatal(fmt.Errorf("Cannot combine -https-auto=public -https-interface."))
-			}
-			myipv4 := getMyPublicIpV4()
-			if myipv4 == nil {
-				checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
-			}
-			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, []net.IP{myipv4})
-			ddnsEnableDNS01Challenge(ddnsProvider)
-
-			// NO LONGER DO ANY PORT OPENNESS CHECKING
-			// See the diary on why we gave up on the port 80/443 ACME challenges
-		case "none":
+		} else {
 			elog.Printf("Registering NO DNS hosts.")
-		default:
-			checkFatal(fmt.Errorf("Invalid value for -https-auto: %s", *httpsAutoFlag))
 		}
 
 		var tlsConfig *tls.Config = nil
@@ -521,21 +535,6 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
-}
-
-func getLocalIPAddresses() ([]net.IP, error) {
-	if len(*httpsInterfaceFlag) > 0 {
-		addr := net.ParseIP(*httpsInterfaceFlag)
-		if addr == nil {
-			elog.Fatal("-http-interface is not valid a IP address")
-		}
-		return []net.IP{addr}, nil
-	}
-	z := getDefaultRouteInterfaceAddresses()
-	if z == nil {
-		return nil, errors.New("Cannot auto-detect any IP addresses on this system")
-	}
-	return z, nil
 }
 
 func routableMessage(ip net.IP) string {
