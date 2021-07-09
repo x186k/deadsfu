@@ -491,8 +491,9 @@ func main() {
 		laddr := *httpsInterfaceFlag + ":" + getPort(&httpsUrl)
 		go func() {
 			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
-			checkPanic(err)
-			panic(http.Serve(httpsLn, mux))
+			checkFatal(err)
+			err = http.Serve(httpsLn, mux)
+			checkFatal(err)
 		}()
 		//elog.Printf("%v IS READY", httpsUrl.String())
 
