@@ -38,7 +38,7 @@ func randIPv6() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	ipRaw := make([]byte, 16)
 	_, err := r.Read(ipRaw)
-	checkPanic(err)
+	checkFatal(err)
 	ipRaw[0] = 0x00 // testing zero fill
 	randipaddr := net.IP(ipRaw).String()
 

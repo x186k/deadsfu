@@ -64,7 +64,7 @@ func TestPubSub(t *testing.T) {
 	pkthash[calccrc(fake)] = 2
 
 	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
-	checkPanic(err)
+	checkFatal(err)
 	for _, v := range p {
 		crc := calccrc(v.Raw)
 		//println(88,)
@@ -76,7 +76,7 @@ func TestPubSub(t *testing.T) {
 	//initStateAndGoroutines()
 
 	pc, err := webrtc.NewPeerConnection(rtcconf)
-	checkPanic(err)
+	checkFatal(err)
 
 	var numvid int32 = 0
 
@@ -91,7 +91,7 @@ func TestPubSub(t *testing.T) {
 			if err == io.EOF {
 				return
 			}
-			checkPanic(err)
+			checkFatal(err)
 
 			_ = fmt.Print
 			_ = p
@@ -106,29 +106,29 @@ func TestPubSub(t *testing.T) {
 	ro := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
 	_, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, ro)
-	checkPanic(err)
+	checkFatal(err)
 	_, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, ro)
-	checkPanic(err)
+	checkFatal(err)
 
 	//vt, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/h264"}, "video", "pion")
-	//checkPanic(err)
+	//checkFatal(err)
 
 	// track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
-	// checkPanic(err)
+	// checkFatal(err)
 	// rtpSender, err := pc.AddTrack(vt)
-	// checkPanic(err)
+	// checkFatal(err)
 	// go processRTCP(rtpSender)
 
 	pc.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) { println("ICEConnection", s.String()) })
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) { println("Connection", s.String()) })
 
 	offer, err := pc.CreateOffer(nil)
-	checkPanic(err)
+	checkFatal(err)
 
 	//logSdpReport("dialupstream-offer", offer)
 	gatherComplete := webrtc.GatheringCompletePromise(pc)
 	err = pc.SetLocalDescription(offer) //start ICE
-	checkPanic(err)
+	checkFatal(err)
 	<-gatherComplete
 
 	req := httptest.NewRequest("POST", "http://ignored.com/sub", strings.NewReader(offer.SDP))
@@ -142,7 +142,7 @@ func TestPubSub(t *testing.T) {
 	ans := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
 	assert.True(t, ValidateSDP(ans))
 	err = pc.SetRemoteDescription(ans)
-	checkPanic(err)
+	checkFatal(err)
 
 	//t.FailNow()
 	time.Sleep(time.Second * 2)
@@ -174,22 +174,22 @@ var video1 *webrtc.TrackLocalStaticSample
 func startMultiTrackPublisher(t *testing.T) {
 
 	pc, err := webrtc.NewPeerConnection(rtcconf)
-	checkPanic(err)
+	checkFatal(err)
 
 	// so := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendrecv}
 	// // create transceivers for 1x audio, 3x video
 	// _, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, so)
-	// checkPanic(err)
+	// checkFatal(err)
 	// _, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, so)
-	// checkPanic(err)
+	// checkFatal(err)
 
 	video1, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/h264", SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"}, "1", "1")
-	checkPanic(err)
+	checkFatal(err)
 
 	//println(88,)
 
 	rtpSender, err := pc.AddTrack(video1)
-	checkPanic(err)
+	checkFatal(err)
 	go processRTCP(rtpSender)
 
 	go func() {
@@ -200,12 +200,12 @@ func startMultiTrackPublisher(t *testing.T) {
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) { println("pub-Connection", s.String()) })
 
 	offer, err := pc.CreateOffer(nil)
-	checkPanic(err)
+	checkFatal(err)
 
 	//logSdpReport("dialupstream-offer", offer)
 	gatherComplete := webrtc.GatheringCompletePromise(pc)
 	err = pc.SetLocalDescription(offer) //start ICE
-	checkPanic(err)
+	checkFatal(err)
 	<-gatherComplete
 
 	req := httptest.NewRequest("POST", "http://ignored.com/pub", strings.NewReader(offer.SDP))
@@ -219,7 +219,7 @@ func startMultiTrackPublisher(t *testing.T) {
 	ans := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
 	assert.True(t, ValidateSDP(ans))
 	err = pc.SetRemoteDescription(ans)
-	checkPanic(err)
+	checkFatal(err)
 
 	// go func() {
 	// 	tk := time.NewTicker(time.Second / 2)

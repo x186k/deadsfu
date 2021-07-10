@@ -10,13 +10,6 @@ import (
 	"github.com/pion/rtp"
 )
 
-
-func checkPanic(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
 // IsH264Keyframe detects when an RFC6184 payload contains an H264 SPS (8)
 // most encoders will follow this with an PPS (7), and maybe SEI
 // this code has evolved from:
@@ -96,7 +89,9 @@ func ReadPcap2RTP(reader io.Reader) ([]rtp.Packet, []time.Time, error) {
 	var timestamps []time.Time
 
 	r, err := pcapgo.NewNgReader(reader, pcapgo.DefaultNgReaderOptions)
-	checkPanic(err)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for {
 		data, capinfo, err := r.ReadPacketData()
@@ -119,7 +114,9 @@ func ReadPcap2RTP(reader io.Reader) ([]rtp.Packet, []time.Time, error) {
 
 		var p rtp.Packet
 		err = p.Unmarshal(udp.Payload)
-		checkPanic(err)
+		if err != nil {
+			return nil, nil, err
+		}
 
 		pkts = append(pkts, p)
 		timestamps = append(timestamps, capinfo.Timestamp)

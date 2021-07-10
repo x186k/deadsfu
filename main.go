@@ -249,7 +249,7 @@ var Version = "version-unset"
 // var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
 // var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
-// This should allow us to use checkFatal() more, and checkPanic() less
+// This should allow us to use checkFatal() more, and checkFatal() less
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
 var ddnslog = log.New(os.Stderr, "X ", log.Lmicroseconds|log.LUTC)
 
@@ -275,7 +275,7 @@ func logGoroutineCountToDebugLog() {
 func init() {
 
 	// dir, err := content.ReadDir(".")
-	// checkPanic(err)
+	// checkFatal(err)
 	// for k, v := range dir {
 	// 	println(88, k, v.Name())
 	// }
@@ -320,7 +320,7 @@ func init() {
 
 	log.Printf("idleScreenH264Pcapng len=%d md5=%x", len(idleScreenH264Pcapng), md5.Sum(idleScreenH264Pcapng))
 	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
-	checkPanic(err)
+	checkFatal(err)
 
 	go idleLoopPlayer(p)
 
@@ -370,7 +370,7 @@ func main() {
 			f = os.DirFS("html")
 		} else {
 			f, err = fs.Sub(htmlContent, "html")
-			checkPanic(err)
+			checkFatal(err)
 		}
 
 		mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(f))))
@@ -517,7 +517,7 @@ func main() {
 		go func() {
 			for {
 				err = ingressSemaphore.Acquire(context.Background(), 1)
-				checkPanic(err)
+				checkFatal(err)
 				log.Println("dial: got sema, dialing upstream")
 				dialUpstream(*dialIngressURL)
 			}
@@ -728,15 +728,15 @@ func newPeerConnection() *webrtc.PeerConnection {
 	//if *videoCodec == "h264" {
 	if true {
 		err := RegisterH264AndOpusCodecs(m)
-		checkPanic(err)
+		checkFatal(err)
 	} else {
 		log.Fatalln("only h.264 supported")
 		// err := m.RegisterDefaultCodecs()
-		// checkPanic(err)
+		// checkFatal(err)
 	}
 
 	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
-	checkPanic(err)
+	checkFatal(err)
 
 	return peerConnection
 }
@@ -799,7 +799,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/sdp")
 	w.WriteHeader(http.StatusAccepted)
 	_, err = w.Write([]byte(answersd.SDP))
-	checkPanic(err) // cam/if this write fails, then fail hard!
+	checkFatal(err) // cam/if this write fails, then fail hard!
 
 	//NOTE, Do NOT ever use http.error to return SDPs
 }
@@ -817,7 +817,7 @@ func numVideoMediaDesc(sdpsd *sdp.SessionDescription) (n int) {
 }
 
 // sfu egress setup
-// 041521 Decided checkPanic() is the correct way to handle errors in this func.
+// 041521 Decided checkFatal() is the correct way to handle errors in this func.
 func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	defer httpreq.Body.Close()
 	var err error
@@ -957,12 +957,12 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	logSdpReport("publisher", offer)
 
 	err = peerConnection.SetRemoteDescription(offer)
-	checkPanic(err)
+	checkFatal(err)
 
 	logTransceivers("offer-added", peerConnection)
 
 	sdsdp, err := offer.Unmarshal()
-	checkPanic(err)
+	checkFatal(err)
 
 	/* logic
 	when browser subscribes, we always give it one video track
@@ -982,9 +982,9 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	log.Println("videoTrackCount", videoTrackCount)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
-	checkPanic(err)
+	checkFatal(err)
 	rtpSender, err := peerConnection.AddTrack(track)
-	checkPanic(err)
+	checkFatal(err)
 	go processRTCP(rtpSender)
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
@@ -1000,9 +1000,9 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	for i := 0; i < videoTrackCount; i++ {
 		name := fmt.Sprintf("video%d", i)
 		track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, name, mediaStreamId)
-		checkPanic(err)
+		checkFatal(err)
 		rtpSender, err := peerConnection.AddTrack(track)
-		checkPanic(err)
+		checkFatal(err)
 		go processRTCP(rtpSender)
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
@@ -1020,14 +1020,14 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	// Create answer
 	sessdesc, err := peerConnection.CreateAnswer(nil)
-	checkPanic(err)
+	checkFatal(err)
 
 	// Create channel that is blocked until ICE Gathering is complete
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	err = peerConnection.SetLocalDescription(sessdesc)
-	checkPanic(err)
+	checkFatal(err)
 
 	t0 := time.Now()
 	// Block until ICE Gathering is complete, disabling trickle ICE
@@ -1097,7 +1097,7 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 func randomHex(n int) string {
 	bytes := make([]byte, n)
 	_, err := rand.Read(bytes)
-	checkPanic(err)
+	checkFatal(err)
 	return hex.EncodeToString(bytes)
 }
 
@@ -1161,24 +1161,24 @@ func dialUpstream(baseurl string) {
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
 	_, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
-	checkPanic(err)
+	checkFatal(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
-	checkPanic(err)
+	checkFatal(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
-	checkPanic(err)
+	checkFatal(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
-	checkPanic(err)
+	checkFatal(err)
 
 	// Create an offer to send to the other process
 	offer, err := peerConnection.CreateOffer(nil)
-	checkPanic(err)
+	checkFatal(err)
 
 	logSdpReport("dialupstream-offer", offer)
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	// Note: this will start the gathering of ICE candidates
 	err = peerConnection.SetLocalDescription(offer)
-	checkPanic(err)
+	checkFatal(err)
 
 	setupIngressStateHandler(peerConnection)
 
@@ -1200,19 +1200,19 @@ tryagain:
 		}
 		goto tryagain
 	}
-	checkPanic(err)
+	checkFatal(err)
 	defer resp.Body.Close()
 
 	log.Println("dial connected")
 
 	answerraw, err := ioutil.ReadAll(resp.Body)
-	checkPanic(err) //cam
+	checkFatal(err) //cam
 
 	anssd := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
 	logSdpReport("dial-answer", anssd)
 
 	err = peerConnection.SetRemoteDescription(anssd)
-	checkPanic(err)
+	checkFatal(err)
 
 }
 
@@ -1283,7 +1283,7 @@ func logPacket(log *log.Logger, packet *rtp.Packet) {
 
 // 	source := []uint64{1, uint64(ssrc), uint64(src)}
 // 	err := binary.Write(buf, binary.LittleEndian, source)
-// 	checkPanic(err)
+// 	checkFatal(err)
 
 // 	text2pcapLog(log, buf.Bytes())
 // }
@@ -1362,20 +1362,20 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 			if err == io.ErrClosedPipe {
 				return
 			}
-			checkPanic(err)
+			checkFatal(err)
 
 			err = sendREMB(peerConnection, track)
 			if err == io.ErrClosedPipe {
 				return
 			}
-			checkPanic(err)
+			checkFatal(err)
 
 			time.Sleep(3 * time.Second)
 		}
 	}()
 
 	rxid, err := parseTrackid(trackname)
-	checkPanic(err)
+	checkFatal(err)
 
 	nn := atomic.LoadInt32(&maxVidChans)
 	if nn < int32(rxid) {
@@ -1434,7 +1434,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidstate *RxidState, clock
 		if err == io.EOF {
 			return
 		}
-		checkPanic(err)
+		checkFatal(err)
 
 		rxMediaCh <- MsgRxPacket{rxidstate: rxidstate, packet: p, rxClockRate: clockrate}
 	}
@@ -1669,7 +1669,7 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	// Set the remote SessionDescription
 
 	//	ofrsd, err := rtcsd.Unmarshal()
-	//	checkPanic(err)
+	//	checkFatal(err)
 
 	// Create a new RTCPeerConnection
 	peerConnection := newPeerConnection()
@@ -1702,18 +1702,18 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	logSdpReport("publisher", offer)
 
 	err = peerConnection.SetRemoteDescription(offer)
-	checkPanic(err)
+	checkFatal(err)
 
 	// Create answer
 	sessdesc, err := peerConnection.CreateAnswer(nil)
-	checkPanic(err)
+	checkFatal(err)
 
 	// Create channel that is blocked until ICE Gathering is complete
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	err = peerConnection.SetLocalDescription(sessdesc)
-	checkPanic(err)
+	checkFatal(err)
 
 	// Block until ICE Gathering is complete, disabling trickle ICE
 	// we do this because we only can exchange one signaling message
