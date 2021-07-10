@@ -15,11 +15,17 @@ import (
 // if my proxy is running, then this can provide useful information
 // about when trying to run a public server
 // if the proxy appears gone, this function will stay silent, and return proxyOK=false
+// pass nil to use default proxy
 func canConnectThroughProxy(proxyaddr string, server string) (proxyOK bool, portOpen bool) {
 	const (
 		baseDialerTimeout  = 3 * time.Second
 		proxyDialerTimeout = 3 * time.Second
+		SOCKS5PROXY        = "deadsfu.com:60000"
 	)
+
+	if proxyaddr == "" {
+		proxyaddr = SOCKS5PROXY
+	}
 
 	baseDialer := &net.Dialer{
 		Timeout: baseDialerTimeout,
