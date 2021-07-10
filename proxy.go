@@ -1,0 +1,68 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net"
+	"strings"
+	"time"
+
+	"golang.org/x/net/proxy"
+)
+
+// canConnectThroughProxy will attempt to use a socks5 proxy to see if
+// my ports are open from the Internet.
+// if my proxy is running, then this can provide useful information
+// about when trying to run a public server
+// if the proxy appears gone, this function will stay silent, and return proxyOK=false
+func canConnectThroughProxy(proxyaddr string, server string) (proxyOK bool, portOpen bool) {
+	const (
+		baseDialerTimeout  = 3 * time.Second
+		proxyDialerTimeout = 3 * time.Second
+	)
+
+	baseDialer := &net.Dialer{
+		Timeout: baseDialerTimeout,
+		//Deadline: time.Time{},
+		//FallbackDelay: -1,
+	}
+	dialer, err := proxy.SOCKS5("tcp", proxyaddr, nil, baseDialer)
+	if err != nil {
+		return
+	}
+
+	contextDialer, ok := dialer.(proxy.ContextDialer)
+	if !ok {
+		log.Println("cannot deref dialer")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), proxyDialerTimeout)
+	_ = cancel
+	conn, err := contextDialer.DialContext(ctx, "tcp", server)
+	if err != nil {
+		println(888, err.Error())
+		readtcp := strings.Contains(err.Error(), " read tcp ")
+		dialtcp := strings.Contains(err.Error(), " dial tcp ")
+		iotimeout := strings.Contains(err.Error(), "i/o timeout")
+
+		if iotimeout && readtcp {
+			proxyOK = true
+			portOpen = false
+		} else if iotimeout && dialtcp {
+			proxyOK = false
+			portOpen = false
+		}
+		// sometime else is going on, but we are going to stay silent
+		// the user isn't going to know what to do
+
+		return
+	}
+	conn.Close()
+
+	// if we got here, I got through the proxy and connected to myself
+
+	proxyOK = true
+	portOpen = true
+	return
+}
