@@ -186,11 +186,11 @@ func checkFatal(err error) {
 	}
 }
 
-func checkPanic(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
+// func checkPanic(err error) {
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
 func redirectHttpToHttpsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
