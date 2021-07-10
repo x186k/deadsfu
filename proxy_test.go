@@ -9,8 +9,8 @@ import (
 
 func TestProxyDialInvalidOrDownProxy(t *testing.T) {
 	const (
-		PROXYGOOD = "socks5-callback-server.com:60000"
-		PROXYBAD  = "socks5-callback-server.com:6000"
+		PROXYGOOD = "deadsfu.com:60000"
+		PROXYBAD  = "deadsfu.com:6000"
 	)
 
 	hostportgood := getMyPublicIpV4().String() + ":80"
@@ -20,7 +20,9 @@ func TestProxyDialInvalidOrDownProxy(t *testing.T) {
 
 	// uncomment these 5 lines for testing of the working situation, AND open port 80
 	// leave this commented out for commited code
-	// http.HandleFunc("/hello", func(w http.ResponseWriter, req *http.Request) { fmt.Fprintf(w, "hello\n") })
+	// http.HandleFunc("/hello", func(w http.ResponseWriter, req *http.Request) {
+	// 	fmt.Fprintf(w, "hello\n")
+	// })
 	// go func() { panic(http.ListenAndServe(":80", nil)) }()
 	// proxyok, portopen = canConnectThroughProxy(PROXYGOOD, hostportgood)
 	// assert.Equal(t, true, proxyok)
