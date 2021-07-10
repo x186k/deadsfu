@@ -495,6 +495,10 @@ func main() {
 			err = http.Serve(httpsLn, mux)
 			checkFatal(err)
 		}()
+		go func() {
+			time.Sleep(time.Second)
+			reportOpenPort(&httpsUrl)
+		}()
 		//elog.Printf("%v IS READY", httpsUrl.String())
 
 	}
@@ -507,6 +511,11 @@ func main() {
 			err := http.ListenAndServe(httpUrl.Host, certmagic.DefaultACME.HTTPChallengeHandler(mux))
 			panic(err)
 		}()
+		go func() {
+			time.Sleep(time.Second)
+			reportOpenPort(&httpUrl)
+		}()
+
 		elog.Printf("%v IS READY", httpUrl.String())
 	}
 
@@ -600,9 +609,9 @@ func initMediaHandlerState(t TrackCounts) {
 	//	initRxid2state(t.numIdleVideo, Xidleaudio
 }
 
-// func getExplicitHostPort(u *url.URL) string {
-// 	return u.Hostname() + ":" + getPort(u)
-// }
+func getExplicitHostPort(u *url.URL) string {
+	return u.Hostname() + ":" + getPort(u)
+}
 
 func getPort(u *url.URL) string {
 	if u.Scheme == "https" {
@@ -1935,4 +1944,24 @@ func reportHttpsReadyness() {
 
 	elog.Printf("No HTTPS certificate: Ceasing status messages about certificate.")
 	elog.Printf("No HTTPS certificate: Will print update if certificate is aquired.")
+}
+
+func reportOpenPort(u *url.URL) {
+
+	hostport := getExplicitHostPort(u)
+
+	proxyok, iamopen := canConnectThroughProxy("", hostport)
+
+	//println(99, proxyok, iamopen)
+	if !proxyok {
+		//just be silent about proxy errors, Cameron didn't pay his bill
+		return
+	}
+
+	if iamopen {
+		elog.Printf("Port %v IS OPEN from Internet", u.Port())
+	} else {
+		elog.Printf("Port %v IS NOT OPEN from Internet", u.Port())
+	}
+
 }
