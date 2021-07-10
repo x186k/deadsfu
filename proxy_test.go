@@ -28,15 +28,15 @@ func TestProxyDialInvalidOrDownProxy(t *testing.T) {
 	// assert.Equal(t, true, proxyok)
 	// assert.Equal(t, true, portopen)
 
-	proxyok, portopen = canConnectThroughProxy(PROXYGOOD, hostportbad)
+	proxyok, portopen = canConnectThroughProxy(PROXYGOOD, hostportbad, "tcp4")
 	assert.Equal(t, true, proxyok)
 	assert.Equal(t, false, portopen)
 
-	proxyok, portopen = canConnectThroughProxy(PROXYBAD, hostportbad)
+	proxyok, portopen = canConnectThroughProxy(PROXYBAD, hostportbad, "tcp4")
 	assert.Equal(t, false, proxyok)
 	assert.Equal(t, false, portopen) //this is false when proxy fails
 
-	proxyok, portopen = canConnectThroughProxy(PROXYBAD, hostportgood)
+	proxyok, portopen = canConnectThroughProxy(PROXYBAD, hostportgood, "tcp4")
 	assert.Equal(t, false, proxyok)
 	assert.Equal(t, false, portopen) //this is false when proxy fails
 }

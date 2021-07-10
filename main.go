@@ -497,7 +497,11 @@ func main() {
 		}()
 		go func() {
 			time.Sleep(time.Second)
-			reportOpenPort(&httpsUrl)
+			reportOpenPort(&httpsUrl, "tcp4")
+		}()
+		go func() {
+			time.Sleep(time.Second)
+			reportOpenPort(&httpsUrl, "tcp6")
 		}()
 		//elog.Printf("%v IS READY", httpsUrl.String())
 
@@ -513,7 +517,11 @@ func main() {
 		}()
 		go func() {
 			time.Sleep(time.Second)
-			reportOpenPort(&httpUrl)
+			reportOpenPort(&httpUrl, "tcp4")
+		}()
+		go func() {
+			time.Sleep(time.Second)
+			reportOpenPort(&httpUrl, "tcp6")
 		}()
 
 		elog.Printf("%v IS READY", httpUrl.String())
@@ -1946,11 +1954,11 @@ func reportHttpsReadyness() {
 	elog.Printf("No HTTPS certificate: Will print update if certificate is aquired.")
 }
 
-func reportOpenPort(u *url.URL) {
+func reportOpenPort(u *url.URL, network string) {
 
 	hostport := getExplicitHostPort(u)
 
-	proxyok, iamopen := canConnectThroughProxy("", hostport)
+	proxyok, iamopen := canConnectThroughProxy("", hostport, network)
 
 	//println(99, proxyok, iamopen)
 	if !proxyok {
