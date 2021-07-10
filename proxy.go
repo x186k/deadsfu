@@ -16,7 +16,7 @@ import (
 // about when trying to run a public server
 // if the proxy appears gone, this function will stay silent, and return proxyOK=false
 // pass nil to use default proxy
-func canConnectThroughProxy(proxyaddr string, server string) (proxyOK bool, portOpen bool) {
+func canConnectThroughProxy(proxyaddr string, hostport string) (proxyOK bool, portOpen bool) {
 	const (
 		baseDialerTimeout  = 3 * time.Second
 		proxyDialerTimeout = 3 * time.Second
@@ -45,7 +45,7 @@ func canConnectThroughProxy(proxyaddr string, server string) (proxyOK bool, port
 
 	ctx, cancel := context.WithTimeout(context.Background(), proxyDialerTimeout)
 	_ = cancel
-	conn, err := contextDialer.DialContext(ctx, "tcp", server)
+	conn, err := contextDialer.DialContext(ctx, "tcp", hostport)
 	if err != nil {
 		println(888, err.Error())
 		readtcp := strings.Contains(err.Error(), " read tcp ")
