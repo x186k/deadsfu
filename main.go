@@ -636,11 +636,14 @@ func ddnsRegisterIPAddresses(provider certmagic.ACMEDNSProvider, fqdn string, su
 	for _, v := range addrs {
 
 		var dnstype uint16
+		var network string
 
 		if v.To4() != nil {
 			dnstype = dns.TypeA
+			network = "ip4"
 		} else {
 			dnstype = dns.TypeAAAA
+			network = "ip6"
 		}
 
 		normalip := NormalizeIP(v.String(), dnstype)
@@ -660,7 +663,16 @@ func ddnsRegisterIPAddresses(provider certmagic.ACMEDNSProvider, fqdn string, su
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
-		elog.Printf("DNS registered %v  %v", httpsUrl.Hostname(), v)
+		elog.Printf("IPAddr %v DNS registered as %v", v, httpsUrl.Hostname())
+
+		localDNSIP, err := net.ResolveIPAddr(network, httpsUrl.Hostname())
+		checkFatal(err)
+
+		log.Println("net.ResolveIPAddr", network, httpsUrl.Hostname(), localDNSIP.String())
+
+		if !localDNSIP.IP.Equal(v) {
+			checkFatal(fmt.Errorf("Inconsistent DNS, please use another name"))
+		}
 
 		//log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
 	}
