@@ -10,13 +10,9 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// canConnectThroughProxy will attempt to use a socks5 proxy to see if
-// my ports are open from the Internet.
-// if my proxy is running, then this can provide useful information
-// about when trying to run a public server
-// if the proxy appears gone, this function will stay silent, and return proxyOK=false
-// pass nil to use default proxy
-func canConnectThroughProxy(proxyaddr string, hostport string, network string) (proxyOK bool, portOpen bool) {
+// canConnectThroughProxy uses an internet proxy to see if my ports are open
+// network should be either tcp4 or tcp6, not tcp
+func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network string) (proxyOK bool, portOpen bool) {
 	const (
 		baseDialerTimeout  = 3 * time.Second
 		proxyDialerTimeout = 3 * time.Second

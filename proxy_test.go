@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,8 +14,14 @@ func TestProxyDialInvalidOrDownProxy(t *testing.T) {
 		PROXYBAD  = "deadsfu.com:6000"
 	)
 
-	hostportgood := getMyPublicIpV4().String() + ":80"
-	hostportbad := getMyPublicIpV4().String() + ":9999"
+	hostportgood := &net.TCPAddr{
+		IP:   getMyPublicIpV4(),
+		Port: 80,
+	}
+	hostportbad := &net.TCPAddr{
+		IP:   getMyPublicIpV4(),
+		Port: 9999,
+	}
 
 	var proxyok, portopen bool
 
