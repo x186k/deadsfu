@@ -18,6 +18,9 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 		proxyDialerTimeout = 3 * time.Second
 		SOCKS5PROXY        = "deadsfu.com:60000"
 	)
+	if network != "tcp4" && network != "tcp6" {
+		checkFatal(fmt.Errorf("network not okay"))
+	}
 
 	if proxyaddr == "" {
 		proxyaddr = SOCKS5PROXY

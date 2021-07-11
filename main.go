@@ -555,18 +555,6 @@ func main() {
 	println("profiling done, exit")
 }
 
-func routableMessage(ip net.IP) string {
-	if ip.To4() == nil {
-		return "an IPv6 address"
-	} else {
-		if IsPrivate(ip) {
-			return "a PRIVATE, NON-INET-ROUTABLE, RFC1918 address"
-		} else {
-			return "a PUBLIC, INET-ROUTABLE, NON-RFC1918 address"
-		}
-	}
-}
-
 type DDNSUnion interface {
 	libdns.RecordAppender
 	libdns.RecordDeleter
@@ -672,7 +660,7 @@ func ddnsRegisterIPAddresses(provider certmagic.ACMEDNSProvider, fqdn string, su
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
-		elog.Printf("DNS registered %v  %v  %v", httpsUrl.Hostname(), v, routableMessage(v))
+		elog.Printf("DNS registered %v  %v", httpsUrl.Hostname(), v)
 
 		//log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
 	}
@@ -1957,8 +1945,20 @@ func reportHttpsReadyness() {
 func reportOpenPort(u *url.URL, network string) {
 
 	hostport := getExplicitHostPort(u)
+	tcpaddr, err := net.ResolveTCPAddr(network, hostport)
+	if err != nil {
+		// not fatal
+		// if there is no ipv6 (or v4) address, continue on
+		return
+	}
 
-	proxyok, iamopen := canConnectThroughProxy("", hostport, network)
+	if IsPrivate(tcpaddr.IP) {
+		elog.Printf("Host:Port %v IS PRIVATE IP, not Internet reachable. RFC 1918, 4193", tcpaddr.String())
+		return
+	}
+
+	// use default proxy addr
+	proxyok, iamopen := canConnectThroughProxy("", tcpaddr, network)
 
 	//println(99, proxyok, iamopen)
 	if !proxyok {
@@ -1967,9 +1967,9 @@ func reportOpenPort(u *url.URL, network string) {
 	}
 
 	if iamopen {
-		elog.Printf("Port %v IS OPEN from Internet", u.Port())
+		elog.Printf("Host:Port %v IS OPEN from Internet", tcpaddr.String())
 	} else {
-		elog.Printf("Port %v IS NOT OPEN from Internet", u.Port())
+		elog.Printf("Host:Port %v IS NOT OPEN from Internet", tcpaddr.String())
 	}
 
 }
