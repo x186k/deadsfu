@@ -452,7 +452,7 @@ func main() {
 				// since the followed gets called for both obained and found in cache, we use that
 			case "cached_managed_cert":
 				httpsHasCertificate = true
-				elog.Println("HTTPS READY: HTTPS Certificate Acquired")
+				elog.Println("HTTPS READY: Certificate Acquired")
 			case "tls_handshake_started":
 				//silent
 			case "tls_handshake_completed":
@@ -1937,7 +1937,7 @@ func reportHttpsReadyness() {
 			continue
 		}
 
-		elog.Printf("HTTPS NOT READY: Waited %d seconds.", i)
+		elog.Printf("HTTPS NOT READY YET: Waited %d seconds.", i)
 
 		if usingDNS01ACMEChallenge && i > 30 {
 			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")
