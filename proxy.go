@@ -42,6 +42,7 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 	contextDialer, ok := dialer.(proxy.ContextDialer)
 	if !ok {
 		log.Println("cannot deref dialer")
+		//not fatal
 		return
 	}
 
