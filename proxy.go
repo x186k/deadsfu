@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -48,7 +49,7 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 	_ = cancel
 
 	// we ask the proxy for the given network
-	conn, err := contextDialer.DialContext(ctx, network, hostport)
+	conn, err := contextDialer.DialContext(ctx, network, tcpaddr.String())
 	if err != nil {
 		println(888, err.Error())
 		readtcp := strings.Contains(err.Error(), " read tcp ")
