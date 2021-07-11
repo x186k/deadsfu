@@ -452,7 +452,7 @@ func main() {
 				// since the followed gets called for both obained and found in cache, we use that
 			case "cached_managed_cert":
 				httpsHasCertificate = true
-				elog.Println("deadsfu HTTPS READY: HTTPS Certificate Acquired")
+				elog.Println("HTTPS READY: HTTPS Certificate Acquired")
 			case "tls_handshake_started":
 				//silent
 			case "tls_handshake_completed":
@@ -1937,7 +1937,7 @@ func reportHttpsReadyness() {
 			continue
 		}
 
-		elog.Printf("deadsfu HTTPS NOT READY: Waited %d seconds.", i)
+		elog.Printf("HTTPS NOT READY: Waited %d seconds.", i)
 
 		if usingDNS01ACMEChallenge && i > 30 {
 			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")
@@ -1965,7 +1965,7 @@ func reportOpenPort(u *url.URL, network string) {
 	}
 
 	if IsPrivate(tcpaddr.IP) {
-		elog.Printf("Host:Port %v IS PRIVATE IP, not Internet reachable. RFC 1918, 4193", tcpaddr.String())
+		elog.Printf("IPAddr %v IS PRIVATE IP, not Internet reachable. RFC 1918, 4193", tcpaddr.IP.String())
 		return
 	}
 
@@ -1978,9 +1978,8 @@ func reportOpenPort(u *url.URL, network string) {
 	}
 
 	if iamopen {
-		elog.Printf("Host:Port %v IS OPEN from Internet", tcpaddr.String())
+		elog.Printf("IPAddr %v port:%v IS OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
 	} else {
-		elog.Printf("Host:Port %v IS NOT OPEN from Internet", tcpaddr.String())
+		elog.Printf("IPAddr %v port:%v IS NOT OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
 	}
-
 }
