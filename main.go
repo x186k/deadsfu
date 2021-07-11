@@ -1960,7 +1960,6 @@ func reportOpenPort(u *url.URL, network string) {
 	// use default proxy addr
 	proxyok, iamopen := canConnectThroughProxy("", tcpaddr, network)
 
-	//println(99, proxyok, iamopen)
 	if !proxyok {
 		//just be silent about proxy errors, Cameron didn't pay his bill
 		return
