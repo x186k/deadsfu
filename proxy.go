@@ -33,7 +33,7 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 	}
 
 	// always get to proxy using ipv4, more reliable for this test
-	dialer, err := proxy.SOCKS5("tcp4", proxyaddr, nil, baseDialer)
+	dialer, err := proxy.SOCKS5(network, proxyaddr, nil, baseDialer)
 	if err != nil {
 		return
 	}
