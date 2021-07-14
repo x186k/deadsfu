@@ -14,9 +14,6 @@ import (
 var ACMEAgreed = pflag.Bool("acme-agree", true, "You AGREE with the CA's terms. ie, LetsEncrypt.")
 var ACMEEmailFlag = pflag.String("acme-email", "", "This is the email to provide to the ACME certifcate provider.")
 
-var httpUrl = url.URL{}
-var httpsUrl = url.URL{}
-
 const httpsInterfaceFlagname = "https-interface"
 
 var httpsInterfaceFlag = pflag.String(httpsInterfaceFlagname, "",
@@ -65,6 +62,9 @@ var debugStagingCertificate = pflag.Bool("z-debug-staging", false, "use the Lets
 var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress")
 
+var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
+	`Add a DeadSFU Server entry to OBS. The URL in -ftl will be used for new entry.`)
+
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
 var obsStudio = pflag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
@@ -99,6 +99,10 @@ func (v URLValue) Set(s string) error {
 	return nil
 }
 
+var httpUrl = url.URL{}
+var httpsUrl = url.URL{}
+var ftlUrl = url.URL{}
+
 func initFlags() {
 	pflag.VarP(&URLValue{&httpsUrl}, "https-url", "s",
 		`The URL for HTTPS connections.  Most commonly used flag.
@@ -118,6 +122,12 @@ Examples: http://192.168.2.1                    # one interface, port 80
 / path only.
 `)
 
+	pflag.VarP(&URLValue{&ftlUrl}, "ftl-url", "f",
+		`The URL for incoming FTL connections.
+For same-system FTL from OBS, please use: 'ftl://localhost:8084'
+If hostname is not 'localhost' it will be dynamic DNS registered,
+using the ddns5, duckdns, or Cloudflare rules as is for https.
+`)
 }
 
 func flagParseAndValidate() {
@@ -127,9 +137,22 @@ func flagParseAndValidate() {
 		os.Exit(-1)
 	}
 
-	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" {
+	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" && ftlUrl.Scheme == "" {
 		Usage()
 		os.Exit(-1)
+	}
+
+	if *ftlFixOBSConfig {
+		panic(99)
+	}
+
+	if ftlUrl.Scheme != "" {
+		if ftlUrl.Scheme != "ftl" {
+			checkFatal(fmt.Errorf("-ftl-url flag must start with 'ftl:'"))
+		}
+		if ftlUrl.Path != "" && ftlUrl.Path != "/" {
+			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", &ftlUrl))
+		}
 	}
 
 	if httpUrl.Scheme != "" {
@@ -169,7 +192,7 @@ func flagParseAndValidate() {
 var Usage = func() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n\n", os.Args[0])
 
-	fmt.Fprintf(os.Stderr, "At a minimum, -s (-https-url) or -p (-http-url) are required\n\n")
+	fmt.Fprintf(os.Stderr, "One of -https-url <url>, -http-url <url>, or -ftl true is required\n\n")
 
 	if *helpAll {
 		pflag.PrintDefaults()

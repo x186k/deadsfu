@@ -110,9 +110,6 @@ var (
 
 var ticker = time.NewTicker(100 * time.Millisecond)
 
-var usingDNS01ACMEChallenge = false
-var httpsHasCertificate = false
-
 type Subid uint64
 
 type MsgRxPacket struct {
@@ -377,20 +374,60 @@ func main() {
 
 	}
 	mux.HandleFunc(subPath, SubHandler)
-	if *dialIngressURL == "" {
+
+	dialingout := *dialIngressURL != ""
+	ftlEnabled := ftlUrl.Scheme != ""
+
+	if !dialingout && !ftlEnabled {
 		mux.HandleFunc(pubPath, pubHandler)
+	}
+
+	//ftl if choosen
+	if ftlUrl.Scheme != "" {
+		ftlReady := make(chan bool)
+		go reportFTLReadyness(ftlReady)
+
+		ddnsProvider := ddnsDetermineProvider(&ftlUrl)
+
+		if *ddnsRegisterEnabled {
+			var addrs []net.IP
+
+			if *ddnsPublicFlag {
+
+				myipv4 := getMyPublicIpV4()
+				if myipv4 == nil {
+					checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
+				}
+				addrs = []net.IP{myipv4}
+
+			} else {
+
+				addrs = getDefaultRouteInterfaceAddresses()
+				if len(addrs) == 0 {
+					checkFatal(fmt.Errorf("Cannot auto-detect any IP addresses on this system"))
+				}
+
+			}
+
+			ddnsRegisterIPAddresses(ddnsProvider, ftlUrl.Hostname(), 2, addrs)
+			// There is no DNS challenge for FTL!
+			//ddnsEnableDNS01Challenge(ddnsProvider)
+
+		} else {
+			elog.Printf("Registering NO DNS hosts for FTL")
+		}
 	}
 
 	//https first
 	if httpsUrl.Scheme != "" {
-		go reportHttpsReadyness()
 
+		usingDNS01ACMEChallenge := false
 		ddnsProvider := ddnsDetermineProvider(&httpsUrl)
 
 		if *ddnsRegisterEnabled {
 			var addrs []net.IP
 
-			if len(*httpsInterfaceFlag) > 0 {
+			if *httpsInterfaceFlag != "" {
 				addr := net.ParseIP(*httpsInterfaceFlag)
 				if addr == nil {
 					elog.Fatalf("-%s is not valid a IP address", httpsInterfaceFlagname)
@@ -398,17 +435,13 @@ func main() {
 				addrs = []net.IP{addr}
 			} else {
 				if *ddnsPublicFlag {
-					if *httpsInterfaceFlag != "" {
-						checkFatal(fmt.Errorf("Cannot combine -%s and -%s.", ddnsPublicFlagName, httpsInterfaceFlagname))
-					}
+
 					myipv4 := getMyPublicIpV4()
 					if myipv4 == nil {
 						checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
 					}
 					addrs = []net.IP{myipv4}
 
-					// NO LONGER DO ANY PORT OPENNESS CHECKING
-					// See the diary on why we gave up on the port 80/443 ACME challenges
 				} else {
 
 					addrs = getDefaultRouteInterfaceAddresses()
@@ -416,16 +449,19 @@ func main() {
 						checkFatal(fmt.Errorf("Cannot auto-detect any IP addresses on this system"))
 					}
 
-					checkFatal(err)
 				}
 			}
 
 			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, addrs)
 			ddnsEnableDNS01Challenge(ddnsProvider)
+			usingDNS01ACMEChallenge = true
 
 		} else {
-			elog.Printf("Registering NO DNS hosts.")
+			elog.Printf("Registering NO DNS hosts for HTTPS")
 		}
+
+		httpsHasCertificate := make(chan bool)
+		go reportHttpsReadyness(httpsHasCertificate, usingDNS01ACMEChallenge)
 
 		var tlsConfig *tls.Config = nil
 
@@ -451,7 +487,7 @@ func main() {
 				// called every run where cert is found in cache including when the challenge passes
 				// since the followed gets called for both obained and found in cache, we use that
 			case "cached_managed_cert":
-				httpsHasCertificate = true
+				close(httpsHasCertificate)
 				elog.Println("HTTPS READY: Certificate Acquired")
 			case "tls_handshake_started":
 				//silent
@@ -716,7 +752,7 @@ func cloudflare_Token() string {
 // if we did, Alice could get a cert for bob.ddns5.com
 
 func ddnsEnableDNS01Challenge(foo certmagic.ACMEDNSProvider) {
-	usingDNS01ACMEChallenge = true
+
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
 		//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
 		DNSProvider:        foo,
@@ -777,7 +813,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	log.Println("pubHandler request:", req.URL.String())
 
 	if req.Method == "OPTIONS" {
-		w.Header().Set("Access-Control-Allow-Headers","*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST")
 		w.Header().Set("Access-Control-Max-Age", "86400")
@@ -1932,36 +1968,49 @@ func getMyPublicIpV4() net.IP {
 	return nil
 }
 
-func reportHttpsReadyness() {
+func reportHttpsReadyness(ready chan bool, dnschal bool) {
+	t0 := time.Now()
+	ticker := time.NewTicker(time.Second * 5).C
+	for {
+		select {
+		case t1 := <-ticker:
 
-	const interval = 5
-	for i := 0; ; i += interval {
+			n := int(t1.Sub(t0).Seconds())
 
-		time.Sleep(time.Second * interval)
+			elog.Printf("HTTPS NOT READY: Waited %d seconds. Using DNS01 challenge: %v", n, dnschal)
 
-		if httpsHasCertificate {
+			if n >= 30 {
+				elog.Printf("No HTTPS certificate: Stopping status messages. Will update if aquired.")
+				return
+			}
+
+		case <-ready:
 			return
 		}
-
-		if i < 5 {
-			continue
-		}
-
-		elog.Printf("HTTPS NOT READY YET: Waited %d seconds.", i)
-
-		if usingDNS01ACMEChallenge && i > 30 {
-			elog.Printf("No HTTPS certificate: Please check DNS setup, or change DDNS provider")
-			break
-		}
-		if !usingDNS01ACMEChallenge && i > 15 {
-			elog.Printf("No HTTPS certificate: Please check firewall port 80 and/or 443")
-			break
-		}
-
 	}
+}
 
-	elog.Printf("No HTTPS certificate: Ceasing status messages about certificate.")
-	elog.Printf("No HTTPS certificate: Will print update if certificate is aquired.")
+func reportFTLReadyness(ready chan bool) {
+
+	t0 := time.Now()
+	ticker := time.NewTicker(time.Second * 5).C
+	for {
+		select {
+		case t1 := <-ticker:
+
+			n := int(t1.Sub(t0).Seconds())
+
+			elog.Printf("FTL NOT READY: Waited %d seconds.", n)
+
+			if n >= 30 {
+				elog.Printf("FTL NOT READY: Stopping status messages. Will update if aquired.")
+				return
+			}
+
+		case <-ready:
+			return
+		}
+	}
 }
 
 func reportOpenPort(u *url.URL, network string) {
