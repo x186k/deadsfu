@@ -776,6 +776,16 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 
 	log.Println("pubHandler request:", req.URL.String())
 
+	if req.Method == "OPTIONS" {
+		w.Header().Set("Access-Control-Allow-Headers","*")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	if req.Header.Get("Content-Type") != "application/sdp" {
 		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
 		return
