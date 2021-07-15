@@ -42,6 +42,7 @@ import (
 
 	"github.com/pkg/profile"
 	//"github.com/x186k/dynamicdns"
+	"github.com/x186k/deadsfu/ftl"
 
 	"golang.org/x/sync/semaphore"
 
@@ -387,8 +388,6 @@ func main() {
 		ftlReady := make(chan bool)
 		go reportFTLReadyness(ftlReady)
 
-		ddnsProvider := ddnsDetermineProvider(&ftlUrl)
-
 		if *ddnsRegisterEnabled {
 			var addrs []net.IP
 
@@ -408,14 +407,71 @@ func main() {
 				}
 
 			}
-
-			ddnsRegisterIPAddresses(ddnsProvider, ftlUrl.Hostname(), 2, addrs)
-			// There is no DNS challenge for FTL!
-			//ddnsEnableDNS01Challenge(ddnsProvider)
+			if ftlUrl.Hostname() != "" && ftlUrl.Hostname() != "localhost" {
+				ddnsProvider := ddnsDetermineProvider(&ftlUrl)
+				ddnsRegisterIPAddresses(ddnsProvider, ftlUrl.Hostname(), 2, addrs)
+				// There is no DNS challenge for FTL!
+				//ddnsEnableDNS01Challenge(ddnsProvider)
+			}
 
 		} else {
 			elog.Printf("Registering NO DNS hosts for FTL")
 		}
+
+		// ftl magic
+		go func() {
+
+			udp, kv, err := ftl.FtlServer("", "8084")
+			checkFatal(err)
+
+			if kv["VideoCodec"] != "H264" {
+				checkFatal(fmt.Errorf("ftl: unsupported video codec: %v", kv["VideoCodec"]))
+			}
+			if kv["AudioCodec"] != "OPUS" {
+				checkFatal(fmt.Errorf("ftl: unsupported audio codec: %v", kv["AudioCodec"]))
+			}
+
+			close(ftlReady)
+
+			video, ok := rxid2state[XVideo+0]
+			if !ok {
+				panic("fatal1")
+			}
+
+			audio, ok := rxid2state[XAudio+0]
+			if !ok {
+				panic("fatal1")
+			}
+
+			buf := make([]byte, 2000)
+			for {
+
+				n, err := udp.Read(buf)
+				checkFatal(err)
+
+				//XXX consider use of rtp.Packet pool
+				var p rtp.Packet
+
+				b := make([]byte, n)
+				copy(b, buf[:n])
+
+				err = p.Unmarshal(b)
+				checkFatal(err)
+
+				//println(999,buf[1],p.Header.PayloadType)
+
+				switch p.Header.PayloadType {
+				case 96:
+					rxMediaCh <- MsgRxPacket{rxidstate: video, packet: &p, rxClockRate: 90000}
+				case 97:
+					rxMediaCh <- MsgRxPacket{rxidstate: audio, packet: &p, rxClockRate: 48000}
+					// default:
+					// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
+				}
+
+			}
+		}()
+
 	}
 
 	//https first

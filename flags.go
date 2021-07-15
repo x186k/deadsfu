@@ -33,7 +33,7 @@ var ddnsPublicFlag = pflag.BoolP(ddnsPublicFlagName, "k", false,
 
 const ddnsRegisterName = "ddns-register"
 
-var ddnsRegisterEnabled = pflag.BoolP(ddnsRegisterName, "f", true,
+var ddnsRegisterEnabled = pflag.Bool(ddnsRegisterName, true,
 	`Enable Dynamic DNS registration for HTTPS hostnames.
 When true:
 1) IPv4/IPv6 addresses will be detected.
@@ -63,7 +63,7 @@ var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress")
 
 var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
-	`Add a DeadSFU Server entry to OBS. The URL in -ftl will be used for new entry.`)
+	`Add a DeadSFU Server entry to OBS. The URL in -ftl-url will be used for new entry.`)
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
@@ -192,7 +192,7 @@ func flagParseAndValidate() {
 var Usage = func() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n\n", os.Args[0])
 
-	fmt.Fprintf(os.Stderr, "One of -https-url <url>, -http-url <url>, or -ftl true is required\n\n")
+	fmt.Fprintf(os.Stderr, "One of --https-url <url>, --http-url <url>, or --ftl-url <url> is required\n\n")
 
 	if *helpAll {
 		pflag.PrintDefaults()
