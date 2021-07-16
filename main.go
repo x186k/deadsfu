@@ -555,11 +555,8 @@ func main() {
 		}
 
 		if *debug {
-			logger := zap.NewExample()
-			if true { // maybe put behind flag
-				logger = logger.Named("obtain")
-				logger.Info("zap detailed obtain logger enabled")
-			}
+			logger, err := zap.NewDevelopment()
+			checkFatal(err)
 			mgrTemplate.Logger = logger
 		}
 		// use certmsgic for manual certificates, as it
@@ -866,21 +863,18 @@ func teeErrorStderrHttp(w http.ResponseWriter, err error) {
 func pubHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 
-	log.Println("pubHandler request:", req.URL.String())
+	log.Println("pubHandler request", req.URL.String(), req.Header.Get("Content-Type"))
 
-	if req.Method == "OPTIONS" {
-		w.Header().Set("Access-Control-Allow-Headers", "*")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST")
-		w.Header().Set("Access-Control-Max-Age", "86400")
-		w.WriteHeader(http.StatusAccepted)
+	if handlePreflight(req, w) {
 		return
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	if req.Header.Get("Content-Type") != "application/sdp" {
-		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
-		return
+	requireStrictWISH := false
+	if requireStrictWISH {
+		if req.Header.Get("Content-Type") != "application/sdp" {
+			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
+			return
+		}
 	}
 
 	if req.Method != "POST" {
@@ -923,6 +917,23 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	//NOTE, Do NOT ever use http.error to return SDPs
 }
 
+func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
+	if req.Method == "OPTIONS" {
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusAccepted)
+
+		return true
+	}
+
+	//put this on every request
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	return false
+}
+
 //number of video media sections
 //will be 1 for simulcast
 // will be 3 for three m=video
@@ -942,6 +953,10 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	var err error
 
 	log.Println("subHandler request", httpreq.URL.String())
+
+	if handlePreflight(httpreq, w) {
+		return
+	}
 
 	var txid uint64
 
@@ -1013,9 +1028,12 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 
-	if httpreq.Header.Get("Content-Type") != "application/sdp" {
-		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /sub when not ?channel=..."))
-		return
+	requireStrictWISH := false
+	if requireStrictWISH {
+		if httpreq.Header.Get("Content-Type") != "application/sdp" {
+			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /sub when not ?channel=..."))
+			return
+		}
 	}
 
 	// offer from browser
