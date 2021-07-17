@@ -229,7 +229,7 @@ type TrackCounts struct {
 }
 
 var trackCounts = TrackCounts{
-	numVideo:     *pflag.Int("num-video", 10, "number of video tracks"),
+	numVideo:     *pflag.Int("max-tracks", 10, "maximum number of video tracks"),
 	numAudio:     1, //*pflag.Int("num-audio", 1, "number of audio tracks"),
 	numIdleVideo: 1,
 	numIdleAudio: 0,
