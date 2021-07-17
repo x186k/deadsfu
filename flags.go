@@ -67,7 +67,7 @@ var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
 
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
-var obsStudio = pflag.Bool("obs-studio", false, "Enable OBS Studio by tweaking SSL/TLS version numbers")
+var tlsOldVersions = pflag.Bool("tls-old-versions", false, "Advanced: Enable Cosmo OBS Studio by allowing old TLS versions")
 var helpAll = pflag.BoolP("all", "a", false, "Print usage on all flags")
 var help = pflag.BoolP("help", "h", false, "Print usage on the most common flags")
 var cloudflareDDNS = pflag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")

@@ -573,7 +573,7 @@ func main() {
 		checkFatal(err)
 		tlsConfig = magic.TLSConfig()
 
-		if *obsStudio { /// XXX to work with OBS studio for now
+		if *tlsOldVersions { /// XXX only to work with cosmos OBS studio
 			tlsConfig.MinVersion = 0
 		}
 
