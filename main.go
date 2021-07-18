@@ -296,14 +296,12 @@ func init() {
 		pflag.Usage = Usage // my own usage handle
 		//this will print unknown flags errors twice, but just deal with it
 		pflag.Parse()
-		if *help {
+		if *help || *helpAll {
 			Usage()
 			os.Exit(0)
 		}
-		if *helpAll {
-			Usage()
-			os.Exit(0)
-		}
+
+		parseUrlsAndValidate()
 
 		if *debug {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
@@ -483,7 +481,6 @@ func main() {
 
 	//https first
 	if httpsUrl.Scheme != "" {
-
 		usingDNS01ACMEChallenge := false
 		ddnsProvider := ddnsDetermineProvider(&httpsUrl)
 
