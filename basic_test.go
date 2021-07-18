@@ -67,7 +67,6 @@ func TestPubSub(t *testing.T) {
 	checkFatal(err)
 	for _, v := range p {
 		crc := calccrc(v.Raw)
-		//println(88,)
 
 		pkthash[crc] = 1
 
@@ -186,7 +185,6 @@ func startMultiTrackPublisher(t *testing.T) {
 	video1, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/h264", SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"}, "1", "1")
 	checkFatal(err)
 
-	//println(88,)
 
 	rtpSender, err := pc.AddTrack(video1)
 	checkFatal(err)
