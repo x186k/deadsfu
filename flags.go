@@ -3,10 +3,13 @@ package main
 import (
 
 	//xflag "flag"
+	"flag"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
+	"path"
+	"strings"
 
 	"github.com/spf13/pflag"
 )
@@ -21,7 +24,7 @@ var httpsInterfaceFlag = pflag.String(httpsInterfaceFlagname, "",
 This is an advanced setting.
 The default should work for most users. 
 A V4 or V6 IP address is okay.
-Do not provide port infomation here, use -https-url for port information.
+Do not provide port infomation here, use the https url for port information.
 Examples: '[::]'  '0.0.0.0' '192.168.2.1'  '10.1.2.3'  '2001:0db8:85a3:0000:0000:8a2e:0370:7334'
 Defaults to [::] (all interfaces)`)
 var interfaceAddress net.IP
@@ -68,100 +71,75 @@ var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
 var tlsOldVersions = pflag.Bool("tls-old-versions", false, "Advanced: Enable Cosmo OBS Studio by allowing old TLS versions")
-var helpAll = pflag.BoolP("all", "a", false, "Print usage on all flags")
-var help = pflag.BoolP("help", "h", false, "Print usage on the most common flags")
+var helpAll = pflag.BoolP("help2", "i", false, "Print the long usage")
+var help = pflag.BoolP("help", "h", false, "Print the short usage")
 var cloudflareDDNS = pflag.Bool("cloudflare", false, "Use Cloudflare API for DDNS and HTTPS ACME/Let's encrypt")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 
 //var openTab = flag.Bool("opentab", false, "Open a browser tab to the User transmit/receive panel")
 
-type URLValue struct {
-	URL *url.URL
-}
-
-func (v URLValue) String() string {
-	if v.URL != nil {
-		return v.URL.String()
-	}
-	return ""
-}
-
-func (v URLValue) Type() string {
-	return "URL"
-}
-
-func (v URLValue) Set(s string) error {
-	if u, err := url.Parse(s); err != nil {
-		return err
-	} else {
-		*v.URL = *u
-	}
-	return nil
-}
-
 var httpUrl = url.URL{}
 var httpsUrl = url.URL{}
 var ftlUrl = url.URL{}
+var rtpUrl = url.URL{}
+var _ = rtpUrl
 
-func initFlags() {
-	pflag.VarP(&URLValue{&httpsUrl}, "https-url", "s",
-		`The URL for HTTPS connections.  Most commonly used flag.
+const httpsUrlHelp = `The HTTPS url is for basic input and output signalling. 
 Usually this is all you need.
+Most commonly used flag. Input is WISH compatible.
 Examples: https://cameron77.ddns5.com:8443  https://foo78.duckdns.org  https://mycloudflaredomain.com
 Domain names only, no IP addresses.
 Use: *.ddns5.com, for free no-signup dynamic DNS. Quickest way to run your SFU.
 Use: *.duckdns.org, for free-signup dynamic DNS. Good alternative to ddns5.com, must set DUCKDNS_TOKEN
 Use: *.mycloudflaredomain.com, for Cloudflare DNS. Must set env var: CLOUDFLARE_TOKEN and -cloudflare flag.
 See -https-interface for advance binding.
-/ path only.`)
+/ path only.`
 
-	pflag.VarP(&URLValue{&httpUrl}, "http-url", "p",
-		`The URL for HTTP connections.
+const httpUrlHelp = `The HTTP url is for basic input and output signalling. 
 Examples: http://[::]:8080   http://0.0.0.0     # all ipv6 network interfaces, all ipv4 network interfaces
 Examples: http://192.168.2.1                    # one interface, port 80
-/ path only.
-`)
+/ path only.`
 
-	pflag.VarP(&URLValue{&ftlUrl}, "ftl-url", "f",
-		`The URL for incoming FTL connections.
+const ftlUrlHelp = `The FTL url enables FTL ingress, for example from OBS.
+Usage of FTL will disable http and https for input, but not output.
 For same-system FTL from OBS, please use: 'ftl://localhost:8084'
 If hostname is not 'localhost' it will be dynamic DNS registered,
-using the ddns5, duckdns, or Cloudflare rules as is for https.
-`)
-}
+using the ddns5, duckdns, or Cloudflare rules as is for https.`
 
-func flagParseAndValidate() {
+const rtpUrlHelp = `The RTP url help is coming soon. Please contact me for help.`
 
-	if *helpAll {
-		Usage()
-		os.Exit(-1)
+func validateFlags() {
+
+	for _, v := range flag.Args() {
+
+		u, err := url.Parse(v)
+		if err != nil {
+			checkFatal(fmt.Errorf("Only urls may be used as non-flag arguments (without - or --)"))
+		}
+
+		if u.Path != "" && u.Path != "/" {
+			checkFatal(fmt.Errorf("Only root path allowed on signalling URLs: %s", u.String()))
+		}
+
+		switch strings.ToLower(v) {
+		case "http":
+			httpUrl = *u
+		case "https":
+			httpsUrl = *u
+		case "ftl":
+			ftlUrl = *u
+		case "rtp":
+			rtpUrl = *u
+		}
 	}
 
-	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" && ftlUrl.Scheme == "" {
+	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" {
 		Usage()
 		os.Exit(-1)
 	}
 
 	if *ftlFixOBSConfig {
 		panic(99)
-	}
-
-	if ftlUrl.Scheme != "" {
-		if ftlUrl.Scheme != "ftl" {
-			checkFatal(fmt.Errorf("-ftl-url flag must start with 'ftl:'"))
-		}
-		if ftlUrl.Path != "" && ftlUrl.Path != "/" {
-			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", &ftlUrl))
-		}
-	}
-
-	if httpUrl.Scheme != "" {
-		if httpUrl.Scheme != "http" {
-			checkFatal(fmt.Errorf("-http-url flag must start with 'http:'"))
-		}
-		if httpUrl.Path != "" && httpUrl.Path != "/" {
-			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", &httpUrl))
-		}
 	}
 
 	// if net.ParseIP(httpsUrl.Hostname()) != nil {
@@ -176,35 +154,47 @@ func flagParseAndValidate() {
 	}
 
 	if httpsUrl.Scheme != "" {
-
-		if httpsUrl.Scheme != "https" {
-			checkFatal(fmt.Errorf("-https-url flag must start with 'https:'"))
-		}
-		if httpsUrl.Path != "" && httpsUrl.Path != "/" {
-			checkFatal(fmt.Errorf("Root path only on signalling URLs:%s", &httpsUrl))
-		}
 		if net.ParseIP(httpsUrl.Hostname()) != nil {
 			checkFatal(fmt.Errorf("Cannot use IP addresses for HTTPS urls:%v", httpsUrl.Hostname()))
 		}
 	}
 }
 
-var Usage = func() {
-	fmt.Fprintf(os.Stderr, "Usage of %s:\n\n", os.Args[0])
+func urlHelp(x string) {
+	a := strings.Split(x, "\n")
 
-	fmt.Fprintf(os.Stderr, "One of --https-url <url>, --http-url <url>, or --ftl-url <url> is required\n\n")
+	fmt.Fprintln(os.Stderr, a[0])
+	for _, b := range a[1:] {
+		fmt.Fprintln(os.Stderr, "     ", b)
+	}
+	fmt.Fprintln(os.Stderr, "")
+}
+
+var Usage = func() {
+	myname := path.Base(os.Args[0])
+	//usage: cat [-benstuv] [file ...]
+	fmt.Fprintf(os.Stderr, "usage: %s [options...] <url...>\n\n", myname)
+
+	fmt.Fprintf(os.Stderr, "An https or http url is required, and ftl, rtp urls are optional.\n\n")
 
 	if *helpAll {
+
 		pflag.PrintDefaults()
+
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "")
+		urlHelp(httpsUrlHelp)
+		urlHelp(httpUrlHelp)
+		urlHelp(ftlUrlHelp)
+		urlHelp(rtpUrlHelp)
 	} else {
+		fmt.Fprintf(os.Stderr, "This is the short usage, please use -i for the long usage.\n\n")
 
 		fs := pflag.NewFlagSet("foo", pflag.ExitOnError)
 		fs.SortFlags = false
-		fs.AddFlag(pflag.CommandLine.Lookup("https-url"))
-		fs.AddFlag(pflag.CommandLine.Lookup(ddnsPublicFlagName))
-		fs.AddFlag(pflag.CommandLine.Lookup(ddnsRegisterName))
-		fs.AddFlag(pflag.CommandLine.Lookup("http-url"))
-		fs.AddFlag(pflag.CommandLine.ShorthandLookup("a"))
+		// fs.AddFlag(pflag.CommandLine.Lookup(ddnsPublicFlagName))
+		// fs.AddFlag(pflag.CommandLine.Lookup(ddnsRegisterName))
+		fs.AddFlag(pflag.CommandLine.Lookup("help2"))
 		fs.PrintDefaults()
 
 	}

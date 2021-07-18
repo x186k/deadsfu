@@ -289,14 +289,21 @@ func init() {
 
 	istest := strings.HasSuffix(os.Args[0], ".test")
 	if !istest {
-		initFlags()
+
+		//we do this to eliminate double error message on -z
+		//hack city
+		//pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ContinueOnError)
 		pflag.Usage = Usage // my own usage handle
+		//this will print unknown flags errors twice, but just deal with it
 		pflag.Parse()
 		if *help {
 			Usage()
 			os.Exit(0)
 		}
-		flagParseAndValidate()
+		if *helpAll {
+			Usage()
+			os.Exit(0)
+		}
 
 		if *debug {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
