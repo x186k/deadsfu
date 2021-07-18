@@ -1,9 +1,6 @@
 package main
 
 import (
-
-	//xflag "flag"
-	"flag"
 	"fmt"
 	"net"
 	"net/url"
@@ -27,6 +24,7 @@ A V4 or V6 IP address is okay.
 Do not provide port infomation here, use the https url for port information.
 Examples: '[::]'  '0.0.0.0' '192.168.2.1'  '10.1.2.3'  '2001:0db8:85a3:0000:0000:8a2e:0370:7334'
 Defaults to [::] (all interfaces)`)
+
 var interfaceAddress net.IP
 
 const ddnsPublicFlagName = "ddns-public"
@@ -65,6 +63,7 @@ var debugStagingCertificate = pflag.Bool("z-debug-staging", false, "use the Lets
 var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress")
 
+var _ = ftlFixOBSConfig
 var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
 	`Add a DeadSFU Server entry to OBS. The URL in -ftl-url will be used for new entry.`)
 
@@ -108,9 +107,10 @@ using the ddns5, duckdns, or Cloudflare rules as is for https.`
 
 const rtpUrlHelp = `The RTP url help is coming soon. Please contact me for help.`
 
-func validateFlags() {
+// call this after pflag.Parse()
+func parseUrlsAndValidate() {
 
-	for _, v := range flag.Args() {
+	for _, v := range pflag.Args() {
 
 		u, err := url.Parse(v)
 		if err != nil {
@@ -121,7 +121,7 @@ func validateFlags() {
 			checkFatal(fmt.Errorf("Only root path allowed on signalling URLs: %s", u.String()))
 		}
 
-		switch strings.ToLower(v) {
+		switch u.Scheme {
 		case "http":
 			httpUrl = *u
 		case "https":
