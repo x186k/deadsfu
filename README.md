@@ -1,11 +1,9 @@
  
 <div align="center">
-<img style="vertical-align:middle" src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" xheight="60" />
-<br/><br/>
-A dead-simple SFU to make scalable cloud-native broadcasting systems.
-<br/><br/>
+<img src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" width="200" />
+<p>A dead-simple SFU to make scalable cloud-native broadcasting systems.</p>
 An Open Source Millicast Alternative.
-<br/><br/>
+</br></br>
 <a href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
 <img src="https://img.shields.io/badge/slack%20community-join-d90368" data-canonical-src="https://img.shields.io/badge/slack%20community-join-d90368" style="max-width:100%;"></a>
 </div>
