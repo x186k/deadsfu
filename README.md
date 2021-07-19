@@ -1,6 +1,6 @@
  
 <div align="center">
-<img style="vertical-align:middle" src="https://raw.githubusercontent.com/x186k/deadsfu/main/html/favicon.svg" alt="deadsfu logo" xheight="60" /><span style="vertical-align:middle;color:#0053fa;font-size:4vw">&nbsp;DeadSFU </span>
+<img style="vertical-align:middle" src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" xheight="60" />
 <br/><br/>
 A dead-simple SFU to make scalable cloud-native broadcasting systems.
 <br/><br/>
