@@ -37,8 +37,8 @@ An Open Source Millicast Alternative.
 - **Zero-conf Outside-firewall Use:** Auto-public IP addr detection, DNS registration and HTTPS setup for one-liner SFU setup.
 - **Simple Ingress HTTPS Signalling:** WISH compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
 - **Simple Egress HTTPS Signalling:** WISH-like: Send an Offer-SDP, get an Answer-SDP, and you're receiving!
-- **FTL Ingress:** Supply an FTL:// URL, and FTL will be the choosen ingress protocol.
-- **RTP Ingress:** Supply an RTP:// URL, and RTP will be the choosen ingress protocol.
+- **FTL Ingress:** Supply an FTL:// URL, and FTL will be the chosen ingress protocol.
+- **RTP Ingress:** Supply an RTP:// URL, and RTP will be the chosen ingress protocol.
 - **Multi Video Track Forwarding:** Ingress and egress of dozens or hundreds of input video tracks.
 - **Selectable Video Switching:** Receivers getting one video-track can switch to any ingress-track into SFU.
 - **Standard WebRTC Simulcast:** Standard simulcast can be egressed two ways: a) single switchable video b) 3-tracks of video.
