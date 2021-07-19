@@ -1,6 +1,6 @@
  
 <div align="center">
-<img src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" width="200" height="100"/>
+<img src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" width="150" height="75"/>
 <p>A dead-simple SFU to make scalable cloud-native broadcasting systems.</p>
 An Open Source Millicast Alternative.
 </br></br>
