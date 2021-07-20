@@ -13,20 +13,18 @@ An Open Source Millicast Alternative.
 
 ## Quick Links
 
+- [Quick Links](#quick-links)
 - [Features](#features)
-- [Benchmarks](#benchmarks)
-- [Who's using this](#whos-using-this)
 - [Install](#install)
-- [Quick Start](#quick-start)
-- [Step-by-step Walk-through](#step-by-step-walk-through)
-- [API Documentation](#api-documentation)
+
+<!--
+- [Benchmarks](#benchmarks)
+-  
+-  - [Who's using this](#whos-using-this)
+- - [API Documentation](#api-documentation)
 - [API Clients](#api-clients)
 - [Search UI Components](#search-ui-components)
-- [FAQ](#faq)
-- [Support](#support)
-- [Contributing](#contributing)
-- [Getting Latest Updates](#getting-latest-updates)
-- [Build from Source](#build-from-source)
+-->
 
 ## Features
 
@@ -56,7 +54,11 @@ An Open Source Millicast Alternative.
 - **⚡ Kubernetes Fast:** Built in C++. Meticulously architected from the ground-up for low-latency (<50ms) instant searches.
 -->
 
+## Install
 
+```bash
+ls -l
+```
 
 
 
