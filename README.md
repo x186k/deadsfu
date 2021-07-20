@@ -5,7 +5,9 @@
 <div align="center">
 <img src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" width="150" height="75"/>
 
-Dead-simple WebRTC broadcasting.  From OBS, the browser, or your application. Cloud-native and scalable. 
+Dead-simple WebRTC broadcasting.  
+From OBS, the browser, or your application.  
+Cloud-native and scalable. 
 </br></br>
 A Millicast alternative in 100% MIT Open Source
 </br></br>
