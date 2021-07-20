@@ -8,9 +8,9 @@
 Dead-simple WebRTC broadcasting.  
 From OBS, the browser, or your application.  
 Cloud-native and scalable. 
-</br></br>
+<br><br>
 A Millicast alternative in 100% MIT Open Source
-</br></br>
+<br><br>
 <a href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
 <img src="https://img.shields.io/badge/slack%20community-join-d90368" data-canonical-src="https://img.shields.io/badge/slack%20community-join-d90368" style="max-width:100%;"></a>
 </div>
@@ -45,6 +45,7 @@ todo
 - **Browser Viewer:** Browser viewer enables watching broadcasts.
 - **FTL Ingress:** Add an FTL:// URL to the args, and FTL will be the chosen ingress protocol.
 - **RTP Ingress:** Add an RTP:// URL to the args, and RTP will be the chosen ingress protocol. (todo)
+- **Firewall Ready Check:** When using a public IP address, the SFU checks if the ports is open.
 - **Zero-conf Inside-firewall Use:** Auto-local IP addr detection, DNS registration and HTTPS setup for one-liner SFU setup.
 - **Zero-conf Outside-firewall Use:** Auto-public IP addr detection, DNS registration and HTTPS setup for one-liner SFU setup.
 - **Simple Ingress HTTPS Signalling:** WISH compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
