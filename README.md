@@ -37,7 +37,8 @@ todo
 ## Features
 
 - **Dead-Simple Usage:** Meticulously crafted for ease-of-use, scalability, and performance.
-- **OBS Broadcasting:** Takes OBS output for doing WebRTC broadcasting.
+- **Large Scale WebRTC Broadcasting:** SFU can be easily cascaded to create clusters of hundreds of servers.
+- **OBS Broadcasting:** Send from OBS to DeadSFU for doing WebRTC broadcasting.
 - **Browser Broadcasting:** Simple HTML console for doing WebRTC broadcasting.
 - **Browser Viewer:** Browser viewer enables watching broadcasts.
 - **FTL Ingress:** Add an FTL:// URL to the args, and FTL will be the chosen ingress protocol.
@@ -51,7 +52,7 @@ todo
 - **Selectable Video Switching:** Receivers getting one video-track can switch to any ingress-track into SFU.
 - **Standard WebRTC Simulcast:** Standard simulcast can be egressed two ways: a) single switchable video b) 3-tracks of video.
 - **Designed For Fault Tolerance:** Single-peer-ingress design for practical large-scale fault-tolerant containerized broadcasting.
-- **Chainable SFU clusters:** SFU can ingress via dial-upstream to receive input tracks. All tracks are forwarded.
+
 - **Docker support:** Ready to go Docker images for cloud-native broadcasting clusters.
 - **Kubernetes capable:** Designed for Kubernetes broadcasting clusters.
 - **HTTPS load balancer compatible:** Designed standard HTTPS load balancer compatibility on egress.
