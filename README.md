@@ -7,7 +7,7 @@
 
 Dead-simple WebRTC broadcasting.  From OBS, the browser, or your application. Cloud-native and scalable. 
 </br></br>
-A MIT Open Source Millicast Alternative.
+A Millicast alternative in 100% MIT Open Source
 </br></br>
 <a href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
 <img src="https://img.shields.io/badge/slack%20community-join-d90368" data-canonical-src="https://img.shields.io/badge/slack%20community-join-d90368" style="max-width:100%;"></a>
