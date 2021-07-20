@@ -135,8 +135,6 @@ You can update by simply re-running the `curl` and `tar` commands again as in th
 There are two repos you need to compile from source: `deadsfu` and `deadsfu-binaries`.
 `deadsfu-binaries` must be nested inside `deadsfu` when compiling.
 
-You don't need archane git tools like `git lfs` or `git submodules`.
-
 You need a version of Go greater than 1.16, we recommend 1.16.5 or later.
 
 Clone the main repo:
