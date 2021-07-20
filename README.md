@@ -56,8 +56,17 @@ An Open Source Millicast Alternative.
 
 ## Install
 
+Linux Intel/AMD64
 ```bash
-ls -l
+curl -sL https://github.com/x186k/deadsfu/releases/latest/download/deadsfu-linux-amd64.tar.gz | tar xvz
+```
+Linux Intel/AMD64
+```bash
+curl -sL https://github.com/x186k/deadsfu/releases/latest/download/deadsfu-linux-amd64.tar.gz | tar xvz
+```
+Linux Intel/AMD64
+```bash
+curl -sL https://github.com/x186k/deadsfu/releases/latest/download/deadsfu-linux-amd64.tar.gz | tar xvz
 ```
 
 
