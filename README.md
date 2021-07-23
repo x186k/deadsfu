@@ -1,23 +1,24 @@
  
+
+
+
  <!-- model:  https://github.com/typesense/typesense -->
 
 
-<div align="center">
-<img src="https://raw.githubusercontent.com/x186k/deadsfu/main/logotitle.svg" alt="deadsfu logo" width="150" height="75"/>
+## Dead-simple WebRTC broadcasting.<br>From OBS, the browser, or your app.<br>Cloud-native and scalable. <!-- omit in toc -->
 
-Dead-simple WebRTC broadcasting.  
-From OBS, the browser, or your application.  
-Cloud-native and scalable. 
-<br><br>
-A Millicast alternative in 100% MIT Open Source
-<br><br>
+
+**DeadSFU** is MIT Open Source. <a href="https://github.com/x186k/deadsfu">Github</a>
+
+<!-- ### [Browser-input Tutorial](/README/) -->
+
 <a href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
 <img src="https://img.shields.io/badge/slack%20community-join-d90368" data-canonical-src="https://img.shields.io/badge/slack%20community-join-d90368" style="max-width:100%;"></a>
-</div>
+
 
 ## Quick Links  <!-- omit in toc -->
 
-- [Features](#features)
+- [Feature List](#feature-list)
 - [Install](#install)
 - [Quick Start: Browser-input Streaming](#quick-start-browser-input-streaming)
 - [Tutorial: Browser-input Streaming](#tutorial-browser-input-streaming)
@@ -27,19 +28,19 @@ A Millicast alternative in 100% MIT Open Source
 - [Compile From Source](#compile-from-source)
 
 <!--
-todo
-- [Benchmarks](#benchmarks)
--  
--  - [Who's using this](#whos-using-this)
-- - [API Documentation](#api-documentation)
-- [API Clients](#api-clients)
-- [Search UI Components](#search-ui-components)
+todo, see also typesense
+## Benchmarks
+## Who's using this
+## API Documentation
+## API Clients
 -->
 
-## Features
+## Feature List
 
 - **Dead-Simple Usage:** Meticulously crafted for ease-of-use, scalability, and performance.
-- **Large Scale WebRTC Broadcasting:** SFU can be easily cascaded to create clusters of hundreds of servers.
+- **Large Scale WebRTC Broadcasting:** SFUs can be easily cascaded to create clusters of hundreds of servers.
+- **Cloud Native Docker:** Ready to go Docker images for cloud-native broadcasting clusters.
+- **Auto Scaling Compatible:** HTTPS signalling is compatible with most cluster-autoscaling methods.
 - **OBS Broadcasting:** Send from OBS to DeadSFU for doing WebRTC broadcasting.
 - **Browser Broadcasting:** Simple HTML console for doing WebRTC broadcasting.
 - **Browser Viewer:** Browser viewer enables watching broadcasts.
@@ -53,10 +54,8 @@ todo
 - **Simple Egress HTTPS Signalling:** WISH-like: Send an Offer-SDP, get an Answer-SDP, and you're receiving!
 - **Multi Video Track Forwarding:** Ingress and egress of dozens or hundreds of input video tracks.
 - **Selectable Video Switching:** Receivers getting one video-track can switch to any ingress-track into SFU.
-- **Standard WebRTC Simulcast:** Standard simulcast can be egressed two ways: a) single switchable video b) 3-tracks of video.
+- **Standard WebRTC Simulcast:** WebRTC simulcast ingress means SFU ingress takes 3x track-levels from browser.
 - **Designed For Fault Tolerance:** Single-peer-ingress design for practical large-scale fault-tolerant containerized broadcasting.
-
-- **Docker support:** Ready to go Docker images for cloud-native broadcasting clusters.
 - **Kubernetes capable:** Designed for Kubernetes broadcasting clusters.
 - **HTTPS load balancer compatible:** Designed standard HTTPS load balancer compatibility on egress.
 - **Dead-simple Install:** Use a one-liner curl & untar command to prepare to broadcast.
@@ -161,7 +160,6 @@ Build with Go:
 ```bash
 go build .
 ```
-
 
 
 
