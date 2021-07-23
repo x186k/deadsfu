@@ -8,7 +8,7 @@
 ## Dead-simple WebRTC broadcasting.<br>From OBS, the browser, or your app.<br>Cloud-native and scalable. <!-- omit in toc -->
 
 
-**DeadSFU** is MIT Open Source.xxx <a href="https://github.com/x186k/deadsfu">Github</a>
+**DeadSFU**: dead-simple broadcasting and video transmission.
 
 <!-- ### [Browser-input Tutorial](/README/) -->
 
