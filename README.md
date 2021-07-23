@@ -1,4 +1,7 @@
- 
+---
+permalink: index.html
+---
+
  <!-- model:  https://github.com/typesense/typesense -->
 
 
