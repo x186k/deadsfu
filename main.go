@@ -1095,7 +1095,8 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 
-	logSdpReport("publisher", offer)
+	err = logSdpReport("publisher", offer)
+	checkFatal(err)
 
 	err = peerConnection.SetRemoteDescription(offer)
 	checkFatal(err)
@@ -1181,7 +1182,8 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	ansrtcsd := peerConnection.LocalDescription()
 
-	logSdpReport("sub-answer", *ansrtcsd)
+	err = logSdpReport("sub-answer", *ansrtcsd)
+	checkFatal(err)
 
 	w.Header().Set("Content-Type", "application/sdp")
 	w.WriteHeader(http.StatusAccepted)
@@ -1220,8 +1222,11 @@ func ValidateSDP(rtcsd webrtc.SessionDescription) bool {
 	return err == nil
 }
 
-func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
+func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	good := strings.HasPrefix(rtcsd.SDP, "v=")
+	if !good {
+		return fmt.Errorf("Invalid sdp, no v=0 startline")
+	}
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
 	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
@@ -1229,10 +1234,10 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
-		elog.Printf(" n/0 fail to unmarshal")
-		return
+		return fmt.Errorf("sdp failed to unmarshal")
 	}
 	log.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
+	return nil
 }
 
 func randomHex(n int) string {
@@ -1314,7 +1319,8 @@ func dialUpstream(baseurl string) {
 	offer, err := peerConnection.CreateOffer(nil)
 	checkFatal(err)
 
-	logSdpReport("dialupstream-offer", offer)
+	err = logSdpReport("dialupstream-offer", offer)
+	checkFatal(err)
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	// Note: this will start the gathering of ICE candidates
@@ -1350,7 +1356,8 @@ tryagain:
 	checkFatal(err) //cam
 
 	anssd := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
-	logSdpReport("dial-answer", anssd)
+	err = logSdpReport("dial-answer", anssd)
+	checkFatal(err)
 
 	err = peerConnection.SetRemoteDescription(anssd)
 	checkFatal(err)
@@ -1840,7 +1847,8 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	// }
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
-	logSdpReport("publisher", offer)
+	err = logSdpReport("publisher", offer)
+	checkFatal(err)
 
 	err = peerConnection.SetRemoteDescription(offer)
 	checkFatal(err)
@@ -1861,7 +1869,8 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
 
-	logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
+	err = logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
+	checkFatal(err)
 
 	setupIngressStateHandler(peerConnection)
 

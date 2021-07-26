@@ -12,9 +12,12 @@
 
 <!-- ### [Browser-input Tutorial](/README/) -->
 
-<a href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
-<img src="https://img.shields.io/badge/slack%20community-join-d90368" data-canonical-src="https://img.shields.io/badge/slack%20community-join-d90368" style="max-width:100%;"></a>
-
+<a style="text-decoration:none;" href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
+<img src="https://img.shields.io/badge/slack%20community-join-red" alt="HTML tutorial">
+</a>
+<a style="text-decoration:none;" href="https://github.com/x186k/deadsfu" rel="nofollow">
+<img src="https://img.shields.io/badge/github-x186k%2Fdeadsfu-orange" alt="HTML tutorial">
+</a>
 
 ## Quick Links  <!-- omit in toc -->
 
@@ -23,6 +26,7 @@
 - [Quick Start: Browser-input Streaming](#quick-start-browser-input-streaming)
 - [Tutorial: Browser-input Streaming](#tutorial-browser-input-streaming)
 - [Getting Support](#getting-support)
+- [Email Newsletter](#email-newsletter)
 - [Contributing](#contributing)
 - [Getting Latest Updates](#getting-latest-updates)
 - [Compile From Source](#compile-from-source)
@@ -62,8 +66,9 @@ todo, see also typesense
 - **No Runtime Dependencies:** DeadSFU is a single binary that you can run locally or in production with a single command.
 
 **Don't see a feature on this list?** Check the issue track to see if your feature is there, if not open a new issue. We use user input to make our roadmap, and we'd love to hear from you.
+
 <!--
-- **⚡ Blazing Fast:** Built in C++. Meticulously architected from the ground-up for low-latency (<50ms) instant searches.
+- **⚡ Blazingy Fast:** Built in C++. Meticulously architected from the ground-up for low-latency (<50ms) instant searches.
 - **⚡ Kubernetes Fast:** Built in C++. Meticulously architected from the ground-up for low-latency (<50ms) instant searches.
 -->
 
@@ -127,8 +132,14 @@ Author's email is `cameron@cameronelliott.com`
 
 Slack link: [Slack Invite Link](https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A)
 
+## Email Newsletter
+
+[Get the email newletter.](/newsletter)
+
 ## Contributing
 
+If you have an idea to share, please post it on the [Github discussions](https://github.com/x186k/deadsfu/discussions/categories/ideas) board.  
+If you have found a bug, please file an issue on [Github issues](https://github.com/x186k/deadsfu/issues)
 If you have suggestions or ideas, please submit an issue or create a discussion. Your ideas are wanted!
 
 ## Getting Latest Updates

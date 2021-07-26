@@ -133,7 +133,7 @@ func parseUrlsAndValidate() {
 		}
 	}
 
-	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" {
+	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" && *dialIngressURL == "" {
 		Usage()
 		os.Exit(-1)
 	}
@@ -175,7 +175,8 @@ var Usage = func() {
 	//usage: cat [-benstuv] [file ...]
 	fmt.Fprintf(os.Stderr, "usage: %s [options...] <url...>\n\n", myname)
 
-	fmt.Fprintf(os.Stderr, "An https or http url is required, and ftl, rtp urls are optional.\n\n")
+	fmt.Fprintf(os.Stderr, "An https or http url is required, unless using --dial-ingress.\n")
+	fmt.Fprintf(os.Stderr, "ftl, rtp urls are optional.\n\n")
 
 	if *helpAll {
 
