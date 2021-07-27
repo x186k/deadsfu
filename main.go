@@ -1235,7 +1235,11 @@ func ValidateSDP(rtcsd webrtc.SessionDescription) bool {
 func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	good := strings.HasPrefix(rtcsd.SDP, "v=")
 	if !good {
-		return fmt.Errorf("Invalid sdp, no v=0 startline")
+		len := len(rtcsd.SDP)
+		if len > 20 {
+			len = 20
+		}
+		return fmt.Errorf("Invalid sdp, no v=0 startline:%s", rtcsd.SDP[:len])
 	}
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
 	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
