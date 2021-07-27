@@ -2102,6 +2102,10 @@ func reportFTLReadyness(ready chan bool) {
 
 func reportOpenPort(u *url.URL, network string) {
 
+	if u.Hostname() == "" {
+		return
+	}
+
 	hostport := getExplicitHostPort(u)
 	tcpaddr, err := net.ResolveTCPAddr(network, hostport)
 	if err != nil {
