@@ -837,7 +837,7 @@ func newPeerConnection() *webrtc.PeerConnection {
 		se.SetNAT1To1IPs([]string{*iceCandidateHost}, webrtc.ICECandidateTypeHost)
 	}
 	if *iceCandidateSrflx != "" {
-		se.SetNAT1To1IPs([]string{*iceCandidateHost}, webrtc.ICECandidateTypeSrflx)
+		se.SetNAT1To1IPs([]string{*iceCandidateSrflx}, webrtc.ICECandidateTypeSrflx)
 		peerConnectionConfig.ICEServers = []webrtc.ICEServer{} // yuck
 	}
 
