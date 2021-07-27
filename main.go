@@ -831,8 +831,18 @@ func newPeerConnection() *webrtc.PeerConnection {
 		panic(err)
 	}
 
+	se := webrtc.SettingEngine{}
+
+	if *iceCandidateHost != "" {
+		se.SetNAT1To1IPs([]string{*iceCandidateHost}, webrtc.ICECandidateTypeHost)
+	}
+	if *iceCandidateSrflx != "" {
+		se.SetNAT1To1IPs([]string{*iceCandidateHost}, webrtc.ICECandidateTypeSrflx)
+		peerConnectionConfig.ICEServers = []webrtc.ICEServer{} // yuck
+	}
+
 	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
-	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m))
+	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
 
 	//rtcApi = webrtc.NewAPI()
 	//if *videoCodec == "h264" {

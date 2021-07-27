@@ -67,6 +67,9 @@ var _ = ftlFixOBSConfig
 var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
 	`Add a DeadSFU Server entry to OBS. The URL in -ftl-url will be used for new entry.`)
 
+var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
+var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
+
 //var videoCodec = flag.String("video-codec", "h264", "video codec to use/just h264 currently")
 
 var tlsOldVersions = pflag.Bool("tls-old-versions", false, "Advanced: Enable Cosmo OBS Studio by allowing old TLS versions")
@@ -136,6 +139,10 @@ func parseUrlsAndValidate() {
 	if httpUrl.Scheme == "" && httpsUrl.Scheme == "" && *dialIngressURL == "" {
 		Usage()
 		os.Exit(-1)
+	}
+
+	if *iceCandidateHost != "" && *iceCandidateSrflx != "" {
+		checkFatal(fmt.Errorf("only one type of ice candidate flag permitted"))
 	}
 
 	if *ftlFixOBSConfig {
