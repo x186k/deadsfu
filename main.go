@@ -211,7 +211,7 @@ func redirectHttpToHttpsHandler(h http.Handler) http.Handler {
 		// }
 
 		// if this is a port 80 http request, can we find an https endpoint to redirect it to?
-		if httpsUrl.Scheme != "" && isHttp {
+		if httpsUrl.Scheme != "" && isHttp && *httpToHttpsRedirect {
 			//if  httpsUrl.Hostname() == reqhost {
 			uri := "https://" + httpsUrl.Host + r.RequestURI
 			log.Println("Redirecting HTTP req to ", uri)

@@ -67,6 +67,7 @@ var _ = ftlFixOBSConfig
 var ftlFixOBSConfig = pflag.Bool("ftl-fix-OBS-config", false,
 	`Add a DeadSFU Server entry to OBS. The URL in -ftl-url will be used for new entry.`)
 
+var httpToHttpsRedirect = pflag.Bool("http-to-https-redirect", false, "Redirect http requests to https")
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
 

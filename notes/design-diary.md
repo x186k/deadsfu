@@ -270,7 +270,12 @@ As we are observing today on AWS-Lightsail/Ubuntu, there are two major issues wi
 
 *Decision* We will default to DNS01 challenge for both -https-auto public and local.
 
+## 7/27/21 Do not automatically redirect http->https unless a flag is set
 
+Don't automatically redirect http requests to https, as we have done,
+as it appears from using k8s, that having both http+https handling SDPs+html
+can make sense.
+We will add a flag.
 
 
 
