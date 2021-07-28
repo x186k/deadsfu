@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+# aparently docker-compose pull is faster than a cache
+      # - run: docker-compose pull
       - name: Checkout binaries repo
         uses: actions/checkout@v2
         with:
@@ -37,6 +39,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # In this step, this action saves a list of existing images,
+      # the cache is created without them in the post run.
+      # It also restores the cache if it exists.
+      - name: satackey cach
+        uses: satackey/action-docker-layer-caching@v0.0.11
+          # Ignore the failure of a step and avoid terminating the job.
+          continue-on-error: true
 
       - name: Build and push
         id: docker_build
