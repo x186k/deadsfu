@@ -55,7 +55,9 @@ jobs:
 # I am really tempted to cut this crap down, but github doesn't seem to mind building
 # i guess arm/v6 arm/v7 can help with raspberry pi's
 # i am not sure who the linux/386 is for, but let's leave it incase.
-          platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+#           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
+#           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
