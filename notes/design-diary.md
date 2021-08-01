@@ -277,7 +277,59 @@ as it appears from using k8s, that having both http+https handling SDPs+html
 can make sense.
 We will add a flag.
 
+## 7/29/21 k3s/k8s ingress of http/s WHIP and WASH on k3s
 
+on k8s/k3s we have two 'ingress' spots for http/s:
+- for the publisher
+- for the subscribers
+
+Doing the publisher ingress kind already works, because of the zero-conf hostname+ip+dns01 challenge of deadsfu
+But! subscriber egress does not work: because the many subscriber-pods are accessed via many http points.
+(the many deadsfu pods are accessed via http)
+So...., we really need a dead-simple way to give devs a zero-conf https experience into the subscribers.
+We could:
+- offer Http into the subscribers is easy, but everyone would balk at that.
+- write a simple deadsfu-like ingress container/proxy/lb (you know dnsregister()...)
+- write a k3s/k8s Ingress Controller, ala: [Caleb Doxsey][1]
+- fix traefik to have a Lego with ddns5.com support
+
+[1]: https://www.doxsey.net/blog/how-to-build-a-custom-kubernetes-ingress-controller-in-go
+[2]: https://github.com/calebdoxsey/kubernetes-simple-ingress-controller
+[3]: https://dgraph.io/blog/post/building-a-kubernetes-ingress-controller-with-caddy/
+[4]: https://github.com/dgraph-io/ingressutil
+[5]: https://www.digitalocean.com/community/questions/use-kubernetes-without-a-load-balancer?answer=57547
+[6]: https://github.com/ebrianne/cert-manager-webhook-duckdns
+[7]: https://serverfault.com/a/869453/114731
+
+## 7/31/21 ways to use ddns5 to get ingress into k8s
+
+1. write a simple deadsfu-like ingress container/proxy/lb (you know dnsregister()...)::doesn't fix firewall
+2. write a k3s/k8s Ingress Controller, ala: [Caleb Doxsey][1] [Github][2] [Tejas Dinkar][3] [github][4]:: requires loadbalancer$$
+3. get Service/NodePort working. not recommended by DO people: [nodeport changes IP][5], not working for me either.OPENS FW
+4. fork/fix traefik+lego to use ddns5. good for public ip, but private IP?? :: requires loadbalancer$$
+5. get Server/LoadBalancer working somehow, which should work fine :: requires loadbalancer$$
+6. use certificatemanager with a webhook for ddns5 [github][6] :: requires loadbalancer$$
+7. use Service + External IP [stackoverflow][7] :: maybe
+8. use hostnetwork if node has public IP+no firewall (k3s)::doesn't fix firewall
+
+in the long run everybody wanna use cert-manager plus service/loadbalancer for big deploys:
+in this case the root is http-IN
+in the long run everybody prolly want use certmanager plus service/NodePort for cheapo deploys
+in this case the root is http-IN
+
+
+decisions:
+the root deadsfu node will use http in, not https
+https/tls termination is handled by an k8s ingress controller, not by deadsfu
+cheapo ingress will be done via Service/NodePort
+high-end ingress will be done via Service/LoadBalancer
+*we need to fork [this][6] and do a version for ddns5*
+
+alternate:
+still do https into deadsfu
+find IP address via stun
+expose using either nodeport or loadbalancer(nope)
+*this should be avoided, because we switch between https/http for trial/production*
 
 
 
