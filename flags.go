@@ -121,10 +121,6 @@ func parseUrlsAndValidate() {
 			checkFatal(fmt.Errorf("Only urls may be used as non-flag arguments (without - or --)"))
 		}
 
-		if u.Path != "" && u.Path != "/" {
-			checkFatal(fmt.Errorf("Only root path allowed on signalling URLs: %s", u.String()))
-		}
-
 		switch u.Scheme {
 		case "http":
 			httpUrl = *u
@@ -132,8 +128,14 @@ func parseUrlsAndValidate() {
 			httpsUrl = *u
 		case "ftl":
 			ftlUrl = *u
-		case "rtp":
-			rtpUrl = *u
+		// case "rtp":
+		// 	rtpUrl = *u
+		default:
+			checkFatal(fmt.Errorf("Invalid protocol on url: %s", u.String()))
+		}
+
+		if u.Path != "" && u.Path != "/" {
+			checkFatal(fmt.Errorf("Only root path allowed on signalling URLs: %s", u.String()))
 		}
 	}
 
