@@ -331,6 +331,16 @@ find IP address via stun
 expose using either nodeport or loadbalancer(nope)
 *this should be avoided, because we switch between https/http for trial/production*
 
+WOW: do NOT mix: hostNetwork: true and NodePort!!!!
+
+Can/should we get IP address via Stun???
+Can we eliminate the --ddns-public flag??
+maybe create --stunserver-or-ipaddr??
+maybe --my-ipaddr <address> stunserver or local or public
+--z-debug dumps all ip addresses first thing
+
+
+
 
 
 
