@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
-	"crypto/tls"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -33,24 +32,13 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/caddyserver/certmagic"
-	"github.com/libdns/cloudflare"
-	"github.com/libdns/duckdns"
-	"github.com/libdns/libdns"
-	"github.com/miekg/dns"
-	"go.uber.org/zap"
-
 	"github.com/pkg/profile"
-	//"github.com/x186k/dynamicdns"
 	"github.com/x186k/deadsfu/ftl"
-
 	"golang.org/x/sync/semaphore"
 
 	//"net/http/httputil"
 
 	//"github.com/davecgh/go-spew/spew"
-
-	//"github.com/digitalocean/godo"
 
 	_ "embed"
 
@@ -60,7 +48,6 @@ import (
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
 
-	"github.com/x186k/ddns5libdns"
 	"github.com/x186k/deadsfu/rtpstuff"
 )
 
@@ -184,46 +171,6 @@ func checkFatal(err error) {
 	}
 }
 
-// func checkPanic(err error) {
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// }
-
-func redirectHttpToHttpsHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// http vs https https://github.com/golang/go/issues/28940
-		isHttp := r.TLS == nil
-		//isIPAddr := net.ParseIP(r.Host) != nil
-		// reqhost, _, _ := net.SplitHostPort(r.Host)
-		// if reqhost == "" {
-		// 	reqhost = r.Host
-		// }
-
-		// port := 0
-		// a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-		// if ok {
-		// 	ta, ok := a.(*net.TCPAddr)
-		// 	if !ok {
-		// 		panic("not tcp")
-		// 	}
-		// 	port = ta.Port
-		// }
-
-		// if this is a port 80 http request, can we find an https endpoint to redirect it to?
-		if httpsUrl.Scheme != "" && isHttp && *httpToHttpsRedirect {
-			//if  httpsUrl.Hostname() == reqhost {
-			uri := "https://" + httpsUrl.Host + r.RequestURI
-			log.Println("Redirecting HTTP req to ", uri)
-			http.Redirect(w, r, uri, http.StatusMovedPermanently)
-			return
-		}
-
-		//w.Header().Set("Foo", "Bar")
-		h.ServeHTTP(w, r)
-	})
-}
-
 type TrackCounts struct {
 	numVideo, numAudio, numIdleVideo, numIdleAudio int
 }
@@ -296,12 +243,10 @@ func init() {
 		pflag.Usage = Usage // my own usage handle
 		//this will print unknown flags errors twice, but just deal with it
 		pflag.Parse()
-		if *help || *helpAll {
+		if *help {
 			Usage()
 			os.Exit(0)
 		}
-
-		parseUrlsAndValidate()
 
 		if *debug {
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
@@ -312,9 +257,6 @@ func init() {
 			//elog.Println("debug output NOT enabled")
 			silenceLogger(log.Default())
 		}
-	}
-	if !*ddnsutilDebug {
-		silenceLogger(ddnslog)
 	}
 
 	initMediaHandlerState(trackCounts)
@@ -352,11 +294,6 @@ func main() {
 		}()
 	}
 
-	if *helpAll {
-		pflag.Usage()
-		os.Exit(0)
-	}
-
 	log.Println("NumGoroutine", runtime.NumGoroutine())
 
 	// BEYOND HERE is needed for real operation
@@ -376,57 +313,26 @@ func main() {
 			checkFatal(err)
 		}
 
-		mux.Handle("/", redirectHttpToHttpsHandler(http.FileServer(http.FS(f))))
+		mux.Handle("/", http.FileServer(http.FS(f)))
 
 	}
 	mux.HandleFunc(subPath, SubHandler)
 
 	dialingout := *dialIngressURL != ""
-	ftlEnabled := ftlUrl.Scheme != ""
 
-	if !dialingout && !ftlEnabled {
+	if !dialingout {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
 	//ftl if choosen
-	if ftlUrl.Scheme != "" {
+	if *obsKey != "" {
 		ftlReady := make(chan bool)
 		go reportFTLReadyness(ftlReady)
-
-		if *ddnsRegisterEnabled {
-			var addrs []net.IP
-
-			if *ddnsPublicFlag {
-
-				myipv4 := getMyPublicIpV4()
-				if myipv4 == nil {
-					checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
-				}
-				addrs = []net.IP{myipv4}
-
-			} else {
-
-				addrs = getDefaultRouteInterfaceAddresses()
-				if len(addrs) == 0 {
-					checkFatal(fmt.Errorf("Cannot auto-detect any IP addresses on this system"))
-				}
-
-			}
-			if ftlUrl.Hostname() != "" && ftlUrl.Hostname() != "localhost" {
-				ddnsProvider := ddnsDetermineProvider(&ftlUrl)
-				ddnsRegisterIPAddresses(ddnsProvider, ftlUrl.Hostname(), 2, addrs)
-				// There is no DNS challenge for FTL!
-				//ddnsEnableDNS01Challenge(ddnsProvider)
-			}
-
-		} else {
-			elog.Printf("Registering NO DNS hosts for FTL")
-		}
 
 		// ftl magic
 		go func() {
 
-			udp, kv, err := ftl.FtlServer("", "8084", ftlUrl.Path[1:])
+			udp, kv, err := ftl.FtlServer("", "8084", *obsKey)
 			checkFatal(err)
 
 			if kv["VideoCodec"] != "H264" {
@@ -479,146 +385,13 @@ func main() {
 
 	}
 
-	//https first
-	if httpsUrl.Scheme != "" {
-		usingDNS01ACMEChallenge := false
-		ddnsProvider := ddnsDetermineProvider(&httpsUrl)
+	go func() {
+		// httpLn, err := net.Listen("tcp", laddr)
+		err := http.ListenAndServe(*httpListenAddr, mux)
+		panic(err)
+	}()
 
-		if *ddnsRegisterEnabled {
-			var addrs []net.IP
-
-			if *httpsInterfaceFlag != "" {
-				addr := net.ParseIP(*httpsInterfaceFlag)
-				if addr == nil {
-					elog.Fatalf("-%s is not valid a IP address", httpsInterfaceFlagname)
-				}
-				addrs = []net.IP{addr}
-			} else {
-				if *ddnsPublicFlag {
-
-					myipv4 := getMyPublicIpV4()
-					if myipv4 == nil {
-						checkFatal(fmt.Errorf("Unable to detect my PUBLIC IPv4 address."))
-					}
-					addrs = []net.IP{myipv4}
-
-				} else {
-
-					addrs = getDefaultRouteInterfaceAddresses()
-					if len(addrs) == 0 {
-						checkFatal(fmt.Errorf("Cannot auto-detect any IP addresses on this system"))
-					}
-
-				}
-			}
-
-			ddnsRegisterIPAddresses(ddnsProvider, httpsUrl.Hostname(), 2, addrs)
-			ddnsEnableDNS01Challenge(ddnsProvider)
-			usingDNS01ACMEChallenge = true
-
-		} else {
-			elog.Printf("Registering NO DNS hosts for HTTPS")
-		}
-
-		httpsHasCertificate := make(chan bool)
-		go reportHttpsReadyness(httpsHasCertificate, usingDNS01ACMEChallenge)
-
-		var tlsConfig *tls.Config = nil
-
-		ca := certmagic.LetsEncryptProductionCA
-		if *debugStagingCertificate {
-			ca = certmagic.LetsEncryptStagingCA
-		}
-
-		mgrTemplate := certmagic.ACMEManager{
-			CA:                      ca,
-			Email:                   *ACMEEmailFlag,
-			Agreed:                  *ACMEAgreed,
-			DisableHTTPChallenge:    false,
-			DisableTLSALPNChallenge: false,
-		}
-		magic := certmagic.NewDefault()
-		magic.OnEvent = func(s string, i interface{}) {
-			_ = i
-			switch s {
-			// called at time of challenge passing
-			case "cert_obtained":
-				// elog.Println("Let's Encrypt Certificate Aquired")
-				// called every run where cert is found in cache including when the challenge passes
-				// since the followed gets called for both obained and found in cache, we use that
-			case "cached_managed_cert":
-				close(httpsHasCertificate)
-				elog.Println("HTTPS READY: Certificate Acquired")
-			case "tls_handshake_started":
-				//silent
-			case "tls_handshake_completed":
-				//silent
-			default:
-				elog.Println("certmagic event:", s) //, i)
-			}
-		}
-
-		if *debug {
-			logger, err := zap.NewDevelopment()
-			checkFatal(err)
-			mgrTemplate.Logger = logger
-		}
-		// use certmsgic for manual certificates, as it
-		// will manage oscp stapling
-		// CacheUnmanagedCertificatePEMBytes()
-		// CacheUnmanagedCertificatePEMFile()
-		// CacheUnmanagedTLSCertificate()
-		myACME := certmagic.NewACMEManager(magic, mgrTemplate)
-		magic.Issuers = []certmagic.Issuer{myACME}
-
-		// this call is why we don't use higher level certmagic functions
-		// so agreement isn't always so verbose
-		err = magic.ManageAsync(context.Background(), []string{httpsUrl.Hostname()})
-		checkFatal(err)
-		tlsConfig = magic.TLSConfig()
-
-		if *tlsOldVersions { /// XXX only to work with cosmos OBS studio
-			tlsConfig.MinVersion = 0
-		}
-
-		laddr := *httpsInterfaceFlag + ":" + getPort(&httpsUrl)
-		go func() {
-			httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
-			checkFatal(err)
-			err = http.Serve(httpsLn, mux)
-			checkFatal(err)
-		}()
-		go func() {
-			time.Sleep(time.Second)
-			reportOpenPort(&httpsUrl, "tcp4")
-		}()
-		go func() {
-			time.Sleep(time.Second)
-			reportOpenPort(&httpsUrl, "tcp6")
-		}()
-		//elog.Printf("%v IS READY", httpsUrl.String())
-
-	}
-
-	//http next
-	if httpUrl.Scheme != "" {
-
-		go func() {
-			// httpLn, err := net.Listen("tcp", laddr)
-			err := http.ListenAndServe(httpUrl.Host, certmagic.DefaultACME.HTTPChallengeHandler(mux))
-			panic(err)
-		}()
-		go func() {
-			time.Sleep(time.Second)
-			reportOpenPort(&httpUrl, "tcp4")
-		}()
-		go func() {
-			time.Sleep(time.Second)
-			reportOpenPort(&httpUrl, "tcp6")
-		}()
-
-		elog.Printf("%v IS READY", httpUrl.String())
-	}
+	elog.Printf("SFU HTTP IS READY")
 
 	//the user can specify zero for port, and Linux/etc will choose a port
 
@@ -646,38 +419,6 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
-}
-
-type DDNSUnion interface {
-	libdns.RecordAppender
-	libdns.RecordDeleter
-	libdns.RecordSetter
-}
-
-func ddnsDetermineProvider(u *url.URL) DDNSUnion {
-
-	if strings.HasSuffix(u.Hostname(), ddns5Suffix) {
-		if *cloudflareDDNS {
-			elog.Fatal(fmt.Errorf("Cannot use ddns5 hostname: %v with -cloudflare flag", u.Hostname()))
-		}
-		return &ddns5libdns.Provider{}
-	} else if strings.HasSuffix(u.Hostname(), duckdnsSuffix) {
-		if *cloudflareDDNS {
-			elog.Fatal(fmt.Errorf("Cannot use duckdns hostname: %v with -cloudflare flag", u.Hostname()))
-		}
-		token := duckdnsorg_Token()
-		return &duckdns.Provider{APIToken: token}
-	} else if *cloudflareDDNS {
-		token := cloudflare_Token()
-		return &cloudflare.Provider{APIToken: token}
-	}
-	elog.Fatal(
-		`Not able to determine which DDNS provider to use:
-*.ddns5.com indicates: ddns5.com
-*.duckdns.org indicates: DuckDNS
-* with the flag -cloudflare indicates: Cloudflare.
-`)
-	panic("no")
 }
 
 func initRxid2state(n int, id TrackId) {
@@ -716,107 +457,6 @@ func getPort(u *url.URL) string {
 		return u.Port()
 	}
 	panic("bad scheme")
-}
-
-// ddnsRegisterIPAddresses will register IP addresses to hostnames
-// zone might be duckdns.org
-// subname might be server01
-func ddnsRegisterIPAddresses(provider certmagic.ACMEDNSProvider, fqdn string, suffixCount int, addrs []net.IP) {
-
-	//timestr := strconv.FormatInt(time.Now().UnixNano(), 10)
-	// ddnsHelper.Present(nil, *ddnsDomain, timestr, dns.TypeTXT)
-	// ddnsHelper.Wait(nil, *ddnsDomain, timestr, dns.TypeTXT)
-	for _, v := range addrs {
-
-		var dnstype uint16
-		var network string
-
-		if v.To4() != nil {
-			dnstype = dns.TypeA
-			network = "ip4"
-		} else {
-			dnstype = dns.TypeAAAA
-			network = "ip6"
-		}
-
-		normalip := NormalizeIP(v.String(), dnstype)
-
-		pubpriv := "Public"
-		if IsPrivate(v) {
-			pubpriv = "Private"
-		}
-		log.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
-
-		x := provider.(DDNSProvider)
-		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
-		err := ddnsSetRecord(context.Background(), x, fqdn, suffixCount, normalip, dnstype)
-		checkFatal(err)
-
-		log.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
-		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
-		checkFatal(err)
-
-		elog.Printf("IPAddr %v DNS registered as %v", v, httpsUrl.Hostname())
-
-		localDNSIP, err := net.ResolveIPAddr(network, httpsUrl.Hostname())
-		checkFatal(err)
-
-		log.Println("net.ResolveIPAddr", network, httpsUrl.Hostname(), localDNSIP.String())
-
-		if !localDNSIP.IP.Equal(v) {
-			checkFatal(fmt.Errorf("Inconsistent DNS, please use another name"))
-		}
-
-		//log.Println("DDNS propagation complete", fqdn, suffixCount, normalip)
-	}
-}
-
-func duckdnsorg_Token() string {
-	const name = "DUCKDNS_TOKEN"
-	token := os.Getenv(name)
-	if len(token) > 0 {
-		log.Println("Got Duckdns token from env: ", "DUCKDNS_TOKEN")
-		return token
-	}
-
-	elog.Fatalf("You must set the environment variable: %v to use Duckdns.org", "DUCKDNS_TOKEN")
-	panic("no")
-}
-
-func cloudflare_Token() string {
-	token := os.Getenv("CLOUDFLARE_TOKEN")
-	if len(token) > 0 {
-		log.Println("Got Cloudflare token from env: CLOUDFLARE_TOKEN ")
-		return token
-	}
-
-	elog.Fatal("You must set the environment variable: CLOUDFLARE_TOKEN in order to use Cloudflare for DDNS or ACME")
-	panic("no2")
-}
-
-//why ddns5 uses tokens
-//we must use tokens, unfortunatly.
-//why?
-// if our ddns provider just did A,AAAA records and no TXT
-// records, we could allow write-once A,AAAA records.
-// But! by supporting TXT records we CANNOT allow
-// TXT records to be created in a FQDN by anyone BUT
-// the creator of the A and AAAA record for that FQDN
-
-// So, its a security issue, we CANNOT allow Bob to
-// Create bob.ddns5.com/A/192.168.1.1
-// and then allow Alice to create bob.ddns5.com/TXT/xxxxxxxxx
-// if we did, Alice could get a cert for bob.ddns5.com
-
-func ddnsEnableDNS01Challenge(foo certmagic.ACMEDNSProvider) {
-
-	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-		//DNSProvider:        provider.(certmagic.ACMEDNSProvider),
-		DNSProvider:        foo,
-		TTL:                0,
-		PropagationTimeout: 0,
-		Resolvers:          []string{},
-	}
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
@@ -2016,81 +1656,6 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 	return &copy
 }
 
-// remove with go 1.17 arrival
-func IsPrivate(ip net.IP) bool {
-	if ip4 := ip.To4(); ip4 != nil {
-		// Following RFC 4193, Section 3. Local IPv6 Unicast Addresses which says:
-		//   The Internet Assigned Numbers Authority (IANA) has reserved the
-		//   following three blocks of the IPv4 address space for private internets:
-		//     10.0.0.0        -   10.255.255.255  (10/8 prefix)
-		//     172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
-		//     192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
-		return ip4[0] == 10 ||
-			(ip4[0] == 172 && ip4[1]&0xf0 == 16) ||
-			(ip4[0] == 192 && ip4[1] == 168)
-	}
-	// Following RFC 4193, Section 3. Private Address Space which says:
-	//   The Internet Assigned Numbers Authority (IANA) has reserved the
-	//   following block of the IPv6 address space for local internets:
-	//     FC00::  -  FDFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF (FC00::/7 prefix)
-	return len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc
-}
-
-// To implement this, requires we run an API that 'calls-back' to see if ports are open
-// let's see if users are happy with curl directions on checking access for now:
-// curl -v telnet://127.0.0.1:22
-func IsAccessibleFromInternet(addrPort string) bool {
-	return false
-}
-
-var _ = IsAccessibleFromInternet
-
-// returns nil on failure
-func getMyPublicIpV4() net.IP {
-	var publicmyip []string = []string{"https://api.ipify.org", "http://checkip.amazonaws.com/"}
-
-	client := http.Client{
-		Timeout: 3 * time.Second,
-	}
-	for _, v := range publicmyip {
-		res, err := client.Get(v)
-		if err != nil {
-			return nil
-		}
-		ipraw, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			return nil
-		}
-		ip := net.ParseIP(string(ipraw))
-		if ip != nil {
-			return ip
-		}
-	}
-	return nil
-}
-
-func reportHttpsReadyness(ready chan bool, dnschal bool) {
-	t0 := time.Now()
-	ticker := time.NewTicker(time.Second * 5).C
-	for {
-		select {
-		case t1 := <-ticker:
-
-			n := int(t1.Sub(t0).Seconds())
-
-			elog.Printf("HTTPS NOT READY: Waited %d seconds. Using DNS01 challenge: %v", n, dnschal)
-
-			if n >= 30 {
-				elog.Printf("No HTTPS certificate: Stopping status messages. Will update if aquired.")
-				return
-			}
-
-		case <-ready:
-			return
-		}
-	}
-}
-
 func reportFTLReadyness(ready chan bool) {
 
 	t0 := time.Now()
@@ -2109,41 +1674,8 @@ func reportFTLReadyness(ready chan bool) {
 			}
 
 		case <-ready:
+			elog.Printf("FTL IS READY!")
 			return
 		}
-	}
-}
-
-func reportOpenPort(u *url.URL, network string) {
-
-	if u.Hostname() == "" {
-		return
-	}
-
-	hostport := getExplicitHostPort(u)
-	tcpaddr, err := net.ResolveTCPAddr(network, hostport)
-	if err != nil {
-		// not fatal
-		// if there is no ipv6 (or v4) address, continue on
-		return
-	}
-
-	if IsPrivate(tcpaddr.IP) {
-		elog.Printf("IPAddr %v IS PRIVATE IP, not Internet reachable. RFC 1918, 4193", tcpaddr.IP.String())
-		return
-	}
-
-	// use default proxy addr
-	proxyok, iamopen := canConnectThroughProxy("", tcpaddr, network)
-
-	if !proxyok {
-		//just be silent about proxy errors, Cameron didn't pay his bill
-		return
-	}
-
-	if iamopen {
-		elog.Printf("IPAddr %v port:%v IS OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
-	} else {
-		elog.Printf("IPAddr %v port:%v IS NOT OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
 	}
 }

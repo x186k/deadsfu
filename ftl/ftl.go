@@ -15,14 +15,6 @@ import (
 	"crypto/sha512"
 )
 
-// func checkFatal(err error) {
-// 	if err != nil {
-// 		_, fileName, fileLine, _ := runtime.Caller(1)
-
-// 		log.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
-// 	}
-// }
-
 var ErrFTLAuthFail = errors.New("FTL authentication failed")
 
 //generally listenResolveAddr should be ""
@@ -37,8 +29,8 @@ func FtlServer(listenResolveAddr, port string, streamkey string) (conn *net.UDPC
 	//pre agreed key
 	// key := []byte("aBcDeFgHiJkLmNoPqRsTuVwXyZ123456")
 	// myid := "123456789"
-	key := []byte(split[0])
-	myid := split[1]
+	myid := split[0]
+	key := []byte(split[1])
 
 	kvmap = make(map[string]string)
 
