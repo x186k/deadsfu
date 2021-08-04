@@ -25,14 +25,24 @@ import (
 
 var ErrFTLAuthFail = errors.New("FTL authentication failed")
 
-func FtlServer(host, port string) (conn *net.UDPConn, kvmap map[string]string, err error) {
+//generally listenResolveAddr should be ""
+
+func FtlServer(listenResolveAddr, port string, streamkey string) (conn *net.UDPConn, kvmap map[string]string, err error) {
+
+	split := strings.Split(streamkey, "-")
+	if len(split) != 2 {
+		return nil, nil, fmt.Errorf("Invalid URL streamkey, must be: ftp://host/nnnnn-key")
+	}
 
 	//pre agreed key
-	key := []byte("aBcDeFgHiJkLmNoPqRsTuVwXyZ123456")
-	myid := "123456789"
+	// key := []byte("aBcDeFgHiJkLmNoPqRsTuVwXyZ123456")
+	// myid := "123456789"
+	key := []byte(split[0])
+	myid := split[1]
+
 	kvmap = make(map[string]string)
 
-	ln, err := net.Listen("tcp4", host+":"+port)
+	ln, err := net.Listen("tcp4", listenResolveAddr+":"+port)
 	if err != nil {
 		return
 	}
@@ -164,7 +174,7 @@ func FtlServer(host, port string) (conn *net.UDPConn, kvmap map[string]string, e
 
 	fmt.Fprintf(c, "200. Use UDP port 8084\n")
 
-	addr, err := net.ResolveUDPAddr("udp4", host+":8084")
+	addr, err := net.ResolveUDPAddr("udp4", listenResolveAddr+":8084")
 	if err != nil {
 		return
 	}
