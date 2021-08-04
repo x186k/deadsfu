@@ -18,8 +18,9 @@ func checkFatal(err error) {
 }
 
 func main() {
-	conn, _, err := ftl.FtlServer("", "8084")
+	conn, _, err := ftl.FtlServer("", "8084","")
 	checkFatal(err)
+	
 
 	i:=0
 	buf := make([]byte, 2000)
