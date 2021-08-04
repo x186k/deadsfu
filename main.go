@@ -426,7 +426,7 @@ func main() {
 		// ftl magic
 		go func() {
 
-			udp, kv, err := ftl.FtlServer("", "8084")
+			udp, kv, err := ftl.FtlServer("", "8084", ftlUrl.Path[1:])
 			checkFatal(err)
 
 			if kv["VideoCodec"] != "H264" {
