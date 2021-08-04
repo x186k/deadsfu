@@ -21,10 +21,11 @@
 
 ## Quick Links  <!-- omit in toc -->
 
+- [Videos](#videos)
 - [Feature List](#feature-list)
 - [Install](#install)
 - [Quick Start: Browser-input Streaming](#quick-start-browser-input-streaming)
-- [Tutorial: Browser-input Streaming](#tutorial-browser-input-streaming)
+- [Step-by-step: Browser-input Streaming](#step-by-step-browser-input-streaming)
 - [Getting Support](#getting-support)
 - [Email Newsletter](#email-newsletter)
 - [Contributing](#contributing)
@@ -38,6 +39,13 @@ todo, see also typesense
 ## API Documentation
 ## API Clients
 -->
+
+## Videos
+
+- [Video Tour][v1]: Launch Digital Ocean VM, Download, Run, Browser-send, Browser-receive, change 3x simulcast channels
+
+
+[v1]: /binaries/video1.mp4
 
 ## Feature List
 
@@ -118,9 +126,9 @@ docker run --network host x186k/deadsfu /app/main https://tom42.ddns5.com:8443
 
 <!-- ## Quick Start: OBS Streaming -->
 
-## Tutorial: Browser-input Streaming
+## Step-by-step: Browser-input Streaming
 
-Tutorial on the documentation site: [https://deadsfu.com/docs/tutorials/browser-input-streaming]
+[View the browser input tutorial.](https://deadsfu.com//tutorials/browser-in-tutorial/)
 
 <!-- ## Tutorial: OBS-in Streaming -->
 
