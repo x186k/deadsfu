@@ -5,7 +5,7 @@
  <!-- model:  https://github.com/typesense/typesense -->
 
 
-## Curious  <!-- omit in toc -->
+## Dead-simple Scalable WebRTC Broadcasting  <!-- omit in toc -->
 
 
 **DeadSFU**: dead-simple broadcasting and video transmission.
