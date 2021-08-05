@@ -5,7 +5,7 @@
  <!-- model:  https://github.com/typesense/typesense -->
 
 
-## Dead-simple WebRTC broadcasting.<br>From OBS, the browser, or your app.<br>Cloud-native and scalable. <!-- omit in toc -->
+## Curious  <!-- omit in toc -->
 
 
 **DeadSFU**: dead-simple broadcasting and video transmission.
