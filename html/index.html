@@ -42,94 +42,35 @@
 <body>
 
   <div class="container">
-    <nav class="navbar navbar-expand-lg navbar-light bg-light">
-      <div class="container-fluid">
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarTogglerDemo01"
-          aria-controls="navbarTogglerDemo01" aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse my-1" id="navbarTogglerDemo01">
-          <a class="navbar-brand" href="#" style="color: #0053fa;">
-            <span>
-              <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg"
-                xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewbox="0 0 473.654 473.654"
-                style="vertical-align:-6;enable-background:new 0 0 473.654 473.654;" xml:space="preserve" width="25px"
-                height="25px">
-                <circle style="fill:#0053fa;" cx="236.827" cy="236.827" r="236.827" />
-                <path style="fill:#FFFFFF;"
-                  d="M417.235,184.185c-1.339-1.47-3.272-2.367-5.632-2.169c-0.632,0.015-1.253,0.108-1.851,0.295
-    c-25.504,5.452-51.004,10.905-76.508,16.353c-5.299,1.137-6.724,8.156-3.115,11.761c6.754,6.754,13.504,13.504,20.257,20.257
-    c-31.708,31.704-63.412,63.408-95.116,95.116c0-53.382,0-106.769,0-160.147c9.648,0,19.292,0,28.937,0
-    c5.149,0,9.061-5.991,6.099-10.561c-14.192-21.903-28.383-43.805-42.575-65.704c-0.12-0.224-0.266-0.43-0.411-0.639
-    c-0.011-0.019-0.022-0.037-0.037-0.056c-0.011-0.015-0.022-0.026-0.034-0.045c-0.157-0.217-0.314-0.423-0.497-0.621
-    c-1.537-1.9-3.586-2.655-5.609-2.55c-1.978-0.049-3.968,0.748-5.464,2.61c-0.116,0.127-0.217,0.266-0.322,0.404
-    c-0.064,0.086-0.135,0.15-0.194,0.239c-0.082,0.131-0.168,0.258-0.251,0.389c-0.034,0.056-0.075,0.101-0.105,0.157
-    c-14.218,21.951-28.436,43.899-42.657,65.85c-2.894,4.473,0.939,10.519,6.021,10.519c9.682,0,19.364,0,29.045,0
-    c0,53.308,0,106.615,0,159.923c-31.513-31.513-63.027-63.027-94.536-94.536c6.885-6.885,13.773-13.773,20.661-20.657
-    c3.571-3.571,2.079-10.583-3.134-11.697c-25.549-5.46-51.098-10.92-76.646-16.376c-0.553-0.165-1.133-0.247-1.72-0.266
-    c-2.315-0.198-4.233,0.654-5.576,2.064c-1.462,1.331-2.36,3.261-2.169,5.613c0.011,0.647,0.108,1.275,0.299,1.881
-    c5.449,25.496,10.901,51,16.349,76.497c1.133,5.299,8.152,6.724,11.757,3.119c6.78-6.78,13.56-13.56,20.34-20.34
-    c39.415,39.415,78.83,78.83,118.245,118.245c3.328,3.328,7.12,4.405,10.695,4.001c3.354,0.142,6.855-1.017,9.944-4.11
-    c39.497-39.497,78.995-78.995,118.492-118.496c6.914,6.918,13.833,13.829,20.747,20.747c3.571,3.571,10.583,2.083,11.694-3.134
-    c5.456-25.549,10.912-51.094,16.368-76.643c0.165-0.553,0.251-1.137,0.269-1.724C419.494,187.442,418.645,185.524,417.235,184.185z" />
-              </svg>
-              DeadSFU
-            </span>
-          </a>
-
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-            <li class="nav-item">
-              <button id="sendbutton" type="button" class="mx-1 my-1 btn btn-primary" onclick="transmit()">Send</button>
-            </li>
-            <li class="nav-item">
-              <button id="receivebutton" type="button" class="mx-1 my-1 btn btn-primary"
-                onclick="receive()">Receive</button>
-            </li>
-
-            <li class="nav-item dropdown">
-              <button id="channeldrop" class="disabled btn btn-secondary dropdown-toggle my-1" type="button"
-                data-bs-toggle="dropdown" aria-expanded="false">
-                Channel
-              </button>
-              <ul class="dropdown-menu" aria-labelledby="channeldrop">
-                <li><a class="dropdown-item" onclick="channel('video0')">Channel 0</a></li>
-                <li><a class="dropdown-item" onclick="channel('video1')">Channel 1</a></li>
-                <li><a class="dropdown-item" onclick="channel('video2')">Channel 2</a></li>
-                <li><a class="dropdown-item" onclick="channel('video3')">Channel 3</a></li>
-                <li><a class="dropdown-item" onclick="channel('video4')">Channel 4</a></li>
-                <li><a class="dropdown-item" onclick="channel('video5')">Channel 5</a></li>
-                <li><a class="dropdown-item" onclick="channel('video6')">Channel 6</a></li>
-                <li><a class="dropdown-item" onclick="channel('video7')">Channel 7</a></li>
-                <li><a class="dropdown-item" onclick="channel('video8')">Channel 8</a></li>
-                <li><a class="dropdown-item" onclick="channel('video9')">Channel 9</a></li>
-
-
-                <!-- <li>
-                  <hr class="dropdown-divider">
-                </li>
-                <li><a class="dropdown-item" href="#">Something else here</a></li> -->
-              </ul>
-            </li>
-          </ul>
-
-          <form class="d-flex">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-
-              <span id="rxtx" class="navbar-text me-2"> 0/0 rx/tx kbps </span>
-
-              <span id="xstate" class="navbar-text">disconnected</span>
-
-              <li class="nav-item">
-                <a class="nav-link" style="color: #0053fa;" href="#" tabindex="-1" aria-disabled="true">Help</a>
-              </li>
-
-            </ul>
-          </form>
+    <!-- As a heading -->
+    <div class="container">
+      <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="mx-auto order-0">
+          <span class="navbar-text">
+            <a id="gofullscreen" style="color: #0053fa;" href="#" tabindex="-1" aria-disabled="true">
+              <svg height="1em" width="1em" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="expand"
+                class="svg-inline--fa fa-expand fa-w-14" role="img" xmlns="http://www.w3.org/2000/svg"
+                viewbox="0 0 448 512">
+                <path fill="currentColor"
+                  d="M0 180V56c0-13.3 10.7-24 24-24h124c6.6 0 12 5.4 12 12v40c0 6.6-5.4 12-12 12H64v84c0 6.6-5.4 12-12 12H12c-6.6 0-12-5.4-12-12zM288 44v40c0 6.6 5.4 12 12 12h84v84c0 6.6 5.4 12 12 12h40c6.6 0 12-5.4 12-12V56c0-13.3-10.7-24-24-24H300c-6.6 0-12 5.4-12 12zm148 276h-40c-6.6 0-12 5.4-12 12v84h-84c-6.6 0-12 5.4-12 12v40c0 6.6 5.4 12 12 12h124c13.3 0 24-10.7 24-24V332c0-6.6-5.4-12-12-12zM160 468v-40c0-6.6-5.4-12-12-12H64v-84c0-6.6-5.4-12-12-12H12c-6.6 0-12 5.4-12 12v124c0 13.3 10.7 24 24 24h124c6.6 0 12-5.4 12-12z">
+                </path>
+              </svg></a>
+          </span>
+          &nbsp;&nbsp;&nbsp;
+          <span id="rxtx" class="navbar-text me-2"> 0/0 rx/tx kbps </span>
+          &nbsp;&nbsp;&nbsp;
+          <span id="xstate" class="navbar-text">disconnected</span>
+          &nbsp;&nbsp;&nbsp;
+          <span class="navbar-text">
+            <a style="color: #0053fa;" href="#" tabindex="-1" aria-disabled="true">help</a>
+          </span>
         </div>
-      </div>
-    </nav>
+
+      </nav>
+    </div>
 
 
+    <!-- do not remove! for errors! -->
     <div class="text-center">
       <span style="color:darkred" id="errortext">&nbsp;</span>
     </div>
@@ -149,6 +90,21 @@
 
 
   <script>
+    // Wait for the page to load first
+    window.onload = function () {
+      var a = document.getElementById("gofullscreen")
+      a.onclick = function () {
+        let video = document.getElementById("video1")
+        if (video.webkitEnterFullScreen) {
+          // Toggle fullscreen in Safari for iPad
+          video.webkitEnterFullScreen()
+        } else {
+          video.requestFullscreen()
+        }
+        return false
+      }
+      receive()
+    }
     //The @ts-check statement enables jsdoc typechecking
     // https://stackoverflow.com/a/52076280/86375
     // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
@@ -182,8 +138,7 @@
     async function transmit() {
       console.log("--transmit5")
       document.title = "Sending"
-      document.getElementById("sendbutton").disabled = true
-      document.getElementById("receivebutton").disabled = true
+
       document.getElementById("video1").removeAttribute("poster")
 
 
@@ -301,12 +256,11 @@
     async function receive() {
       console.log("--receive x3")
       document.title = "Receiving"
-      document.getElementById("sendbutton").disabled = true
-      document.getElementById("receivebutton").disabled = true
+
       document.getElementById("video1").removeAttribute("poster")
       //document.getElementById("channeldrop").disabled = false
       //document.getElementById("channeldrop").removeAttribute('disabled')
-      document.getElementById("channeldrop").classList.remove("disabled");
+      //document.getElementById("channeldrop").classList.remove("disabled");
 
       try {
         const url = suburl + '?txid=' + txid
