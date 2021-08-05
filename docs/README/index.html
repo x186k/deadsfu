@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>DeadSFU</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="">
+  <link rel="stylesheet" href="/assets/fuckingstyle.css?v=">
+  <!-- https://realfavicongenerator.net/svg-favicon/ -->
+<link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
+<link rel="icon" type="image/png" href="/assets/images/favicon.png">
+
+
+
+</head>
+
+<body>
+  <h1 id="brutal-cam-theme">Brutal Cam Theme</h1>
+
+<p>I’m afraid is what happens when you let a back-end developer design a theme.</p>
+
+<p>A brutalist, minimalist theme. (I think)</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>You can fork or clone the repo.
+If you do a github GUI fork, then clone your fork of the repo,
+you can get updates (if any) to this theme by using the Github GUI.</p>
+
+<p>Basic way to clone and view site:</p>
+
+<p>git clone https://github.com/cameronelliott/brutal-cam</p>
+
+<p>cd brutal-cam</p>
+
+<p>Server for working with live-reload, open your browser to http://127.0.0.1:4000</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run <span class="nt">--rm</span> <span class="nt">-it</span> <span class="nt">-v</span> <span class="nv">$PWD</span>:/srv/jekyll <span class="nt">-p</span> 4000:4000 <span class="nt">-p</span> 35729:35729 jekyll/builder:latest jekyll serve <span class="nt">--livereload</span>
+</code></pre></div></div>
+
+<p>Build to _site</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run <span class="nt">--rm</span> <span class="nt">-it</span> <span class="nt">-v</span> <span class="nv">$PWD</span>:/srv/jekyll <span class="nt">-p</span> 127.0.0.1:4000:4000 jekyll/builder:latest jekyll build
+</code></pre></div></div>
+
+
+
+
+  <!-- Copy code to clipboard -->
+  <script>
+    //https://www.dannyguo.com/blog/how-to-add-copy-to-clipboard-buttons-to-code-blocks-in-hugo/
+    function addCopyButtons(clipboard) {
+      document.querySelectorAll('pre > code').forEach(function (codeBlock) {
+        var button = document.createElement('button');
+        button.className = 'copy-code-button';
+        button.type = 'button';
+        button.innerText = 'Copy';
+
+        button.addEventListener('click', function () {
+          clipboard.writeText(codeBlock.innerText).then(function () {
+            /* Chrome doesn't seem to blur automatically,
+               leaving the button in a focused state. */
+            button.blur();
+
+            button.innerText = 'Copied!';
+
+            setTimeout(function () {
+              button.innerText = 'Copy';
+            }, 2000);
+          }, function (error) {
+            button.innerText = 'Error';
+          });
+        });
+
+        var pre = codeBlock.parentNode;
+        if (pre.parentNode.classList.contains('highlight')) {
+          var highlight = pre.parentNode;
+          highlight.parentNode.insertBefore(button, highlight);
+        } else {
+          pre.parentNode.insertBefore(button, pre);
+        }
+      });
+    }
+    addCopyButtons(navigator.clipboard);
+  </script>
+</body>
+
+</html>
