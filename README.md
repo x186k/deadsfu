@@ -22,7 +22,7 @@
 
 - [Feature List](#feature-list)
 - [Install](#install)
-- [Quick Start: Under construction](#quick-start-under-construction)
+- [Quick Start: Under construction!](#quick-start-under-construction)
 - [Getting Support](#getting-support)
 - [Email Newsletter](#email-newsletter)
 - [Contributing](#contributing)
@@ -43,33 +43,22 @@ todo, see also typesense
 - **Dead-Simple Usage:** Meticulously crafted for ease-of-use, scalability, and performance.
 - **Large Scale WebRTC Broadcasting:** SFUs can be easily cascaded to create clusters of hundreds of servers.
 - **Cloud Native Docker:** Ready to go Docker images for cloud-native broadcasting clusters.
-- **Auto Scaling Compatible:** HTTPS signalling is compatible with most cluster-autoscaling methods.
+- **Auto Scaling Compatible:** HTTP signalling is compatible with most cluster-autoscaling methods.
 - **OBS Broadcasting:** Send from OBS to DeadSFU for doing WebRTC broadcasting.
-- **Browser Broadcasting:** Simple HTML console for doing WebRTC broadcasting.
 - **Browser Viewer:** Browser viewer enables watching broadcasts.
-- **FTL Ingress:** Add an FTL:// URL to the args, and FTL will be the chosen ingress protocol.
-- **RTP Ingress:** Add an RTP:// URL to the args, and RTP will be the chosen ingress protocol. (todo)
-- **Firewall Ready Check:** When using a public IP address, the SFU checks if the ports is open.
-- **Zero-conf Inside-firewall Use:** Auto-local IP addr detection, DNS registration and HTTPS setup for one-liner SFU setup.
-- **Zero-conf Outside-firewall Use:** Auto-public IP addr detection, DNS registration and HTTPS setup for one-liner SFU setup.
 - **Simple Ingress HTTPS Signalling:** WISH compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
-- **Zero-conf HTTPS Certificates:** Just like Caddy, HTTPS certificates are auto-aquired. No firewall holes, thanks to DNS challenge.
 - **Simple Egress HTTPS Signalling:** WISH-like: Send an Offer-SDP, get an Answer-SDP, and you're receiving!
 - **Multi Video Track Forwarding:** Ingress and egress of dozens or hundreds of input video tracks.
 - **Selectable Video Switching:** Receivers getting one video-track can switch to any ingress-track into SFU.
 - **Standard WebRTC Simulcast:** WebRTC simulcast ingress means SFU ingress takes 3x track-levels from browser.
 - **Designed For Fault Tolerance:** Single-peer-ingress design for practical large-scale fault-tolerant containerized broadcasting.
 - **Kubernetes capable:** Designed for Kubernetes broadcasting clusters.
-- **HTTPS load balancer compatible:** Designed standard HTTPS load balancer compatibility on egress.
+- **HTTP load balancer compatible:** Designed standard HTTP load balancer compatibility on egress.
 - **Dead-simple Install:** Use a one-liner curl & untar command to prepare to broadcast.
 - **No Runtime Dependencies:** DeadSFU is a single binary that you can run locally or in production with a single command.
 
 **Don't see a feature on this list?** Check the issue track to see if your feature is there, if not open a new issue. We use user input to make our roadmap, and we'd love to hear from you.
 
-<!--
-- **⚡ Blazingy Fast:** Built in C++. Meticulously architected from the ground-up for low-latency (<50ms) instant searches.
-- **⚡ Kubernetes Fast:** Built in C++. Meticulously architected from the ground-up for low-latency (<50ms) instant searches.
--->
 
 ## Install
 
@@ -98,7 +87,7 @@ Windows
 curl  https://github.com/x186k/deadsfu/releases/latest/download/deadsfu-windows-amd64.zip -sLo tmp && tar -xvf tmp && del tmp
 ```
 
-## Quick Start: Under construction
+## Quick Start: Under construction!
 
 Linux/macOS
 ```bash
