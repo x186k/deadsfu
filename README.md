@@ -10,22 +10,19 @@
 
 **DeadSFU**: dead-simple broadcasting and video transmission.
 
-<!-- ### [Browser-input Tutorial](/README/) -->
 
+<!-- slack badget -->
 <a style="text-decoration:none;" href="https://join.slack.com/t/deadsfu/shared_invite/zt-sv23oa10-XFFYoJHPty8BtuCmBthH_A" rel="nofollow">
 <img src="https://img.shields.io/badge/slack%20community-join-red" alt="HTML tutorial">
 </a>
-<a style="text-decoration:none;" href="https://github.com/x186k/deadsfu" rel="nofollow">
-<img src="https://img.shields.io/badge/github-x186k%2Fdeadsfu-orange" alt="HTML tutorial">
-</a>
+
+
 
 ## Quick Links  <!-- omit in toc -->
 
-- [Videos](#videos)
 - [Feature List](#feature-list)
 - [Install](#install)
-- [Quick Start: Browser-input Streaming](#quick-start-browser-input-streaming)
-- [Step-by-step: Browser-input Streaming](#step-by-step-browser-input-streaming)
+- [Quick Start: Under construction](#quick-start-under-construction)
 - [Getting Support](#getting-support)
 - [Email Newsletter](#email-newsletter)
 - [Contributing](#contributing)
@@ -40,12 +37,6 @@ todo, see also typesense
 ## API Clients
 -->
 
-## Videos
-
-- [Video Tour][v1]: Launch Digital Ocean VM, Download, Run, Browser-send, Browser-receive, change 3x simulcast channels
-
-
-[v1]: /binaries/video1.mp4
 
 ## Feature List
 
@@ -107,7 +98,7 @@ Windows
 curl  https://github.com/x186k/deadsfu/releases/latest/download/deadsfu-windows-amd64.zip -sLo tmp && tar -xvf tmp && del tmp
 ```
 
-## Quick Start: Browser-input Streaming
+## Quick Start: Under construction
 
 Linux/macOS
 ```bash
@@ -124,15 +115,7 @@ Docker
 docker run --network host x186k/deadsfu /app/main https://tom42.ddns5.com:8443
 ```
 
-<!-- ## Quick Start: OBS Streaming -->
 
-## Step-by-step: Browser-input Streaming
-
-[View the browser input tutorial.](https://deadsfu.com//tutorials/browser-in-tutorial/)
-
-<!-- ## Tutorial: OBS-in Streaming -->
-
-<!-- ## FAQ -->
 
 ## Getting Support
 
@@ -142,7 +125,7 @@ Slack link: [Slack Invite Link](https://join.slack.com/t/deadsfu/shared_invite/z
 
 ## Email Newsletter
 
-[Get the email newletter.](/newsletter)
+[Get the email newletter.](https://docs.google.com/forms/d/e/1FAIpQLSd8rzXabvn73YC_GPRtXZb1zlKPeOEQuHDdVi4m9umJqEaJsA/viewform)
 
 ## Contributing
 
