@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o main .
 FROM alpine:3.14.0  
 RUN apk --no-cache add ca-certificates
 COPY --from=0 /app/main /app/main
+EXPOSE 8080
 CMD ["/app/main"] 
 
 
