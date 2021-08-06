@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o main .
 FROM alpine:3.14.0  
 RUN apk --no-cache add ca-certificates
 COPY --from=0 /app/main /app/main
-CMD ["./main"] 
+CMD ["/app/main"] 
 
 
 # https://docs.docker.com/develop/develop-images/multistage-build/
