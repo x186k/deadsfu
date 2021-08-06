@@ -22,9 +22,7 @@ import (
 	"sync"
 
 	mrand "math/rand"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -81,8 +79,6 @@ var rtpPacketPool = sync.Pool{
 // per RFC appdata is "application-specific data", we use a/b/c for simulcast
 const (
 	mediaStreamId = "x186k"
-	ddns5Suffix   = ".ddns5.com"
-	duckdnsSuffix = ".duckdns.org"
 	videoMimeType = "video/h264"
 	audioMimeType = "audio/opus"
 	pubPath       = "/pub"
@@ -196,7 +192,6 @@ var Version = "version-unset"
 
 // This should allow us to use checkFatal() more, and checkFatal() less
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
-var ddnslog = log.New(os.Stderr, "X ", log.Lmicroseconds|log.LUTC)
 
 func logGoroutineCountToDebugLog() {
 	n := runtime.NumGoroutine()
@@ -437,26 +432,6 @@ func initMediaHandlerState(t TrackCounts) {
 	initRxid2state(t.numVideo, XVideo)
 	initRxid2state(t.numIdleVideo, XIdleVideo)
 	//	initRxid2state(t.numIdleVideo, Xidleaudio
-}
-
-func getExplicitHostPort(u *url.URL) string {
-	return u.Hostname() + ":" + getPort(u)
-}
-
-func getPort(u *url.URL) string {
-	if u.Scheme == "https" {
-		if u.Port() == "" {
-			return "443"
-		}
-		return u.Port()
-	}
-	if u.Scheme == "http" {
-		if u.Port() == "" {
-			return "80"
-		}
-		return u.Port()
-	}
-	panic("bad scheme")
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
@@ -1547,51 +1522,6 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 			maxVidChans = int32(XVideo)
 		}
 	})
-}
-
-func getDefaultRouteInterfaceAddresses() []net.IP {
-
-	// we don't send a single packets to these hosts
-	// but we use their addresses to discover our interface to get to the Internet
-	// These addresses could be almost anything
-
-	var ipaddrs []net.IP
-
-	addr := getDefRouteIntfAddrIPv4()
-	if addr != nil {
-		ipaddrs = append(ipaddrs, addr)
-	}
-
-	addr = getDefRouteIntfAddrIPv6()
-	if addr != nil {
-		ipaddrs = append(ipaddrs, addr)
-	}
-
-	if len(ipaddrs) == 0 {
-		return nil
-	}
-
-	return ipaddrs
-}
-
-func getDefRouteIntfAddrIPv6() net.IP {
-	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080" // not important, does not hit the wire
-	cc, err := net.Dial("udp6", googleDNSIPv6)          // doesnt send packets
-	if err == nil {
-		cc.Close()
-		return cc.LocalAddr().(*net.UDPAddr).IP
-	}
-	return nil
-}
-
-func getDefRouteIntfAddrIPv4() net.IP {
-	const googleDNSIPv4 = "8.8.8.8:8080"       // not important, does not hit the wire
-	cc, err := net.Dial("udp4", googleDNSIPv4) // doesnt send packets
-	if err == nil {
-		cc.Close()
-		return cc.LocalAddr().(*net.UDPAddr).IP
-	}
-	return nil
 }
 
 // SpliceRTP
