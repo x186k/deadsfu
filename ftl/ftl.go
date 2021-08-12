@@ -23,7 +23,7 @@ func FtlServer(listenResolveAddr, port string, streamkey string) (conn *net.UDPC
 
 	split := strings.Split(streamkey, "-")
 	if len(split) != 2 {
-		return nil, nil, fmt.Errorf("Invalid URL streamkey, must be: ftp://host/nnnnn-key")
+		return nil, nil, fmt.Errorf("Invalid --obs-key, valid example format: 123-abc")
 	}
 
 	//pre agreed key
