@@ -31,7 +31,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/pkg/profile"
-	"github.com/x186k/deadsfu/ftl"
 	"golang.org/x/sync/semaphore"
 
 	//"net/http/httputil"
@@ -164,6 +163,13 @@ func checkFatal(err error) {
 	if err != nil {
 		_, fileName, fileLine, _ := runtime.Caller(1)
 		elog.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
+	}
+}
+
+func logNotFatal(err error) {
+	if err != nil {
+		_, fileName, fileLine, _ := runtime.Caller(1)
+		elog.Printf("NON-FATAL ERROR %s:%d %v", filepath.Base(fileName), fileLine, err)
 	}
 }
 
@@ -321,62 +327,11 @@ func main() {
 
 	//ftl if choosen
 	if *obsKey != "" {
-		elog.Println("SFU WAITING FOR OBS/FTL CONNECTION")
-
-		// ftl magic
 		go func() {
-
-			udp, kv, err := ftl.FtlServer("", "8084", *obsKey)
-			checkFatal(err)
-
-			if kv["VideoCodec"] != "H264" {
-				checkFatal(fmt.Errorf("ftl: unsupported video codec: %v", kv["VideoCodec"]))
-			}
-			if kv["AudioCodec"] != "OPUS" {
-				checkFatal(fmt.Errorf("ftl: unsupported audio codec: %v", kv["AudioCodec"]))
-			}
-
-			elog.Println("SFU GOT OBS/FTL CONNECTION")
-
-			video, ok := rxid2state[XVideo+0]
-			if !ok {
-				panic("fatal1")
-			}
-
-			audio, ok := rxid2state[XAudio+0]
-			if !ok {
-				panic("fatal1")
-			}
-
-			buf := make([]byte, 2000)
 			for {
-
-				n, err := udp.Read(buf)
-				checkFatal(err)
-
-				//XXX consider use of rtp.Packet pool
-				var p rtp.Packet
-
-				b := make([]byte, n)
-				copy(b, buf[:n])
-
-				err = p.Unmarshal(b)
-				checkFatal(err)
-
-				//println(999,buf[1],p.Header.PayloadType)
-
-				switch p.Header.PayloadType {
-				case 96:
-					rxMediaCh <- MsgRxPacket{rxidstate: video, packet: &p, rxClockRate: 90000}
-				case 97:
-					rxMediaCh <- MsgRxPacket{rxidstate: audio, packet: &p, rxClockRate: 48000}
-					// default:
-					// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
-				}
-
+				attemptSingleFtlSession()
 			}
 		}()
-
 	}
 
 	go func() {
@@ -413,6 +368,106 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
+}
+
+func attemptSingleFtlSession() {
+
+	elog.Println("OBS/FTL WAITING FOR CONNECTION")
+
+	udpconn, tcpconn, kv, scanner, err := ftlServer("", "8084", *obsKey)
+	if err != nil {
+		logNotFatal(err)
+		return
+	}
+	defer udpconn.Close()
+	defer tcpconn.Close()
+
+	elog.Println("OBS/FTL GOT GOOD CONNECTION")
+
+	if kv["VideoCodec"] != "H264" {
+		checkFatal(fmt.Errorf("ftl: unsupported video codec: %v", kv["VideoCodec"]))
+	}
+	if kv["AudioCodec"] != "OPUS" {
+		checkFatal(fmt.Errorf("ftl: unsupported audio codec: %v", kv["AudioCodec"]))
+	}
+
+	video, ok := rxid2state[XVideo+0]
+	if !ok {
+		panic("fatal1")
+	}
+
+	audio, ok := rxid2state[XAudio+0]
+	if !ok {
+		panic("fatal1")
+	}
+
+	lastping := time.Now()
+
+	// PING goroutine
+	// this will silently go away when the socket gets closed
+	go func() {
+		log.Println("ftl: ping responder running")
+		for scanner.Scan() {
+			l := scanner.Text()
+
+			// XXX PING is sometimes followed by streamkey-id
+			// but we don't validate it.
+			// it is checked for Connect message
+			if strings.HasPrefix(l, "PING ") {
+				log.Println("ftl: ping!")
+				fmt.Fprintf(tcpconn, "201\n")
+
+				lastping = time.Now()
+
+			}
+		}
+		//silently finish goroutine on scanner error or socket close
+	}()
+
+	//XXX consider use of rtp.Packet pool
+	//println(999,buf[1],p.Header.PayloadType)
+	// default:
+	// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
+
+	buf := make([]byte, 2000)
+	for {
+		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
+		checkFatal(err)
+
+		n, err := udpconn.Read(buf)
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+		} else if err != nil {
+			elog.Println(fmt.Errorf("OBS/FTL UDP FAIL, CLOSING: %w", err))
+			return
+		}
+
+		lastpingdur := time.Since(lastping)
+	
+		if lastpingdur > time.Second*11 {
+			elog.Println(fmt.Errorf("OBS/FTL PINGING TIMEOUT, CLOSING"))
+			return
+		}
+
+		if n < 12 {
+			continue
+		}
+
+		var p rtp.Packet
+
+		b := make([]byte, n)
+		copy(b, buf[:n])
+
+		err = p.Unmarshal(b)
+		checkFatal(err)
+
+		switch p.Header.PayloadType {
+		case 96:
+			println(96, lastpingdur)
+			rxMediaCh <- MsgRxPacket{rxidstate: video, packet: &p, rxClockRate: 90000}
+		case 97:
+			rxMediaCh <- MsgRxPacket{rxidstate: audio, packet: &p, rxClockRate: 48000}
+		}
+	}
 }
 
 func initRxid2state(n int, id TrackId) {
@@ -813,7 +868,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 	_, err = w.Write([]byte(ansrtcsd.SDP))
 	if err != nil {
-		elog.Println(fmt.Errorf("sub sdp write failed:%f", err))
+		elog.Println(fmt.Errorf("sub sdp write failed:%w", err))
 		return
 	}
 
@@ -1267,7 +1322,7 @@ func msgOnce() {
 			}
 		}
 
-		//is keyframe switch any pending Tracks
+		//this is a keyframe, switch any pending Tracks
 		for _, v := range txtracks {
 			if v.pending == m.rxidstate.rxid {
 				v.rxid = v.pending
