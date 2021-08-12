@@ -321,8 +321,7 @@ func main() {
 
 	//ftl if choosen
 	if *obsKey != "" {
-		ftlReady := make(chan bool)
-		go reportFTLReadyness(ftlReady)
+		elog.Println("SFU WAITING FOR OBS/FTL CONNECTION")
 
 		// ftl magic
 		go func() {
@@ -337,7 +336,7 @@ func main() {
 				checkFatal(fmt.Errorf("ftl: unsupported audio codec: %v", kv["AudioCodec"]))
 			}
 
-			close(ftlReady)
+			elog.Println("SFU GOT OBS/FTL CONNECTION")
 
 			video, ok := rxid2state[XVideo+0]
 			if !ok {
@@ -1584,28 +1583,4 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 	s.lastSSRC = copy.SSRC
 
 	return &copy
-}
-
-func reportFTLReadyness(ready chan bool) {
-
-	t0 := time.Now()
-	ticker := time.NewTicker(time.Second * 5).C
-	for {
-		select {
-		case t1 := <-ticker:
-
-			n := int(t1.Sub(t0).Seconds())
-
-			elog.Printf("FTL NOT READY: Waited %d seconds.", n)
-
-			if n >= 30 {
-				elog.Printf("FTL NOT READY: Stopping status messages. Will update if aquired.")
-				return
-			}
-
-		case <-ready:
-			elog.Printf("FTL IS READY!")
-			return
-		}
-	}
 }
