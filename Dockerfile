@@ -4,7 +4,8 @@ WORKDIR /app
 COPY . .
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o main .
+ARG VERSION
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o main  -ldflags "-X main.Version=${VERSION}" .
 
 
 FROM alpine:3.14.0  

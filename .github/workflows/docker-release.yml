@@ -47,6 +47,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: VERSION=${{ github.event.release.tag_name }}
 # I am really tempted to cut this crap down, but github doesn't seem to mind building
 # i guess arm/v6 arm/v7 can help with raspberry pi's
 # i am not sure who the linux/386 is for, but let's leave it incase.
