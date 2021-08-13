@@ -88,7 +88,6 @@ var (
 	ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 	txidMap          = make(map[uint64]struct{})       // no concurrent
 	txidMapMutex     sync.Mutex
-	maxVidChans      int32 = int32(XVideo)
 )
 
 var ticker = time.NewTicker(100 * time.Millisecond)
@@ -97,6 +96,7 @@ var mediaDebugTickerChan = make(<-chan time.Time)
 type Subid uint64
 
 type MsgRxPacket struct {
+	rxid        TrackId
 	rxidstate   *RxidState
 	rxClockRate uint32
 	packet      *rtp.Packet
@@ -140,15 +140,20 @@ type Track struct {
 // subid to txid to txtrack index
 var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
 
-type TrackId int
+type TrackType int16
 
 const (
-	XInvalid   TrackId = Spacing * 0
-	XVideo     TrackId = Spacing * 1
-	XAudio     TrackId = Spacing * 2
-	XData      TrackId = Spacing * 3
-	XIdleVideo TrackId = Spacing * 4
+	Invalid   TrackType = iota
+	Video     TrackType = iota
+	Audio     TrackType = iota
+	Data      TrackType = iota
+	IdleVideo TrackType = iota
 )
+
+type TrackId struct {
+	id  int16
+	typ TrackType
+}
 
 // this (rxid2state) could be an array.
 // but, it is <much> easier to think about as a map, as opposed to a sparse array.
@@ -160,7 +165,6 @@ var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
 
 type RxidState struct {
 	lastReceipt time.Time //unixnanos
-	rxid        TrackId
 	active      bool
 }
 
@@ -178,17 +182,6 @@ func logNotFatal(err error) {
 		_, fileName, fileLine, _ := runtime.Caller(1)
 		elog.Printf("NON-FATAL ERROR %s:%d %v", filepath.Base(fileName), fileLine, err)
 	}
-}
-
-type TrackCounts struct {
-	numVideo, numAudio, numIdleVideo, numIdleAudio int
-}
-
-var trackCounts = TrackCounts{
-	numVideo:     *maxVideoTracks,
-	numAudio:     1, //*pflag.Int("num-audio", 1, "number of audio tracks"),
-	numIdleVideo: 1,
-	numIdleAudio: 0,
 }
 
 var Version = "version-unset"
@@ -284,15 +277,18 @@ func init() {
 
 	}
 
-	initMediaHandlerState(trackCounts)
-
 	go logGoroutineCountToDebugLog()
 
 	log.Printf("idleScreenH264Pcapng len=%d md5=%x", len(idleScreenH264Pcapng), md5.Sum(idleScreenH264Pcapng))
 	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkFatal(err)
 
-	go idleLoopPlayer(p)
+	rxid2state[TrackId{id: 0, typ: IdleVideo}] = &RxidState{}
+	rxid2state[TrackId{id: 0, typ: Video}] = &RxidState{}
+	rxid2state[TrackId{id: 0, typ: Audio}] = &RxidState{}
+
+	rxid := TrackId{id: 0, typ: IdleVideo}
+	go idleLoopPlayer(p, rxid2state[rxid], rxid)
 
 	go msgLoop()
 }
@@ -306,18 +302,6 @@ func silenceLogger(l *log.Logger) {
 func main() {
 	var err error
 	println("deadsfu Version " + Version)
-
-	if false {
-		go func() {
-			tk := time.NewTicker(time.Second * 2)
-			for range tk.C {
-				for i, v := range txtracks {
-					//RACEY
-					println("track", i, v.pending, v.rxid)
-				}
-			}
-		}()
-	}
 
 	log.Println("NumGoroutine", runtime.NumGoroutine())
 
@@ -351,9 +335,19 @@ func main() {
 
 	//ftl if choosen
 	if *obsKey != "" {
+		video, ok := rxid2state[TrackId{id: 0, typ: Video}]
+		if !ok {
+			panic("fatal1")
+		}
+
+		audio, ok := rxid2state[TrackId{id: 0, typ: Audio}]
+		if !ok {
+			panic("fatal1")
+		}
+
 		go func() {
 			for {
-				attemptSingleFtlSession()
+				attemptSingleFtlSession(audio, video)
 			}
 		}()
 	}
@@ -394,7 +388,7 @@ func main() {
 	println("profiling done, exit")
 }
 
-func attemptSingleFtlSession() {
+func attemptSingleFtlSession(audio, video *RxidState) {
 
 	elog.Println("OBS/FTL WAITING FOR CONNECTION")
 
@@ -415,17 +409,7 @@ func attemptSingleFtlSession() {
 		checkFatal(fmt.Errorf("ftl: unsupported audio codec: %v", kv["AudioCodec"]))
 	}
 
-	video, ok := rxid2state[XVideo+0]
-	if !ok {
-		panic("fatal1")
-	}
-
-	audio, ok := rxid2state[XAudio+0]
-	if !ok {
-		panic("fatal1")
-	}
-
-	lastping := time.Now()
+	pingchan := make(chan bool)
 
 	// PING goroutine
 	// this will silently go away when the socket gets closed
@@ -441,7 +425,7 @@ func attemptSingleFtlSession() {
 				log.Println("ftl: ping!")
 				fmt.Fprintf(tcpconn, "201\n")
 
-				lastping = time.Now()
+				pingchan <- true
 
 			}
 		}
@@ -454,6 +438,7 @@ func attemptSingleFtlSession() {
 	// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
 
 	buf := make([]byte, 2000)
+	lastping := time.Now()
 	for {
 		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
 		checkFatal(err)
@@ -465,9 +450,15 @@ func attemptSingleFtlSession() {
 			return
 		}
 
-		lastpingdur := time.Since(lastping)
-	
-		if lastpingdur > time.Second*11 {
+		select {
+		case m, ok := <-pingchan:
+			if m && ok {
+				lastping = time.Now()
+			}
+		default:
+		}
+
+		if time.Since(lastping) > time.Second*11 {
 			elog.Println(fmt.Errorf("OBS/FTL PINGING TIMEOUT, CLOSING"))
 			return
 		}
@@ -486,29 +477,11 @@ func attemptSingleFtlSession() {
 
 		switch p.Header.PayloadType {
 		case 96:
-			rxMediaCh <- MsgRxPacket{rxidstate: video, packet: &p, rxClockRate: 90000}
+			rxMediaCh <- MsgRxPacket{rxidstate: video, packet: &p, rxClockRate: 90000, rxid: TrackId{id: 0, typ: Video}}
 		case 97:
-			rxMediaCh <- MsgRxPacket{rxidstate: audio, packet: &p, rxClockRate: 48000}
+			rxMediaCh <- MsgRxPacket{rxidstate: audio, packet: &p, rxClockRate: 48000, rxid: TrackId{id: 0, typ: Audio}}
 		}
 	}
-}
-
-func initRxid2state(n int, id TrackId) {
-	log.Printf("Creating %v %v tracks", n, id.String())
-
-	for i := 0; i < n; i++ {
-		rxid := TrackId(i) + id
-		rxid2state[rxid] = &RxidState{
-			lastReceipt: time.Time{},
-			rxid:        rxid,
-		}
-	}
-}
-func initMediaHandlerState(t TrackCounts) {
-	initRxid2state(t.numAudio, XAudio)
-	initRxid2state(t.numVideo, XVideo)
-	initRxid2state(t.numIdleVideo, XIdleVideo)
-	//	initRxid2state(t.numIdleVideo, Xidleaudio
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
@@ -691,6 +664,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	rid := httpreq.URL.Query().Get("channel")
 	//issfu := httpreq.URL.Query().Get("issfu") != ""
 
+	//change channel
 	if rid != "" {
 		//validate transaction id
 		//not strictly required as message handler would ignore on bad transaction id
@@ -710,15 +684,13 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 			return
 		}
 
-		nn := atomic.LoadInt32(&maxVidChans)
-		if int32(trackid) > nn {
-			teeErrorStderrHttp(w, fmt.Errorf("channel num %d too large", trackid-XVideo))
-		}
-
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
 			subid: Subid(txid),
-			txid:  XVideo + 0, //can only switch output track 0
-			rxid:  trackid,
+			txid: TrackId{
+				id:  0,
+				typ: Video,
+			}, //can only switch output track 0
+			rxid: trackid,
 		}
 
 		w.WriteHeader(http.StatusAccepted)
@@ -833,11 +805,11 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &Track{
-			txid:    XAudio + 0,
+			txid:    TrackId{id: 0, typ: Audio},
 			subid:   Subid(txid),
 			track:   track,
 			splicer: &RtpSplicer{},
-			rxid:    XAudio + 0,
+			rxid:    TrackId{id: 0, typ: Audio},
 		},
 	}
 
@@ -851,11 +823,11 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
 			txtrack: &Track{
-				txid:    XVideo + TrackId(i),
+				txid:    TrackId{id: 0, typ: Video},
 				subid:   Subid(txid),
 				track:   track,
 				splicer: &RtpSplicer{},
-				rxid:    XVideo + TrackId(i),
+				rxid:    TrackId{id: 0, typ: Video},
 			},
 		}
 	}
@@ -953,7 +925,7 @@ func randomHex(n int) string {
 	return hex.EncodeToString(bytes)
 }
 
-func idleLoopPlayer(p []rtp.Packet) {
+func idleLoopPlayer(p []rtp.Packet, idle *RxidState, rxid TrackId) {
 
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
@@ -961,12 +933,6 @@ func idleLoopPlayer(p []rtp.Packet) {
 	mrand.Seed(time.Now().UnixNano())
 	seq := uint16(mrand.Uint32())
 	ts := mrand.Uint32()
-
-	id := XIdleVideo + 0
-	rxidstate, ok := rxid2state[id]
-	if !ok {
-		panic("cannot find idle video loop track")
-	}
 
 	for {
 		for _, tmp := range p {
@@ -983,7 +949,7 @@ func idleLoopPlayer(p []rtp.Packet) {
 
 			//fmt.Printf(" tx idle msg %x iskey %v len %v\n", v.Payload[0:10],rtpstuff.IsH264Keyframe(v.Payload),len(v.Payload))
 
-			rxMediaCh <- MsgRxPacket{rxidstate: rxidstate, packet: &v, rxClockRate: 90000}
+			rxMediaCh <- MsgRxPacket{rxidstate: idle, packet: &v, rxClockRate: 90000, rxid: rxid}
 
 		}
 		ts += delta2
@@ -1151,12 +1117,14 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		log.Println("OnTrack audio", mimetype)
 
-		s, ok := rxid2state[XAudio]
+		rxid := TrackId{id: 0, typ: Audio}
+
+		s, ok := rxid2state[rxid]
 		if !ok {
 			panic("cannot find idle video loop track2")
 		}
 
-		inboundTrackReader(track, s, track.Codec().ClockRate)
+		inboundTrackReader(track, rxid, s, track.Codec().ClockRate)
 		//here on error
 		log.Printf("audio reader %p exited", track)
 		return
@@ -1231,14 +1199,9 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	rxid, err := parseTrackid(trackname)
 	checkFatal(err)
 
-	nn := atomic.LoadInt32(&maxVidChans)
-	if nn < int32(rxid) {
-		atomic.CompareAndSwapInt32(&maxVidChans, nn, int32(rxid))
-	}
-
 	s, ok := rxid2state[rxid]
 	if !ok {
-		elog.Printf("invalid track name: %s, will not read/forward track", trackname)
+		panic("cannot find idle video loop track2")
 	}
 
 	// if *logPackets {
@@ -1248,7 +1211,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, s, track.Codec().ClockRate)
+	inboundTrackReader(track, rxid, s, track.Codec().ClockRate)
 	//here on error
 	log.Printf("video reader %p exited", track)
 
@@ -1262,7 +1225,8 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 			return
 		}
 
-		t = XVideo + TrackId(i)
+		t.id = int16(i)
+		t.typ = Video
 		return
 	}
 
@@ -1273,7 +1237,8 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 			return
 		}
 
-		t = XAudio + TrackId(i)
+		t.id = int16(i)
+		t.typ = Audio
 		return
 	}
 
@@ -1281,7 +1246,7 @@ func parseTrackid(trackname string) (t TrackId, err error) {
 	return
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidstate *RxidState, clockrate uint32) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, rxidstate *RxidState, clockrate uint32) {
 
 	for {
 		p, _, err := rxTrack.ReadRTP()
@@ -1290,33 +1255,26 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidstate *RxidState, clock
 		}
 		checkFatal(err)
 
-		rxMediaCh <- MsgRxPacket{rxidstate: rxidstate, packet: p, rxClockRate: clockrate}
+		rxMediaCh <- MsgRxPacket{rxidstate: rxidstate, packet: p, rxClockRate: clockrate, rxid: rxid}
 	}
 }
 
-const Spacing = 100
-
 func (e TrackId) String() string {
 
-	switch e.XTrackId() {
-	case XVideo:
+	switch e.typ {
+	case Video:
 		return "XVideo"
-	case XAudio:
+	case Audio:
 		return "XAudio"
-	case XData:
+	case Data:
 		return "XData"
-	case XIdleVideo:
+	case IdleVideo:
 		return "XIdleVideo"
-	case XInvalid:
+	case Invalid:
 		return "XInvalid"
 	}
 
 	return "<bad TrackId>"
-}
-
-func (e TrackId) XTrackId() TrackId {
-
-	return (e / Spacing) * Spacing
 }
 
 // XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
@@ -1338,7 +1296,7 @@ func msgOnce() {
 
 		m.rxidstate.lastReceipt = time.Now()
 
-		isaudio := m.rxidstate.rxid.XTrackId() == XAudio
+		isaudio := m.rxid.typ == Audio
 		if !isaudio {
 			if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
 				goto not_keyframe
@@ -1347,7 +1305,7 @@ func msgOnce() {
 
 		//this is a keyframe, switch any pending Tracks
 		for _, v := range txtracks {
-			if v.pending == m.rxidstate.rxid {
+			if v.pending == m.rxid {
 				v.rxid = v.pending
 				// no! v.pending = XInvalid
 				// pending should never be XInvalid
@@ -1355,7 +1313,7 @@ func msgOnce() {
 		}
 
 	not_keyframe:
-		rxid := m.rxidstate.rxid
+		rxid := m.rxid
 		for i, tr := range txtracks {
 
 			send := tr.rxid == rxid
@@ -1414,9 +1372,9 @@ func msgOnce() {
 			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
 		}
 
-		if !rxid2state[tr.rxid].active && tr.rxid.XTrackId() == XVideo {
+		if !rxid2state[tr.rxid].active && tr.rxid.typ == Video {
 			tr.rxidsave = tr.rxid
-			tr.pending = XIdleVideo
+			tr.pending = TrackId{0, IdleVideo}
 		}
 
 		sub2txid2track[tr.subid][tr.txid] = tr
@@ -1425,7 +1383,7 @@ func msgOnce() {
 
 		if a, ok := sub2txid2track[m.subid]; ok {
 			if tr, ok := a[m.txid]; ok {
-				if m.rxid == XInvalid {
+				if m.rxid.typ == Invalid {
 					panic("bad msg 99")
 				}
 				tr.pending = m.rxid
@@ -1455,9 +1413,9 @@ func msgOnce() {
 
 		//fmt.Println("Tick at", tk)
 
-		for _, v := range rxid2state {
+		for k, v := range rxid2state {
 
-			isvideo := v.rxid.XTrackId() == XVideo
+			isvideo := k.typ == Video
 
 			if !isvideo {
 				continue // we only do idle switching on video right now
@@ -1481,7 +1439,7 @@ func msgOnce() {
 				// find all tracks on XIdleVideo or pending: XIdleVideo
 				// change their source,pending value to the idle track
 				for _, tr := range txtracks {
-					if tr.rxid == XIdleVideo || tr.pending == XIdleVideo {
+					if tr.rxid.typ == IdleVideo || tr.pending.typ == IdleVideo {
 						tr.pending = tr.rxidsave
 					}
 				}
@@ -1492,9 +1450,9 @@ func msgOnce() {
 				// change their source,pending value to the idle track
 				// okay
 				for _, tr := range txtracks {
-					if tr.rxid == v.rxid || tr.pending == v.rxid {
+					if tr.rxid == k || tr.pending == k {
 						tr.rxidsave = tr.pending
-						tr.pending = XIdleVideo
+						tr.pending = TrackId{0, IdleVideo}
 					}
 				}
 
@@ -1611,7 +1569,6 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
 			ingressSemaphore.Release(1)
-			maxVidChans = int32(Spacing)
 		}
 	})
 }
