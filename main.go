@@ -92,6 +92,7 @@ var (
 )
 
 var ticker = time.NewTicker(100 * time.Millisecond)
+var mediaDebugTickerChan = make(<-chan time.Time)
 
 type Subid uint64
 
@@ -249,15 +250,32 @@ func init() {
 			os.Exit(0)
 		}
 
-		if *debug {
-			log.SetFlags(log.Lmicroseconds | log.LUTC)
-			log.SetPrefix("D ")
-			log.SetOutput(os.Stdout)
-			log.Printf("debug output IS enabled Version=%s", Version)
+		log.SetFlags(log.Lmicroseconds | log.LUTC)
+		log.SetPrefix("D ")
+		log.SetOutput(os.Stdout)
+
+		mainlog := false
+
+		for _, v := range *debug {
+			switch v {
+			case "":
+				// do nothing
+			case "tracks":
+				mediaDebugTickerChan = time.NewTicker(4 * time.Second).C
+			case "main":
+				mainlog = true
+			case "help":
+				fallthrough
+			default:
+				elog.Fatal("--z-debug sub-flags are: main, help, tracks")
+			}
+		}
+		if mainlog {
+			log.Printf("'main' debug enabled")
 		} else {
-			//elog.Println("debug output NOT enabled")
 			silenceLogger(log.Default())
 		}
+
 	}
 
 	initMediaHandlerState(trackCounts)
@@ -1412,6 +1430,23 @@ func msgOnce() {
 		} else {
 			elog.Println("invalid subid", m.subid)
 		}
+
+	case now := <-mediaDebugTickerChan:
+		
+
+		for i := XVideo; i < XVideo+TrackId(maxVidChans); i++ {
+			
+		}
+
+
+		for trackid, v := range rxid2state {
+			isvideo := v.rxid.XTrackId() == XVideo
+			duration := now.Sub(v.lastReceipt)
+			active := duration < time.Second
+
+			println("trackid", trackid, "isvid", isvideo, "isactive", active)
+		}
+		println()
 
 	case now := <-ticker.C:
 

@@ -18,7 +18,7 @@ var obsKey = pflag.String("obs-key", "", "Enable OBS/FTL ingest. Sample value: '
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlFromDiskFlag = pflag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
 var cpuprofile = pflag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
-var debug = pflag.Bool("z-debug", false, "enable debug output")
+var debug = pflag.StringSlice("z-debug", []string{}, "comma separated list of debug flags. use 'help' to view")
 
 var Usage = func() {
 	pflag.PrintDefaults()	
