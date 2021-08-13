@@ -133,13 +133,14 @@ type RtpSplicer struct {
 
 // size optimized, not readability
 type Track struct {
-	track    *webrtc.TrackLocalStaticRTP
-	splicer  *RtpSplicer
-	subid    Subid   // 64bit subscriber key
-	txid     TrackId // track number from subscriber's perspective
-	rxid     TrackId
-	pending  TrackId
-	rxidsave TrackId
+	track   *webrtc.TrackLocalStaticRTP
+	splicer *RtpSplicer
+	subid   Subid   // 64bit subscriber key
+	txid    TrackId // track number from subscriber's perspective
+
+	rxid     TrackId // live rxid, can include idle
+	pending  TrackId // pending rxid, can include idle
+	rxidmain TrackId // desired rxid, should never include idle
 }
 
 // subid to txid to txtrack index
@@ -1307,9 +1308,9 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidpair RxidPair, clockrat
 	}
 }
 
-func (e TrackId) String() string {
+func (e TrackType) String() string {
 
-	switch e.typ {
+	switch e {
 	case Video:
 		return "XVideo"
 	case Audio:
@@ -1338,7 +1339,7 @@ func msgOnce() {
 
 	select {
 	case m := <-rxidPairCh:
-		st, _ := rxid2state[m.rxid]
+		st := rxid2state[m.rxid]
 
 		m.ch <- RxidPair{
 			rxid:  m.rxid,
@@ -1428,7 +1429,7 @@ func msgOnce() {
 		}
 
 		if !rxid2state[tr.rxid].active && tr.rxid.typ == Video {
-			tr.rxidsave = tr.rxid
+			tr.rxidmain = tr.rxid
 			tr.pending = TrackId{0, IdleVideo}
 		}
 
@@ -1455,6 +1456,16 @@ func msgOnce() {
 
 		// }
 
+		for k, v := range rxid2state {
+			fmt.Println("rx", k.typ.String(), k.id, v.active)
+		}
+
+		for i, v := range txtracks {
+			fmt.Println("tx", i, v.splicer.lastSSRC)
+		}
+
+		fmt.Println()
+
 		//for trackid, v := range rxid2state {
 		//isvideo := v.rxid.XTrackId() == XVideo
 		//duration := now.Sub(v.lastReceipt)
@@ -1462,8 +1473,8 @@ func msgOnce() {
 
 		//println("trackid", trackid, "isvid", isvideo, "isactive", active)
 		//}
-		println(9966)
 
+		// do idle switching etc
 	case now := <-ticker.C:
 
 		//fmt.Println("Tick at", tk)
@@ -1487,6 +1498,8 @@ func msgOnce() {
 				continue
 			}
 
+			fmt.Printf("transition on %#v active = %v\n", k, active)
+
 			v.active = active
 
 			if active {
@@ -1494,8 +1507,13 @@ func msgOnce() {
 				// find all tracks on XIdleVideo or pending: XIdleVideo
 				// change their source,pending value to the idle track
 				for _, tr := range txtracks {
-					if tr.rxid.typ == IdleVideo || tr.pending.typ == IdleVideo {
-						tr.pending = tr.rxidsave
+					idleing := tr.rxid.typ == IdleVideo
+					pendingIdle := tr.pending.typ == IdleVideo
+
+					fmt.Printf("  %#v %v %v\n", k, idleing, pendingIdle)
+
+					if idleing || pendingIdle {
+						tr.pending = tr.rxidmain
 					}
 				}
 
@@ -1506,7 +1524,7 @@ func msgOnce() {
 				// okay
 				for _, tr := range txtracks {
 					if tr.rxid == k || tr.pending == k {
-						tr.rxidsave = tr.pending
+						tr.rxidmain = tr.pending
 						tr.pending = TrackId{0, IdleVideo}
 					}
 				}
