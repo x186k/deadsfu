@@ -185,7 +185,7 @@ type TrackCounts struct {
 }
 
 var trackCounts = TrackCounts{
-	numVideo:     *pflag.Int("max-tracks", 10, "maximum number of video tracks"),
+	numVideo:     *maxVideoTracks,
 	numAudio:     1, //*pflag.Int("num-audio", 1, "number of audio tracks"),
 	numIdleVideo: 1,
 	numIdleAudio: 0,
@@ -486,7 +486,6 @@ func attemptSingleFtlSession() {
 
 		switch p.Header.PayloadType {
 		case 96:
-			println(96, lastpingdur)
 			rxMediaCh <- MsgRxPacket{rxidstate: video, packet: &p, rxClockRate: 90000}
 		case 97:
 			rxMediaCh <- MsgRxPacket{rxidstate: audio, packet: &p, rxClockRate: 48000}
@@ -713,7 +712,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		nn := atomic.LoadInt32(&maxVidChans)
 		if int32(trackid) > nn {
-			teeErrorStderrHttp(w, fmt.Errorf("channel %d not available", trackid-XVideo))
+			teeErrorStderrHttp(w, fmt.Errorf("channel num %d too large", trackid-XVideo))
 		}
 
 		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
@@ -1612,7 +1611,7 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
 			ingressSemaphore.Release(1)
-			maxVidChans = int32(XVideo)
+			maxVidChans = int32(Spacing)
 		}
 	})
 }
