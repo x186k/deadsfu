@@ -150,6 +150,12 @@ const (
 	XIdleVideo TrackId = Spacing * 4
 )
 
+// this (rxid2state) could be an array.
+// but, it is <much> easier to think about as a map, as opposed to a sparse array.
+// AND, this map is not indexed in any hot-spots or media-paths
+// so, there is NO good reason to make it an array
+// sooo... we keep it a map.
+
 var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
 
 type RxidState struct {
