@@ -1437,22 +1437,20 @@ func msgOnce() {
 			elog.Println("invalid subid", m.subid)
 		}
 
-	case now := <-mediaDebugTickerChan:
-		
+	case <-mediaDebugTickerChan:
 
-		for i := XVideo; i < XVideo+TrackId(maxVidChans); i++ {
-			
-		}
+		// for i := XVideo; i < XVideo+TrackId(maxVidChans); i++ {
 
+		// }
 
-		for trackid, v := range rxid2state {
-			isvideo := v.rxid.XTrackId() == XVideo
-			duration := now.Sub(v.lastReceipt)
-			active := duration < time.Second
+		//for trackid, v := range rxid2state {
+		//isvideo := v.rxid.XTrackId() == XVideo
+		//duration := now.Sub(v.lastReceipt)
+		//active := duration < time.Second
 
-			println("trackid", trackid, "isvid", isvideo, "isactive", active)
-		}
-		println()
+		//println("trackid", trackid, "isvid", isvideo, "isactive", active)
+		//}
+		println(9966)
 
 	case now := <-ticker.C:
 
