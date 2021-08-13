@@ -329,3 +329,11 @@ maybe --my-ipaddr <address> stunserver or local or public
 --z-debug dumps all ip addresses first thing
 
 ## 8/4/2021 major hack attack
+
+## 8/12/2021 notes on rxidstate
+
+// this (rxidstate) could be an array.
+// but, it is <much> easier to think about as a map, as opposed to a sparse array.
+// AND, this map is not indexed in any hot-spots or media-paths
+// so, there is NO good reason to make it an array
+// sooo... we keep it a map.
