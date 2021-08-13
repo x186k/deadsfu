@@ -306,6 +306,9 @@ func init() {
 	}
 	go idleLoopPlayer(p, idlepair)
 
+	// XXX msgLoop touches rxid2state, so we have 2 GR touching a map
+	// but, let's be honest, it's the only toucher of rxid2state after this point
+	// so, probably okay
 	go msgLoop()
 }
 
