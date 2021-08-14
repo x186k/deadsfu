@@ -90,8 +90,9 @@ var (
 	txidMapMutex     sync.Mutex
 )
 
-var ticker = time.NewTicker(100 * time.Millisecond)
+var ticker100ms = time.NewTicker(100 * time.Millisecond)
 var mediaDebugTickerChan = make(<-chan time.Time)
+var mediaDebug = false
 
 type Subid uint64
 
@@ -138,9 +139,9 @@ type Track struct {
 	subid   Subid   // 64bit subscriber key
 	txid    TrackId // track number from subscriber's perspective
 
-	rxid     TrackId // live rxid, can include idle
-	pending  TrackId // pending rxid, can include idle
-	rxidmain TrackId // desired rxid, should never include idle
+	mainRxid TrackId // main rxid, NEVER set to idle idle
+	currRxid TrackId // live rxid, can be idle
+	pendRxid TrackId // pending rxid, can be idle
 }
 
 // subid to txid to txtrack index
@@ -149,7 +150,7 @@ var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Tr
 type TrackType int16
 
 const (
-	Invalid   TrackType = iota
+	Invalid   TrackType = 0
 	Video     TrackType = iota
 	Audio     TrackType = iota
 	Data      TrackType = iota
@@ -212,6 +213,7 @@ var Version = "version-unset"
 
 // This should allow us to use checkFatal() more, and checkFatal() less
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
+var medialog = log.New(os.Stdout, "M ", log.Lmicroseconds|log.LUTC)
 
 func logGoroutineCountToDebugLog() {
 	n := runtime.NumGoroutine()
@@ -275,6 +277,7 @@ func init() {
 				// do nothing
 			case "tracks":
 				mediaDebugTickerChan = time.NewTicker(4 * time.Second).C
+				mediaDebug = true
 			case "main":
 				mainlog = true
 			case "help":
@@ -462,18 +465,9 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 	// default:
 	// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
 
-	buf := make([]byte, 2000)
 	lastping := time.Now()
+	buf := make([]byte, 2000)
 	for {
-		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
-		checkFatal(err)
-
-		n, err := udpconn.Read(buf)
-		if errors.Is(err, os.ErrDeadlineExceeded) {
-		} else if err != nil {
-			elog.Println(fmt.Errorf("OBS/FTL UDP FAIL, CLOSING: %w", err))
-			return
-		}
 
 		select {
 		case m, ok := <-pingchan:
@@ -482,9 +476,18 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 			}
 		default:
 		}
-
 		if time.Since(lastping) > time.Second*11 {
 			elog.Println(fmt.Errorf("OBS/FTL PINGING TIMEOUT, CLOSING"))
+			return
+		}
+
+		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
+		checkFatal(err)
+		n, err := udpconn.Read(buf)
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			continue
+		} else if err != nil {
+			elog.Println(fmt.Errorf("OBS/FTL UDP FAIL, CLOSING: %w", err))
 			return
 		}
 
@@ -835,11 +838,13 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &Track{
-			txid:    TrackId{id: 0, typ: Audio},
-			subid:   Subid(txid),
-			track:   track,
-			splicer: &RtpSplicer{},
-			rxid:    TrackId{id: 0, typ: Audio},
+			track:    track,
+			splicer:  &RtpSplicer{},
+			subid:    Subid(txid),
+			txid:     TrackId{id: 0, typ: Audio},
+			mainRxid: TrackId{id: 0, typ: Audio},
+			currRxid: TrackId{id: 0, typ: Audio},
+			pendRxid: TrackId{id: 0, typ: Audio},
 		},
 	}
 
@@ -853,11 +858,13 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 		subAddTrackCh <- MsgSubscriberAddTrack{
 			txtrack: &Track{
-				txid:    TrackId{id: 0, typ: Video},
-				subid:   Subid(txid),
-				track:   track,
-				splicer: &RtpSplicer{},
-				rxid:    TrackId{id: 0, typ: Video},
+				track:    track,
+				splicer:  &RtpSplicer{},
+				subid:    Subid(txid),
+				txid:     TrackId{id: 0, typ: Video},
+				mainRxid: TrackId{id: 0, typ: Video},
+				currRxid: TrackId{id: 0, typ: Video},
+				pendRxid: TrackId{id: 0, typ: Video},
 			},
 		}
 	}
@@ -1308,9 +1315,9 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidpair RxidPair, clockrat
 	}
 }
 
-func (e TrackType) String() string {
+func (x TrackType) String() string {
 
-	switch e {
+	switch x {
 	case Video:
 		return "XVideo"
 	case Audio:
@@ -1326,6 +1333,10 @@ func (e TrackType) String() string {
 	return "<bad TrackId>"
 }
 
+func (x TrackId) String() string {
+	return x.typ.String() + "/" + strconv.Itoa(int(x.id))
+}
+
 // XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
 // if we compact down the rx track numbers (no audio=10000)
 
@@ -1338,6 +1349,7 @@ func msgLoop() {
 func msgOnce() {
 
 	select {
+	//access rxid2state without requiring mutex
 	case m := <-rxidPairCh:
 		st := rxid2state[m.rxid]
 
@@ -1352,6 +1364,18 @@ func msgOnce() {
 
 		m.rxidpair.state.lastReceipt = time.Now()
 
+		rxid := m.rxidpair.rxid
+
+		if rxid.typ == Invalid {
+			panic(111)
+		}
+		if rxid.typ == Audio {
+			break
+		}
+		if rxid.typ == IdleVideo {
+			break
+		}
+
 		isaudio := m.rxidpair.rxid.typ == Audio
 		if !isaudio {
 			if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
@@ -1359,20 +1383,40 @@ func msgOnce() {
 			}
 		}
 
-		//this is a keyframe, switch any pending Tracks
-		for _, v := range txtracks {
-			if v.pending == m.rxidpair.rxid {
-				v.rxid = v.pending
-				// no! v.pending = XInvalid
-				// pending should never be XInvalid
+		//this is a keyframe
+		for i, tr := range txtracks {
+
+			mainMatch := tr.mainRxid == rxid
+
+			if mainMatch && (tr.pendRxid != TrackId{0, Invalid} || tr.currRxid != rxid) {
+
+				if mediaDebug {
+					medialog.Printf("keyframe tx/%d  switched 2 main, from:%s to:%s  \n", i, tr.currRxid, rxid)
+				}
+
+				tr.pendRxid = TrackId{0, Invalid} //clear pending
+				tr.currRxid = rxid
 			}
+
+			pendMatch := tr.pendRxid == rxid
+
+			if pendMatch && (tr.currRxid != rxid) {
+
+				if mediaDebug {
+					medialog.Printf("keyframe tx/%d  switched 2 pend, from:%s to:%s  \n", i, tr.currRxid, rxid)
+				}
+
+				tr.pendRxid = TrackId{0, Invalid} //clear pending
+				tr.currRxid = rxid
+			}
+
 		}
 
 	not_keyframe:
-		rxid := m.rxidpair.rxid
+
 		for i, tr := range txtracks {
 
-			send := tr.rxid == rxid
+			send := tr.currRxid == rxid
 			if !send {
 				continue
 			}
@@ -1395,7 +1439,7 @@ func msgOnce() {
 			if true {
 				err := tr.track.WriteRTP(packet)
 				if err == io.ErrClosedPipe {
-					log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.rxid)
+					log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.currRxid)
 
 					//first remove from sub2txid2track
 					// if _, ok := sub2txid2track[tr.subid][tr.txid]; !ok {
@@ -1428,9 +1472,18 @@ func msgOnce() {
 			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
 		}
 
-		if !rxid2state[tr.rxid].active && tr.rxid.typ == Video {
-			tr.rxidmain = tr.rxid
-			tr.pending = TrackId{0, IdleVideo}
+		if tr.currRxid.typ == Video {
+			tr.mainRxid = TrackId{0, Video}
+			tr.currRxid = TrackId{0, Video}
+			tr.pendRxid = TrackId{0, Invalid}
+
+			if !rxid2state[tr.currRxid].active {
+				tr.currRxid = TrackId{0, IdleVideo}
+			}
+		} else if tr.currRxid.typ == Audio {
+			tr.mainRxid = TrackId{0, Audio}
+			tr.currRxid = TrackId{0, Audio}
+			tr.pendRxid = TrackId{0, Invalid}
 		}
 
 		sub2txid2track[tr.subid][tr.txid] = tr
@@ -1442,7 +1495,8 @@ func msgOnce() {
 				if m.rxid.typ == Invalid {
 					panic("bad msg 99")
 				}
-				tr.pending = m.rxid
+				tr.mainRxid = m.rxid
+				tr.pendRxid = m.rxid
 			} else {
 				elog.Println("invalid txid", m.txid)
 			}
@@ -1452,86 +1506,48 @@ func msgOnce() {
 
 	case <-mediaDebugTickerChan:
 
-		// for i := XVideo; i < XVideo+TrackId(maxVidChans); i++ {
-
+		// for rxid, v := range rxid2state {
+		// 	medialog.Println("rx", rxid.String(), "active=", v.active)
 		// }
+		// for i, v := range txtracks {
+		// 	medialog.Println("tx i:", i, "ssrc", v.splicer.lastSSRC, "main/curr/pend", v.mainRxid.String(), v.currRxid.String(), v.pendRxid.String())
+		// }
+		// medialog.Println()
 
-		for k, v := range rxid2state {
-			fmt.Println("rx", k.typ.String(), k.id, v.active)
-		}
-
-		for i, v := range txtracks {
-			fmt.Println("tx", i, v.splicer.lastSSRC)
-		}
-
-		fmt.Println()
-
-		//for trackid, v := range rxid2state {
-		//isvideo := v.rxid.XTrackId() == XVideo
-		//duration := now.Sub(v.lastReceipt)
-		//active := duration < time.Second
-
-		//println("trackid", trackid, "isvid", isvideo, "isactive", active)
-		//}
-
-		// do idle switching etc
-	case now := <-ticker.C:
+	case now := <-ticker100ms.C:
 
 		//fmt.Println("Tick at", tk)
 
-		for k, v := range rxid2state {
+		for txid, v := range rxid2state {
 
-			isvideo := k.typ == Video
+			isvideo := txid.typ == Video
 
 			if !isvideo {
 				continue // we only do idle switching on video right now
 			}
 
-			duration := now.Sub(v.lastReceipt)
-			active := duration < time.Second
+			active := now.Sub(v.lastReceipt) <= time.Second
 
-			transition := v.active != active
+			transition2idle := v.active && !active
+			v.active = active
 
-			//println(999,active,v.active )
-
-			if !transition {
+			if !transition2idle {
 				continue
 			}
 
-			fmt.Printf("transition on %#v active = %v\n", k, active)
-
-			v.active = active
-
-			if active {
-				// became ready, thus no longer idle
-				// find all tracks on XIdleVideo or pending: XIdleVideo
-				// change their source,pending value to the idle track
-				for _, tr := range txtracks {
-					idleing := tr.rxid.typ == IdleVideo
-					pendingIdle := tr.pending.typ == IdleVideo
-
-					fmt.Printf("  %#v %v %v\n", k, idleing, pendingIdle)
-
-					if idleing || pendingIdle {
-						tr.pending = tr.rxidmain
-					}
-				}
-
-			} else {
-				// became idle.
-				// find all tracks on this rxid, or pending this rxid
-				// change their source,pending value to the idle track
-				// okay
-				for _, tr := range txtracks {
-					if tr.rxid == k || tr.pending == k {
-						tr.rxidmain = tr.pending
-						tr.pending = TrackId{0, IdleVideo}
-					}
-				}
-
+			if mediaDebug {
+				medialog.Printf("100ms tick/transition2idle on %v\n", txid.String())
 			}
 
-			// idle transition has occurred on this Rxid
+			// went idle.
+			for i, tr := range txtracks {
+				if tr.currRxid == txid {
+					if mediaDebug {
+						medialog.Printf("100ms video%d  set to idle\n", i)
+					}
+					tr.pendRxid = TrackId{0, IdleVideo}
+				}
+			}
 
 		}
 	}
