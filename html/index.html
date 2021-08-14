@@ -142,7 +142,7 @@
 
 
     async function transmit() {
-      console.log("--transmit5")
+      console.debug("--transmit5")
       document.title = "Sending"
 
       document.getElementById("video1").removeAttribute("poster")
@@ -260,7 +260,7 @@
     }
 
     async function receive() {
-      console.log("--receive x3")
+      console.debug("--receive x3")
       document.title = "Receiving"
 
       document.getElementById("video1").removeAttribute("poster")
@@ -359,6 +359,15 @@
         results.forEach(report => {
           const now = report.timestamp
 
+
+          let xtraDebug = true
+          if (xtraDebug) {
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              console.debug('frames: Nrx', report.framesReceived, 'Ndecode', report.framesDecoded, 'Nrx-Ndecode', report.framesReceived - report.framesDecoded)
+            }
+          }
+
+
           //debugging notes
           // if (typeof report.bytesReceived !== 'undefined') {
           //     console.debug(report.type, report.mediaType, report.bytesReceived)
@@ -367,6 +376,8 @@
           //     console.debug(report.type, report.mediaType, report.bytesTransmitted)
           // }
 
+          // NO!: if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          // we don't constrain rx/tx rate to just video, we include audio also
           if (report.type === 'outbound-rtp') {
             const bytes = report.bytesSent
             if (ratemap.has(report.ssrc)) { //report.id may also be a good key
