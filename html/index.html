@@ -90,16 +90,19 @@
 
 
   <script>
+
+
+
     // Wait for the page to load first
     window.onload = function () {
       var a = document.getElementById("gofullscreen")
       a.onclick = function () {
         let video = document.getElementById("video1")
-        if (video.webkitEnterFullScreen) {
+        if (video.requestFullscreen) {
+          video.requestFullscreen()
+        } else {
           // Toggle fullscreen in Safari for iPad
           video.webkitEnterFullScreen()
-        } else {
-          video.requestFullscreen()
         }
         return false
       }
