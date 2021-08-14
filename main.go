@@ -418,7 +418,7 @@ func main() {
 
 func attemptSingleFtlSession(audio, video RxidPair) {
 
-	elog.Println("OBS/FTL WAITING FOR CONNECTION")
+	elog.Println("OBS/FTL: WAITING FOR CONNECTION")
 
 	udpconn, tcpconn, kv, scanner, err := ftlServer("", "8084", *obsKey)
 	if err != nil {
@@ -428,7 +428,7 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 	defer udpconn.Close()
 	defer tcpconn.Close()
 
-	elog.Println("OBS/FTL GOT GOOD CONNECTION")
+	elog.Println("OBS/FTL: GOT GOOD CONNECTION")
 
 	if kv["VideoCodec"] != "H264" {
 		checkFatal(fmt.Errorf("ftl: unsupported video codec: %v", kv["VideoCodec"]))
@@ -438,6 +438,7 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 	}
 
 	pingchan := make(chan bool)
+	disconnectCh := make(chan bool)
 
 	// PING goroutine
 	// this will silently go away when the socket gets closed
@@ -454,7 +455,13 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 				fmt.Fprintf(tcpconn, "201\n")
 
 				pingchan <- true
-
+			} else if l == "" {
+				//ignore blank
+			} else if l == "DISCONNECT" {
+				disconnectCh <- true
+			} else {
+				// unexpected
+				elog.Println("ftl: unexpected msg:", l)
 			}
 		}
 		//silently finish goroutine on scanner error or socket close
@@ -466,18 +473,26 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 	// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
 
 	lastping := time.Now()
+	lastudp := time.Now()
 	buf := make([]byte, 2000)
 	for {
 
 		select {
-		case m, ok := <-pingchan:
-			if m && ok {
+		case m, more := <-pingchan:
+			if m && more {
 				lastping = time.Now()
 			}
+		case <-disconnectCh:
+			elog.Println("OBS/FTL: SERVER DISCONNECTED")
+			return
 		default:
 		}
 		if time.Since(lastping) > time.Second*11 {
-			elog.Println(fmt.Errorf("OBS/FTL PINGING TIMEOUT, CLOSING"))
+			elog.Println("OBS/FTL: PINGING TIMEOUT, CLOSING")
+			return
+		}
+		if time.Since(lastudp) > time.Second*3/2 { // 1.5 second
+			elog.Println("OBS/FTL: UDP/RX TIMEOUT, CLOSING")
 			return
 		}
 
@@ -487,9 +502,11 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			continue
 		} else if err != nil {
-			elog.Println(fmt.Errorf("OBS/FTL UDP FAIL, CLOSING: %w", err))
+			elog.Println(fmt.Errorf("OBS/FTL: UDP FAIL, CLOSING: %w", err))
 			return
 		}
+
+		lastudp = time.Now()
 
 		if n < 12 {
 			continue
