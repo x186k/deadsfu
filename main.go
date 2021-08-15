@@ -18,7 +18,6 @@ import (
 	"log"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"sync"
 
 	mrand "math/rand"
@@ -42,7 +41,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/pion/sdp/v3"
+
 	"github.com/pion/webrtc/v3"
 
 	"github.com/x186k/deadsfu/rtpstuff"
@@ -66,6 +65,9 @@ var myMetrics struct {
 	dialConnectionRefused uint64
 }
 
+//XXX remove
+var _ = &rtpPacketPool
+
 // nolint:gochecknoglobals
 var rtpPacketPool = sync.Pool{
 	New: func() interface{} {
@@ -84,43 +86,20 @@ const (
 	subPath       = "/sub" // 2nd slash important
 )
 
-var (
-	ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
-	txidMap          = make(map[uint64]struct{})       // no concurrent
-	txidMapMutex     sync.Mutex
-)
-
+var ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 var ticker100ms = time.NewTicker(100 * time.Millisecond)
 var mediaDebugTickerChan = make(<-chan time.Time)
 var mediaDebug = false
 
-type Subid uint64
-
 type MsgRxPacket struct {
-	rxidpair    RxidPair
+	rxid        TrackId
 	rxClockRate uint32
 	packet      *rtp.Packet
 }
 
-type MsgSubscriberAddTrack struct {
-	txtrack *Track
-}
-
-type MsgSubscriberSwitchTrack struct {
-	subid Subid   // 64bit subscriber key
-	txid  TrackId // track number from subscriber's perspective
-	rxid  TrackId // where txid will get it's input from
-}
-
-type MsgFillRxidPair struct {
-	rxid TrackId
-	ch   chan RxidPair
-}
-
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
-var rxidPairCh chan MsgFillRxidPair = make(chan MsgFillRxidPair)
-var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
-var subSwitchTrackCh chan MsgSubscriberSwitchTrack = make(chan MsgSubscriberSwitchTrack, 10)
+
+//var rxidStateCh chan MsgGetRxidState = make(chan MsgGetRxidState)
 
 // size optimized, not readability
 type RtpSplicer struct {
@@ -132,58 +111,32 @@ type RtpSplicer struct {
 	snOffset         uint16
 }
 
-// size optimized, not readability
-type Track struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer *RtpSplicer
-	subid   Subid   // 64bit subscriber key
-	txid    TrackId // track number from subscriber's perspective
-
-	mainRxid TrackId // main rxid, NEVER set to idle idle
-	currRxid TrackId // live rxid, can be idle
-	pendRxid TrackId // pending rxid, can be idle
-}
-
-// subid to txid to txtrack index
-var sub2txid2track map[Subid]map[TrackId]*Track = make(map[Subid]map[TrackId]*Track)
-
-type TrackType int16
+type TrackId int32
 
 const (
-	Invalid   TrackType = 0
-	Video     TrackType = iota
-	Audio     TrackType = iota
-	Data      TrackType = iota
-	IdleVideo TrackType = iota
+	Invalid   TrackId = 0
+	Video     TrackId = iota
+	Audio     TrackId = iota
+	Data      TrackId = iota
+	IdleVideo TrackId = iota
+	NumTracks TrackId = iota
 )
 
-type TrackId struct {
-	id  int16
-	typ TrackType
-}
-
-//this is an optimization (premature for sure)
-//rather than just pass around a TrackId, we also pass around a ptr to it's state
-type RxidPair struct {
-	rxid  TrackId
-	state *RxidState
-}
-
-// this (rxid2state) could be an array.
-// but, it is <much> easier to think about as a map, as opposed to a sparse array.
-// AND, this map is not indexed in any hot-spots or media-paths
-// so, there is NO good reason to make it an array
-// sooo... we keep it a map.
-
-//we must mutex or constrain access to single goroutine. I choose #2
-var rxid2state map[TrackId]*RxidState = make(map[TrackId]*RxidState)
+var rxid2state = make([]RxidState, NumTracks)
 
 type RxidState struct {
 	lastReceipt time.Time //unixnanos
 	active      bool
 }
 
-var txtracks []*Track
+// size optimized, not readability
+type TxTrack struct {
+	track   *webrtc.TrackLocalStaticRTP
+	splicer *RtpSplicer
+	txid    TrackId
+}
+
+var txtracks []*TxTrack
 
 func checkFatal(err error) {
 	if err != nil {
@@ -248,7 +201,7 @@ func init() {
 	}
 
 	if strings.HasPrefix(string(idleScreenH264Pcapng[0:10]), "version ") {
-		panic("You have NOT built the binaries correctly. You must use \"git lfs\" to fill in files under /lfs")
+		panic("You have NOT built the binaries correctly. idle data is missing")
 	}
 
 	istest := strings.HasSuffix(os.Args[0], ".test")
@@ -300,15 +253,7 @@ func init() {
 	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
 	checkFatal(err)
 
-	rxid2state[TrackId{id: 0, typ: IdleVideo}] = &RxidState{}
-	rxid2state[TrackId{id: 0, typ: Video}] = &RxidState{}
-	rxid2state[TrackId{id: 0, typ: Audio}] = &RxidState{}
-
-	idlepair := RxidPair{
-		rxid:  TrackId{id: 0, typ: IdleVideo},
-		state: rxid2state[TrackId{id: 0, typ: IdleVideo}],
-	}
-	go idleLoopPlayer(p, idlepair)
+	go idleLoopPlayer(p)
 
 	// XXX msgLoop touches rxid2state, so we have 2 GR touching a map
 	// but, let's be honest, it's the only toucher of rxid2state after this point
@@ -358,24 +303,10 @@ func main() {
 
 	//ftl if choosen
 	if *obsKey != "" {
-		audio := RxidPair{
-			rxid:  TrackId{id: 0, typ: Audio},
-			state: rxid2state[TrackId{id: 0, typ: Audio}],
-		}
-		video := RxidPair{
-			rxid:  TrackId{id: 0, typ: Video},
-			state: rxid2state[TrackId{id: 0, typ: Video}],
-		}
-		if video.state == nil {
-			panic("fatal1")
-		}
-		if audio.state == nil {
-			panic("fatal2")
-		}
 
 		go func() {
 			for {
-				attemptSingleFtlSession(audio, video)
+				attemptSingleFtlSession()
 			}
 		}()
 	}
@@ -416,7 +347,7 @@ func main() {
 	println("profiling done, exit")
 }
 
-func attemptSingleFtlSession(audio, video RxidPair) {
+func attemptSingleFtlSession() {
 
 	elog.Println("OBS/FTL: WAITING FOR CONNECTION")
 
@@ -522,9 +453,9 @@ func attemptSingleFtlSession(audio, video RxidPair) {
 
 		switch p.Header.PayloadType {
 		case 96:
-			rxMediaCh <- MsgRxPacket{rxidpair: video, packet: &p, rxClockRate: 90000}
+			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 		case 97:
-			rxMediaCh <- MsgRxPacket{rxidpair: audio, packet: &p, rxClockRate: 48000}
+			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 		}
 	}
 }
@@ -658,17 +589,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
-//number of video media sections
-//will be 1 for simulcast
-// will be 3 for three m=video
-func numVideoMediaDesc(sdpsd *sdp.SessionDescription) (n int) {
-	for _, v := range sdpsd.MediaDescriptions {
-		if v.MediaName.Media == "video" {
-			n++
-		}
-	}
-	return
-}
+
 
 // sfu egress setup
 // 041521 Decided checkFatal() is the correct way to handle errors in this func.
@@ -681,73 +602,6 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	if handlePreflight(httpreq, w) {
 		return
 	}
-
-	var txid uint64
-
-	rawtxid := httpreq.URL.Query().Get("txid")
-	if rawtxid != "" {
-		if len(rawtxid) != 16 {
-			teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars long"))
-			return
-		}
-
-		txid, err = strconv.ParseUint(rawtxid, 16, 64)
-		if err != nil {
-			teeErrorStderrHttp(w, fmt.Errorf("txid value must be 16 hex chars only"))
-			return
-		}
-	} else {
-		log.Println("assigning random txid")
-		txid = mrand.Uint64()
-	}
-	log.Println("txid is", txid)
-
-	txidMapMutex.Lock()
-	_, foundTxid := txidMap[txid]
-	txidMapMutex.Unlock()
-
-	rid := httpreq.URL.Query().Get("channel")
-	//issfu := httpreq.URL.Query().Get("issfu") != ""
-
-	//change channel
-	if rid != "" {
-		//validate transaction id
-		//not strictly required as message handler would ignore on bad transaction id
-		if !foundTxid {
-			teeErrorStderrHttp(w, fmt.Errorf("no such transaction id"))
-			return
-		}
-
-		trackid, err := parseTrackid(rid)
-		if err != nil {
-			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. only video<N>, audio<N> are okay"))
-			return
-		}
-
-		//check to see if this is a valid rxid/TrackId
-		// we cannot access the map directly, so we use a chan
-
-		_, ok := getRxidPair(trackid)
-
-		if !ok {
-			teeErrorStderrHttp(w, fmt.Errorf("invalid rid. rid=%v not found", rid))
-			return
-		}
-
-		subSwitchTrackCh <- MsgSubscriberSwitchTrack{
-			subid: Subid(txid),
-			txid: TrackId{
-				id:  0,
-				typ: Video,
-			}, //can only switch output track 0
-			rxid: trackid, // XXX change to rxidpair?
-		}
-
-		w.WriteHeader(http.StatusAccepted)
-		return
-	}
-
-	// got here: thus there was no rid=xxx param
 
 	// rx offer, tx answer
 
@@ -771,14 +625,6 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 
-	if foundTxid {
-		teeErrorStderrHttp(w, fmt.Errorf("cannot re-use txid for subscriber"))
-		return
-	}
-	txidMapMutex.Lock()
-	txidMap[txid] = struct{}{}
-	txidMapMutex.Unlock()
-
 	// Create a new PeerConnection
 	log.Println("created PC")
 	peerConnection := newPeerConnection()
@@ -797,7 +643,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	})
 	// XXX is this switch case necessary?, will the pc eventually reach Closed after Failed or Disconnected
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		log.Printf("subscriber 0x%016x newstate: %s", txid, cs.String())
+		log.Printf("subscriber 0x%p newstate: %s", peerConnection, cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 		case webrtc.PeerConnectionStateFailed:
@@ -827,25 +673,10 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	logTransceivers("offer-added", peerConnection)
 
-	sdsdp, err := offer.Unmarshal()
-	checkFatal(err)
-
-	/* logic
-	when browser subscribes, we always give it one video track
-	and we just switch simulcast to that subscriber's RtpSender using replacetrack
-
-	when another sfu subscribes, we really want to add a track for each
-	track it has prepared an m=video section for
-
-	so, we count the number of m=video sections using numVideoMediaDesc()
-
-	this 'numvideo' logic should do that
-	*/
-
-	//should be 1 from browser sub, almost always
-	//should be 3 from x186k sfu, typically
-	videoTrackCount := numVideoMediaDesc(sdsdp)
-	log.Println("videoTrackCount", videoTrackCount)
+	// sdsdp, err := offer.Unmarshal()
+	// checkFatal(err)
+	// videoTrackCount := numVideoMediaDesc(sdsdp)
+	// log.Println("videoTrackCount", videoTrackCount)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkFatal(err)
@@ -853,38 +684,11 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	checkFatal(err)
 	go processRTCP(rtpSender)
 
-	subAddTrackCh <- MsgSubscriberAddTrack{
-		txtrack: &Track{
-			track:    track,
-			splicer:  &RtpSplicer{},
-			subid:    Subid(txid),
-			txid:     TrackId{id: 0, typ: Audio},
-			mainRxid: TrackId{id: 0, typ: Audio},
-			currRxid: TrackId{id: 0, typ: Audio},
-			pendRxid: TrackId{id: 0, typ: Audio},
-		},
-	}
-
-	for i := 0; i < videoTrackCount; i++ {
-		name := fmt.Sprintf("video%d", i)
-		track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, name, mediaStreamId)
-		checkFatal(err)
-		rtpSender, err := peerConnection.AddTrack(track)
-		checkFatal(err)
-		go processRTCP(rtpSender)
-
-		subAddTrackCh <- MsgSubscriberAddTrack{
-			txtrack: &Track{
-				track:    track,
-				splicer:  &RtpSplicer{},
-				subid:    Subid(txid),
-				txid:     TrackId{id: 0, typ: Video},
-				mainRxid: TrackId{id: 0, typ: Video},
-				currRxid: TrackId{id: 0, typ: Video},
-				pendRxid: TrackId{id: 0, typ: Video},
-			},
-		}
-	}
+	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
+	checkFatal(err)
+	rtpSender2, err := peerConnection.AddTrack(track)
+	checkFatal(err)
+	go processRTCP(rtpSender2)
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -921,25 +725,6 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 
-}
-
-func getRxidPair(rxid TrackId) (rxidpair RxidPair, found bool) {
-	ch := make(chan RxidPair)
-
-	rxidPairCh <- MsgFillRxidPair{
-		rxid: rxid,
-		ch:   ch,
-	}
-
-	select {
-	case rxidpair = <-ch:
-	case <-time.NewTimer(time.Second).C:
-		panic("stall1")
-	}
-
-	found = rxidpair.state != nil
-
-	return
 }
 
 func logTransceivers(tag string, pc *webrtc.PeerConnection) {
@@ -998,7 +783,7 @@ func randomHex(n int) string {
 	return hex.EncodeToString(bytes)
 }
 
-func idleLoopPlayer(p []rtp.Packet, idlepair RxidPair) {
+func idleLoopPlayer(p []rtp.Packet) {
 
 	n := len(p)
 	delta1 := time.Second / time.Duration(n)
@@ -1022,7 +807,7 @@ func idleLoopPlayer(p []rtp.Packet, idlepair RxidPair) {
 
 			//fmt.Printf(" tx idle msg %x iskey %v len %v\n", v.Payload[0:10],rtpstuff.IsH264Keyframe(v.Payload),len(v.Payload))
 
-			rxMediaCh <- MsgRxPacket{rxidpair: idlepair, packet: &v, rxClockRate: 90000}
+			rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &v, rxClockRate: 90000}
 
 		}
 		ts += delta2
@@ -1190,13 +975,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		log.Println("OnTrack audio", mimetype)
 
-		rxidpair, ok := getRxidPair(TrackId{id: 0, typ: Audio})
-
-		if !ok {
-			panic("cannot find audio0")
-		}
-
-		inboundTrackReader(track, rxidpair, track.Codec().ClockRate)
+		inboundTrackReader(track, Audio, track.Codec().ClockRate)
 		//here on error
 		log.Printf("audio reader %p exited", track)
 		return
@@ -1268,15 +1047,6 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		}
 	}()
 
-	rxid, err := parseTrackid(trackname)
-	checkFatal(err)
-
-	rxidpair, ok := getRxidPair(rxid)
-
-	if !ok {
-		panic("cannot find track for trackname:" + trackname)
-	}
-
 	// if *logPackets {
 	// 	logPacketNewSSRCValue(logPacketIn, track.SSRC(), rtpsource)
 	// }
@@ -1284,42 +1054,13 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, rxidpair, track.Codec().ClockRate)
+	inboundTrackReader(track, Video, track.Codec().ClockRate)
 	//here on error
 	log.Printf("video reader %p exited", track)
 
 }
 
-func parseTrackid(trackname string) (t TrackId, err error) {
-	if strings.HasPrefix(trackname, "video") {
-		i, xerr := strconv.Atoi(strings.TrimPrefix(trackname, "video"))
-		if xerr != nil {
-			err = fmt.Errorf("fail to parse trackid: %v", trackname)
-			return
-		}
-
-		t.id = int16(i)
-		t.typ = Video
-		return
-	}
-
-	if strings.HasPrefix(trackname, "audio") {
-		i, xerr := strconv.Atoi(strings.TrimPrefix(trackname, "audio"))
-		if xerr != nil {
-			err = fmt.Errorf("fail to parse trackid: %v", trackname)
-			return
-		}
-
-		t.id = int16(i)
-		t.typ = Audio
-		return
-	}
-
-	err = fmt.Errorf("need video<N> or audio<N> for track num, got:[%s]", trackname)
-	return
-}
-
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidpair RxidPair, clockrate uint32) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uint32) {
 
 	for {
 		p, _, err := rxTrack.ReadRTP()
@@ -1328,34 +1069,27 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxidpair RxidPair, clockrat
 		}
 		checkFatal(err)
 
-		rxMediaCh <- MsgRxPacket{rxidpair: rxidpair, packet: p, rxClockRate: clockrate}
+		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p, rxClockRate: clockrate}
 	}
-}
-
-func (x TrackType) String() string {
-
-	switch x {
-	case Video:
-		return "XVideo"
-	case Audio:
-		return "XAudio"
-	case Data:
-		return "XData"
-	case IdleVideo:
-		return "XIdleVideo"
-	case Invalid:
-		return "XInvalid"
-	}
-
-	return "<bad TrackId>"
 }
 
 func (x TrackId) String() string {
-	return x.typ.String() + "/" + strconv.Itoa(int(x.id))
-}
 
-// XXX it would be possible to replace 'map[Rxid]' elements with '[]' elements
-// if we compact down the rx track numbers (no audio=10000)
+	switch x {
+	case Video:
+		return "Video"
+	case Audio:
+		return "Audio"
+	case Data:
+		return "Data"
+	case IdleVideo:
+		return "IdleVideo"
+	case Invalid:
+		return "Invalid"
+	}
+
+	panic("<bad TrackId>")
+}
 
 func msgLoop() {
 	for {
@@ -1366,95 +1100,28 @@ func msgLoop() {
 func msgOnce() {
 
 	select {
-	//access rxid2state without requiring mutex
-	case m := <-rxidPairCh:
-		st := rxid2state[m.rxid]
-
-		m.ch <- RxidPair{
-			rxid:  m.rxid,
-			state: st,
-		}
 
 	case m := <-rxMediaCh:
 		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
 		//println(6666,m.rxidstate.rxid)
 
-		m.rxidpair.state.lastReceipt = time.Now()
+		rxid2state[m.rxid].lastReceipt = time.Now()
 
-		rxid := m.rxidpair.rxid
+		isvideo := m.rxid == Video
 
-		if rxid.typ == Invalid {
-			panic(111)
-		}
-		//testing
-		// if rxid.typ == Audio {
-		// 	break
-		// }
-		// if rxid.typ == IdleVideo {
-		// 	break
-		// }
-
-		isvideo := m.rxidpair.rxid.typ == Video
-		isaudio := m.rxidpair.rxid.typ == Audio
-		iskeyframe := false
-		xinvalid := TrackId{0, Invalid}
-
-		_ = isaudio
-
-		if !isvideo {
-			goto not_keyframe // only video has keyframes
-		}
-		// isvideo==true
-		iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
-		if !iskeyframe {
-			goto not_keyframe
-		}
-
-		// isvideo==true, iskeyframe==true
-
-		// we have a keyframe
-		// for each track, determine if it needs to change currRxid to mainRxid, or pendRxid
-		// main is highest priority, and cannot be idle
-		// pend is 2nd next priority, and can be idle
-		for i, tr := range txtracks {
-
-			mainMatch := tr.mainRxid == rxid
-			if mainMatch {
-				if tr.pendRxid != xinvalid || tr.currRxid != rxid {
-
-					if mediaDebug {
-						medialog.Printf("### switch2main tx/%d  currwas:%s newcurr:%s  \n", i, tr.currRxid, rxid)
-					}
-
-					tr.pendRxid = xinvalid //clear pending
-					tr.currRxid = rxid
-				}
-			}
-
-			pendMatch := tr.pendRxid == rxid
-			if pendMatch {
-				if tr.currRxid != rxid {
-
-					if mediaDebug {
-						medialog.Printf("### switch2pend tx/%d  currwas:%s newcurr:%s  \n", i, tr.currRxid, rxid)
-					}
-
-					tr.pendRxid = xinvalid
-					tr.currRxid = rxid
-				}
+		if isvideo {
+			iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
+			if iskeyframe {
+				rxid2state[m.rxid].active = true
 			}
 		}
 
-	not_keyframe:
-
 		for i, tr := range txtracks {
 
-			send := tr.currRxid == rxid
+			send := m.rxid == tr.txid
 			if !send {
 				continue
 			}
-
-			//fmt.Printf("%d ", int(rxid))
 
 			packet := *m.packet //make a copy
 			// var ipacket interface{}
@@ -1468,13 +1135,7 @@ func msgOnce() {
 
 			err := tr.track.WriteRTP(&packet)
 			if err == io.ErrClosedPipe {
-				log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.currRxid)
-
-				//first remove from sub2txid2track
-				// if _, ok := sub2txid2track[tr.subid][tr.txid]; !ok {
-				// 	panic("invalid tr.txid")
-				// }
-				delete(sub2txid2track[tr.subid], tr.txid)
+				log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
 
 				// slice tricks non-order preserving delete
 				txtracks[i] = txtracks[len(txtracks)-1]
@@ -1488,55 +1149,13 @@ func msgOnce() {
 
 		}
 
-	case m := <-subAddTrackCh:
-
-		tr := m.txtrack
-
-		txtracks = append(txtracks, tr)
-
-		if _, ok := sub2txid2track[tr.subid]; !ok {
-			sub2txid2track[tr.subid] = make(map[TrackId]*Track)
-		}
-
-		if tr.currRxid.typ == Video {
-			tr.mainRxid = TrackId{0, Video}
-			tr.currRxid = TrackId{0, Video}
-			tr.pendRxid = TrackId{0, Invalid}
-
-			if !rxid2state[tr.currRxid].active {
-				tr.currRxid = TrackId{0, IdleVideo}
-			}
-		} else if tr.currRxid.typ == Audio {
-			tr.mainRxid = TrackId{0, Audio}
-			tr.currRxid = TrackId{0, Audio}
-			tr.pendRxid = TrackId{0, Invalid}
-		}
-
-		sub2txid2track[tr.subid][tr.txid] = tr
-
-	case m := <-subSwitchTrackCh:
-
-		if a, ok := sub2txid2track[m.subid]; ok {
-			if tr, ok := a[m.txid]; ok {
-				if m.rxid.typ == Invalid {
-					panic("bad msg 99")
-				}
-				tr.mainRxid = m.rxid
-				tr.pendRxid = m.rxid
-			} else {
-				elog.Println("invalid txid", m.txid)
-			}
-		} else {
-			elog.Println("invalid subid", m.subid)
-		}
-
 	case <-mediaDebugTickerChan:
 
-		for rxid, v := range rxid2state {
-			medialog.Println("rx", rxid.String(), "active=", v.active)
+		for i, v := range rxid2state {
+			medialog.Println("rx", TrackId(i).String(), "active=", v.active)
 		}
 		for i, v := range txtracks {
-			medialog.Println("tx i:", i, "ssrc", v.splicer.lastSSRC, "main/curr/pend", v.mainRxid.String(), v.currRxid.String(), v.pendRxid.String())
+			medialog.Println("tx", TrackId(i).String(), i, "ssrc", v.splicer.lastSSRC)
 		}
 		medialog.Println()
 
@@ -1544,39 +1163,22 @@ func msgOnce() {
 
 		//fmt.Println("Tick at", tk)
 
-		for txid, v := range rxid2state {
+		active := now.Sub(rxid2state[Video].lastReceipt) <= time.Second
 
-			isvideo := txid.typ == Video
+		transition2idle := rxid2state[Video].active && !active
+		rxid2state[Video].active = active
 
-			if !isvideo {
-				continue // we only do idle switching on video right now
-			}
-
-			active := now.Sub(v.lastReceipt) <= time.Second
-
-			transition2idle := v.active && !active
-			v.active = active
-
-			if !transition2idle {
-				continue
-			}
-
-			if mediaDebug {
-				medialog.Printf("### 100ms tick/transition2idle on %s\n", txid)
-			}
-
-			xidle := TrackId{0, IdleVideo}
-			// went idle.
-			for i, tr := range txtracks {
-				if tr.currRxid == txid {
-					if mediaDebug {
-						medialog.Printf("### 100ms switch-pend tx/%d  pendwas:%s newpend:%s  \n", i, tr.pendRxid, xidle)
-					}
-					tr.pendRxid = xidle
-				}
-			}
-
+		if !transition2idle {
+			break
 		}
+
+		if mediaDebug {
+			medialog.Printf("### rx video went idle")
+		}
+
+		// went idle.
+
+
 	}
 }
 
