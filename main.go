@@ -1681,22 +1681,22 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 
 // SpliceRTP
 // this is carefully handcrafted, be careful
+// The packet you provide WILL get modified
 //
 // we may want to investigate adding seqno deltas onto a master counter
 // as a way of making seqno most consistent in the face of lots of switching,
 // and also more robust to seqno bug/jumps on input
 //
 // This grabs mutex after doing a fast, non-mutexed check for applicability
-func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.Packet {
+func SpliceRTP(s *RtpSplicer, in *rtp.Packet, unixnano int64, rtphz int64) {
 
 	forceKeyFrame := false
 
-	copy := *o
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
-	if o.SSRC != s.lastSSRC || forceKeyFrame {
-		log.Printf("SpliceRTP: %p: ssrc changed new=%v cur=%v", s, o.SSRC, s.lastSSRC)
+	if in.SSRC != s.lastSSRC || forceKeyFrame {
+		log.Printf("SpliceRTP: %p: ssrc changed new=%v cur=%v", s, in.SSRC, s.lastSSRC)
 
 		td := unixnano - s.lastUnixnanosNow // nanos
 		if td < 0 {
@@ -1706,8 +1706,8 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 		if td == 0 {
 			td = 1
 		}
-		s.tsOffset = o.Timestamp - (s.lastTS + uint32(td))
-		s.snOffset = o.SequenceNumber - s.lastSN - 1
+		s.tsOffset = in.Timestamp - (s.lastTS + uint32(td))
+		s.snOffset = in.SequenceNumber - s.lastSN - 1
 
 		//log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
 		// old approach/abandoned
@@ -1723,20 +1723,12 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 		//s.addTS = s.lastSentTS + clockDelta
 	}
 
-	// we don't want to change original packet, it gets
-	// passed into this routine many times for many subscribers
-
-	copy.Timestamp -= s.tsOffset
-	copy.SequenceNumber -= s.snOffset
-	//	tsdelta := int64(copy.Timestamp) - int64(s.lastSentTS) // int64 avoids rollover issues
-	// if !ssrcChanged && tsdelta > 0 {              // Track+measure uint32 timestamp deltas
-	// 	s.trackTimestampDeltas(uint32(tsdelta))
-	// }
-
 	s.lastUnixnanosNow = unixnano
-	s.lastTS = copy.Timestamp
-	s.lastSN = copy.SequenceNumber
-	s.lastSSRC = copy.SSRC
+	s.lastTS = in.Timestamp
+	s.lastSN = in.SequenceNumber
+	s.lastSSRC = in.SSRC
 
-	return &copy
+	in.Timestamp -= s.tsOffset
+	in.SequenceNumber -= s.snOffset
+
 }
