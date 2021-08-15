@@ -1386,47 +1386,63 @@ func msgOnce() {
 		if rxid.typ == Invalid {
 			panic(111)
 		}
-		if rxid.typ == Audio {
-			break
-		}
-		if rxid.typ == IdleVideo {
-			break
-		}
+		//testing
+		// if rxid.typ == Audio {
+		// 	break
+		// }
+		// if rxid.typ == IdleVideo {
+		// 	break
+		// }
 
+		isvideo := m.rxidpair.rxid.typ == Video
 		isaudio := m.rxidpair.rxid.typ == Audio
-		if !isaudio {
-			if !rtpstuff.IsH264Keyframe(m.packet.Payload) {
-				goto not_keyframe
-			}
+		iskeyframe := false
+		xinvalid := TrackId{0, Invalid}
+
+		_ = isaudio
+
+		if !isvideo {
+			goto not_keyframe // only video has keyframes
+		}
+		// isvideo==true
+		iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+		if !iskeyframe {
+			goto not_keyframe
 		}
 
-		//this is a keyframe
+		// isvideo==true, iskeyframe==true
+
+		// we have a keyframe
+		// for each track, determine if it needs to change currRxid to mainRxid, or pendRxid
+		// main is highest priority, and cannot be idle
+		// pend is 2nd next priority, and can be idle
 		for i, tr := range txtracks {
 
 			mainMatch := tr.mainRxid == rxid
+			if mainMatch {
+				if tr.pendRxid != xinvalid || tr.currRxid != rxid {
 
-			if mainMatch && (tr.pendRxid != TrackId{0, Invalid} || tr.currRxid != rxid) {
+					if mediaDebug {
+						medialog.Printf("### switch2main tx/%d  currwas:%s newcurr:%s  \n", i, tr.currRxid, rxid)
+					}
 
-				if mediaDebug {
-					medialog.Printf("keyframe tx/%d  switched 2 main, from:%s to:%s  \n", i, tr.currRxid, rxid)
+					tr.pendRxid = xinvalid //clear pending
+					tr.currRxid = rxid
 				}
-
-				tr.pendRxid = TrackId{0, Invalid} //clear pending
-				tr.currRxid = rxid
 			}
 
 			pendMatch := tr.pendRxid == rxid
+			if pendMatch {
+				if tr.currRxid != rxid {
 
-			if pendMatch && (tr.currRxid != rxid) {
+					if mediaDebug {
+						medialog.Printf("### switch2pend tx/%d  currwas:%s newcurr:%s  \n", i, tr.currRxid, rxid)
+					}
 
-				if mediaDebug {
-					medialog.Printf("keyframe tx/%d  switched 2 pend, from:%s to:%s  \n", i, tr.currRxid, rxid)
+					tr.pendRxid = xinvalid
+					tr.currRxid = rxid
 				}
-
-				tr.pendRxid = TrackId{0, Invalid} //clear pending
-				tr.currRxid = rxid
 			}
-
 		}
 
 	not_keyframe:
@@ -1440,42 +1456,35 @@ func msgOnce() {
 
 			//fmt.Printf("%d ", int(rxid))
 
-			var packet *rtp.Packet = m.packet
-			var ipacket interface{}
+			packet := *m.packet //make a copy
+			// var ipacket interface{}
+			// ipacket = rtpPacketPool.Get()
+			// packet = ipacket.(*rtp.Packet)
 
-			if tr.splicer != nil {
-				ipacket = rtpPacketPool.Get()
-				packet = ipacket.(*rtp.Packet)
-				*packet = *m.packet
-				packet = SpliceRTP(tr.splicer, packet, time.Now().UnixNano(), int64(m.rxClockRate))
-			}
+			SpliceRTP(tr.splicer, &packet, time.Now().UnixNano(), int64(m.rxClockRate))
 
 			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
 			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
 
-			if true {
-				err := tr.track.WriteRTP(packet)
-				if err == io.ErrClosedPipe {
-					log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.currRxid)
+			err := tr.track.WriteRTP(&packet)
+			if err == io.ErrClosedPipe {
+				log.Printf("track io.ErrClosedPipe, removing track %v %v %v", tr.subid, tr.txid, tr.currRxid)
 
-					//first remove from sub2txid2track
-					// if _, ok := sub2txid2track[tr.subid][tr.txid]; !ok {
-					// 	panic("invalid tr.txid")
-					// }
-					delete(sub2txid2track[tr.subid], tr.txid)
+				//first remove from sub2txid2track
+				// if _, ok := sub2txid2track[tr.subid][tr.txid]; !ok {
+				// 	panic("invalid tr.txid")
+				// }
+				delete(sub2txid2track[tr.subid], tr.txid)
 
-					// slice tricks non-order preserving delete
-					txtracks[i] = txtracks[len(txtracks)-1]
-					txtracks[len(txtracks)-1] = nil
-					txtracks = txtracks[:len(txtracks)-1]
+				// slice tricks non-order preserving delete
+				txtracks[i] = txtracks[len(txtracks)-1]
+				txtracks[len(txtracks)-1] = nil
+				txtracks = txtracks[:len(txtracks)-1]
 
-				}
 			}
 
-			if tr.splicer != nil {
-				*packet = rtp.Packet{}
-				rtpPacketPool.Put(ipacket)
-			}
+			// *packet = rtp.Packet{}
+			// rtpPacketPool.Put(ipacket)
 
 		}
 
