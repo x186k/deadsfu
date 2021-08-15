@@ -1523,13 +1523,13 @@ func msgOnce() {
 
 	case <-mediaDebugTickerChan:
 
-		// for rxid, v := range rxid2state {
-		// 	medialog.Println("rx", rxid.String(), "active=", v.active)
-		// }
-		// for i, v := range txtracks {
-		// 	medialog.Println("tx i:", i, "ssrc", v.splicer.lastSSRC, "main/curr/pend", v.mainRxid.String(), v.currRxid.String(), v.pendRxid.String())
-		// }
-		// medialog.Println()
+		for rxid, v := range rxid2state {
+			medialog.Println("rx", rxid.String(), "active=", v.active)
+		}
+		for i, v := range txtracks {
+			medialog.Println("tx i:", i, "ssrc", v.splicer.lastSSRC, "main/curr/pend", v.mainRxid.String(), v.currRxid.String(), v.pendRxid.String())
+		}
+		medialog.Println()
 
 	case now := <-ticker100ms.C:
 
