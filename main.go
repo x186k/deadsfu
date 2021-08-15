@@ -275,7 +275,7 @@ func init() {
 			switch v {
 			case "":
 				// do nothing
-			case "tracks":
+			case "media":
 				mediaDebugTickerChan = time.NewTicker(4 * time.Second).C
 				mediaDebug = true
 			case "main":
@@ -283,7 +283,7 @@ func init() {
 			case "help":
 				fallthrough
 			default:
-				elog.Fatal("--z-debug sub-flags are: main, help, tracks")
+				elog.Fatal("--z-debug sub-flags are: main, help, media")
 			}
 		}
 		if mainlog {
