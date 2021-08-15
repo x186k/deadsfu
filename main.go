@@ -1697,7 +1697,9 @@ func SpliceRTP(s *RtpSplicer, in *rtp.Packet, unixnano int64, rtphz int64) {
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
 	if in.SSRC != s.lastSSRC || forceKeyFrame {
-		log.Printf("SpliceRTP: %p: ssrc changed new=%v cur=%v", s, in.SSRC, s.lastSSRC)
+		if mediaDebug {
+			medialog.Printf("### SpliceRTP: %p: ssrc changed new=%v cur=%v", s, in.SSRC, s.lastSSRC)
+		}
 
 		td := unixnano - s.lastUnixnanosNow // nanos
 		if td < 0 {
