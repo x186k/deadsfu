@@ -1553,16 +1553,17 @@ func msgOnce() {
 			}
 
 			if mediaDebug {
-				medialog.Printf("100ms tick/transition2idle on %v\n", txid.String())
+				medialog.Printf("### 100ms tick/transition2idle on %s\n", txid)
 			}
 
+			xidle := TrackId{0, IdleVideo}
 			// went idle.
 			for i, tr := range txtracks {
 				if tr.currRxid == txid {
 					if mediaDebug {
-						medialog.Printf("100ms video%d  set to idle\n", i)
+						medialog.Printf("### 100ms switch-pend tx/%d  pendwas:%s newpend:%s  \n", i, tr.pendRxid, xidle)
 					}
-					tr.pendRxid = TrackId{0, IdleVideo}
+					tr.pendRxid = xidle
 				}
 			}
 
