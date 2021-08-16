@@ -10,7 +10,6 @@ import (
 	"embed"
 	"encoding/hex"
 	"errors"
-	"strconv"
 
 	"fmt"
 	"io"
@@ -1124,19 +1123,87 @@ func msgOnce() {
 		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
 		//println(6666,m.rxidstate.rxid)
 
-		// send vid on video track, etc
-		//pline()
-		//make a copy
-		// var ipacket interface{}
-		// ipacket = rtpPacketPool.Get()
-		// packet = ipacket.(*rtp.Packet)
-		// tr.splicer.snOffset, tr.splicer.tsOffset)
-		//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
-		//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
-		// slice tricks non-order preserving delete
-		// *packet = rtp.Packet{}
-		// rtpPacketPool.Put(ipacket)
-		handlePacket(m)
+		iskeyframe := false
+
+		if m.rxid == Audio {
+			break
+		}
+
+		if m.rxid == IdleVideo {
+			if !receivingVideo && !sendingIdleVid {
+				iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+				if iskeyframe {
+					sendingIdleVid = true
+				}
+			}
+			if !sendingIdleVid {
+				break
+			}
+		} else if m.rxid == Video {
+			lastVideoRxTime = time.Now()
+
+			if receivingVideo && sendingIdleVid {
+				iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+				if iskeyframe {
+					sendingIdleVid = false
+				}
+			}
+			if sendingIdleVid {
+				break
+			}
+		}
+
+		for i, tr := range txtracks {
+
+			// send vid on video track, etc
+			if m.rxid != tr.txid {
+				sendanyway := m.rxid == IdleVideo && tr.txid == Video
+				if sendanyway {
+					goto sendit
+				}
+				continue
+			}
+
+		sendit:
+			//pline()
+
+			o := *m.packet //make a copy
+			// var ipacket interface{}
+			// ipacket = rtpPacketPool.Get()
+			// packet = ipacket.(*rtp.Packet)
+
+			pkt := SpliceRTP(tr.splicer, &o, time.Now().UnixNano(), int64(m.rxClockRate))
+
+			// key := ""
+			// if (m.rxid == IdleVideo || m.rxid == Video) && rtpstuff.IsH264Keyframe(m.packet.Payload) {
+			// 	key = "##"
+			// }
+
+			// if tr.txid == Video {
+			// 	println(333, "0x"+strconv.FormatInt(int64(pkt.SSRC), 16),
+			// 		pkt.SequenceNumber, pkt.Timestamp, len(pkt.Payload),
+			// 		key)
+			// 	// tr.splicer.snOffset, tr.splicer.tsOffset)
+			// }
+
+			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
+			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
+
+			err := tr.track.WriteRTP(pkt)
+			if err == io.ErrClosedPipe {
+				log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
+
+				// slice tricks non-order preserving delete
+				txtracks[i] = txtracks[len(txtracks)-1]
+				txtracks[len(txtracks)-1] = nil
+				txtracks = txtracks[:len(txtracks)-1]
+
+			}
+
+			// *packet = rtp.Packet{}
+			// rtpPacketPool.Put(ipacket)
+
+		}
 
 	case m := <-subAddTrackCh:
 
@@ -1155,78 +1222,6 @@ func msgOnce() {
 	case now := <-ticker100ms.C:
 
 		receivingVideo = now.Sub(lastVideoRxTime) <= time.Second
-
-	}
-}
-
-func handlePacket(m MsgRxPacket) {
-	iskeyframe := false
-
-	if m.rxid == Audio {
-		return
-	}
-
-	if m.rxid == IdleVideo {
-		if !receivingVideo && !sendingIdleVid {
-			iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
-			if iskeyframe {
-				sendingIdleVid = true
-			}
-		}
-		if !sendingIdleVid {
-			return
-		}
-	} else if m.rxid == Video {
-		lastVideoRxTime = time.Now()
-
-		if receivingVideo && sendingIdleVid {
-			iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
-			if iskeyframe {
-				sendingIdleVid = false
-			}
-		}
-		if sendingIdleVid {
-			return
-		}
-	}
-
-	for i, tr := range txtracks {
-
-		if m.rxid != tr.txid {
-			sendanyway := m.rxid == IdleVideo && tr.txid == Video
-			if sendanyway {
-				goto sendit
-			}
-			continue
-		}
-
-	sendit:
-
-		o := *m.packet
-
-		pkt := SpliceRTP(tr.splicer, &o, time.Now().UnixNano(), int64(m.rxClockRate))
-
-		key := ""
-		if (m.rxid == IdleVideo || m.rxid == Video) && rtpstuff.IsH264Keyframe(m.packet.Payload) {
-			key = "##"
-		}
-
-		if tr.txid == Video {
-			println(333, "0x"+strconv.FormatInt(int64(pkt.SSRC), 16),
-				pkt.SequenceNumber, pkt.Timestamp, len(pkt.Payload),
-				key)
-
-		}
-
-		err := tr.track.WriteRTP(pkt)
-		if err == io.ErrClosedPipe {
-			log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
-
-			txtracks[i] = txtracks[len(txtracks)-1]
-			txtracks[len(txtracks)-1] = nil
-			txtracks = txtracks[:len(txtracks)-1]
-
-		}
 
 	}
 }
@@ -1349,9 +1344,7 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 // and also more robust to seqno bug/jumps on input
 //
 // This grabs mutex after doing a fast, non-mutexed check for applicability
-var _ = SpliceRTPInPlace
-
-func SpliceRTPInPlace(state *RtpSplicer, pkt *rtp.Packet, unixnano int64, rtphz int64) {
+func SplicxeRTP(state *RtpSplicer, pkt *rtp.Packet, unixnano int64, rtphz int64) {
 
 	forceKeyFrame := false
 
