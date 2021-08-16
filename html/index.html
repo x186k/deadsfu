@@ -115,30 +115,15 @@
     // https://stackoverflow.com/a/52076280/86375
     // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
     //@ts-check
-    const txid = rand64Hex()
 
     let suburl = location.origin + '/sub'        // output from sfu
     let puburl = location.origin + '/pub'          // input to sfu
 
 
-    function rand64Hex() {
-      var buffer = new Uint8Array(8)
-      window.crypto.getRandomValues(buffer)
-      return Array.prototype.map.call(new Uint8Array(buffer), x => ('0' + x.toString(16)).slice(-2)).join('');
-    }
 
 
-    async function channel(ll) {
-      const url = suburl + '?txid=' + txid + '&channel=' + ll
-      console.debug('before channel fetch')
-      let resp = await fetch(url)
-      let resptext = await resp.text()
-      if (resp.status != 202) {
-        let m = `Channel change fail: ${resptext} ${resp.status}`
-        //document.getElementById('errortext').textContent = m
-        alert(m)
-      }
-    }
+
+
 
 
     async function transmit() {
@@ -249,6 +234,25 @@
       }
     }
 
+    async function sendSignalling(desc) {
+      console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
+      let fetchopt =
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp', },
+        body: desc.sdp
+      }
+      let resp = await fetch(suburl, fetchopt)
+      let resptext = await resp.text()
+      if (resp.status != 202) {
+        throw `SFU error: ${resptext} ${resp.status}`
+        // pc.close()
+        // return
+      }
+      console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
+      return resptext
+    }
+
 
     function waitToCompleteIceGathering(pc) {
       return new Promise(resolve => {
@@ -256,7 +260,14 @@
           resolve(pc.localDescription)
         }, 250)
         pc.addEventListener('icegatheringstatechange', e => (e.target.iceGatheringState === 'complete') && resolve(pc.localDescription));
-      });
+      })
+    }
+
+    async function waitToCompleteIceGatheringLog(pc) {
+      const t0 = performance.now()
+      let x = await waitToCompleteIceGathering(pc)  // XXXX consider wrapping with timeout promise
+      console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
+      return x
     }
 
     async function receive() {
@@ -264,55 +275,53 @@
       document.title = "Receiving"
 
       document.getElementById("video1").removeAttribute("poster")
-      //document.getElementById("channeldrop").disabled = false
-      //document.getElementById("channeldrop").removeAttribute('disabled')
-      //document.getElementById("channeldrop").classList.remove("disabled");
+
 
       try {
-        const url = suburl + '?txid=' + txid
+        const url = suburl
 
         let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
         pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
         const xstate = document.getElementById('xstate')
-        pc.onconnectionstatechange = e => xstate.textContent = pc.connectionState
+        pc.onconnectionstatechange = e => {
+          console.debug('>onconnectionstatechange', pc.connectionState )
+          xstate.textContent = pc.connectionState
+          if (pc.connectionState === "failed") {
+            /* possibly reconfigure the connection in some way here */
+            /* then request ICE restart */
+            console.debug('restarting ice')
+            pc.restartIce()
+          }
+        }
+
+
+        let ntry = 0
+        pc.onnegotiationneeded = async () => {
+          console.debug('onnegotiationneeded')
+          await pc.setLocalDescription(await pc.createOffer())
+          await waitToCompleteIceGatheringLog(pc)
+          let ans = ''
+          while (ans === '') {
+            try {
+              ans = await sendSignalling(pc.localDescription)
+            } catch (err) {
+              console.log(err)
+              xstate.textContent = 'retrying #' + ntry++
+              await (new Promise(r => setTimeout(r, 2000)))
+            }
+          }
+
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
+        }
+
+
+
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
         //must have addtransceiver to get m=video in sdp
         //addTransceiver() must be called before createOffer()
-        // also, we need to note, the sfu will add 3x video tx
-        // while we only add 1x video tx
-        // the sfu will use this fact to decide 
-        // whether to allow switching of the first video track
-        //
         pc.addTransceiver('video', { 'direction': 'recvonly' })
         pc.addTransceiver('audio', { 'direction': 'recvonly' })
-
-        let desc = await pc.createOffer()
-        await pc.setLocalDescription(desc)
-        // XXXX consider wrapping with timeout promise
-        const t0 = performance.now()
-        await waitToCompleteIceGathering(pc)
-        desc = pc.localDescription
-        console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
-
-        //console.debug('got all ice ms:', performance.now() - t0)
-
-        console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
-        let fetchopt =
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/sdp', },
-          body: desc.sdp
-        }
-        let resp = await fetch(url, fetchopt)
-        let resptext = await resp.text()
-        if (resp.status != 202) {
-          throw `SFU error: ${resptext} ${resp.status}`
-          // pc.close()
-          // return
-        }
-        console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
-
 
         pc.ontrack = function (event) {
           let z = event.streams[0]
@@ -324,8 +333,36 @@
           xvid.controls = true
           return false
         }
+        // Go!
+        pc.restartIce()
 
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
+
+        // let desc = await pc.createOffer()
+        // await pc.setLocalDescription(desc)
+        // // XXXX consider wrapping with timeout promise
+        // const t0 = performance.now()
+        // await waitToCompleteIceGathering(pc)
+        // desc = pc.localDescription
+        // console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
+
+        // //console.debug('got all ice ms:', performance.now() - t0)
+
+        // console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
+        // let fetchopt =
+        // {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/sdp', },
+        //   body: desc.sdp
+        // }
+        // let resp = await fetch(url, fetchopt)
+        // let resptext = await resp.text()
+        // if (resp.status != 202) {
+        //   throw `SFU error: ${resptext} ${resp.status}`
+        //   // pc.close()
+        //   // return
+        // }
+        // console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
+        //;await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
 
         console.debug('n senders in getsenders()', pc.getSenders())
         //NO NO
