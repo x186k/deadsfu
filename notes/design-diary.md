@@ -337,3 +337,12 @@ maybe --my-ipaddr <address> stunserver or local or public
 // AND, this map is not indexed in any hot-spots or media-paths
 // so, there is NO good reason to make it an array
 // sooo... we keep it a map.
+
+# 8/14/21 decided to gut multi-track support
+
+# 8/16/21 need a tool for ES (elementary stream) consistency checking in the field
+
+- for either run-time or:
+- post run-time consistency checking
+
+
