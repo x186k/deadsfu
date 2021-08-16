@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"errors"
+	"strconv"
 
 	"fmt"
 	"io"
@@ -46,6 +47,10 @@ import (
 
 	"github.com/x186k/deadsfu/rtpstuff"
 )
+
+var lastVideoRxTime time.Time
+var receivingVideo bool
+var sendingIdleVid bool
 
 //go:embed html/*
 var htmlContent embed.FS
@@ -96,8 +101,12 @@ type MsgRxPacket struct {
 	rxClockRate uint32
 	packet      *rtp.Packet
 }
+type MsgSubscriberAddTrack struct {
+	txtrack *TxTrack
+}
 
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
+var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
 //var rxidStateCh chan MsgGetRxidState = make(chan MsgGetRxidState)
 
@@ -114,20 +123,11 @@ type RtpSplicer struct {
 type TrackId int32
 
 const (
-	Invalid   TrackId = 0
+	IdleVideo TrackId = 0
 	Video     TrackId = iota
 	Audio     TrackId = iota
 	Data      TrackId = iota
-	IdleVideo TrackId = iota
-	NumTracks TrackId = iota
 )
-
-var rxid2state = make([]RxidState, NumTracks)
-
-type RxidState struct {
-	lastReceipt time.Time //unixnanos
-	active      bool
-}
 
 // size optimized, not readability
 type TxTrack struct {
@@ -150,6 +150,13 @@ func logNotFatal(err error) {
 		_, fileName, fileLine, _ := runtime.Caller(1)
 		elog.Printf("NON-FATAL ERROR %s:%d %v", filepath.Base(fileName), fileLine, err)
 	}
+}
+
+var _ = pline
+
+func pline() {
+	_, fileName, fileLine, _ := runtime.Caller(1)
+	fmt.Println("pline:", filepath.Base(fileName), fileLine)
 }
 
 var Version = "version-unset"
@@ -589,8 +596,6 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
-
-
 // sfu egress setup
 // 041521 Decided checkFatal() is the correct way to handle errors in this func.
 func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
@@ -684,11 +689,27 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	checkFatal(err)
 	go processRTCP(rtpSender)
 
+	subAddTrackCh <- MsgSubscriberAddTrack{
+		txtrack: &TxTrack{
+			track:   track,
+			splicer: &RtpSplicer{},
+			txid:    Audio,
+		},
+	}
+
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
 	checkFatal(err)
 	rtpSender2, err := peerConnection.AddTrack(track)
 	checkFatal(err)
 	go processRTCP(rtpSender2)
+
+	subAddTrackCh <- MsgSubscriberAddTrack{
+		txtrack: &TxTrack{
+			track:   track,
+			splicer: &RtpSplicer{},
+			txid:    Video,
+		},
+	}
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -1083,9 +1104,7 @@ func (x TrackId) String() string {
 	case Data:
 		return "Data"
 	case IdleVideo:
-		return "IdleVideo"
-	case Invalid:
-		return "Invalid"
+		return "IdleVid"
 	}
 
 	panic("<bad TrackId>")
@@ -1105,55 +1124,29 @@ func msgOnce() {
 		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
 		//println(6666,m.rxidstate.rxid)
 
-		rxid2state[m.rxid].lastReceipt = time.Now()
+		// send vid on video track, etc
+		//pline()
+		//make a copy
+		// var ipacket interface{}
+		// ipacket = rtpPacketPool.Get()
+		// packet = ipacket.(*rtp.Packet)
+		// tr.splicer.snOffset, tr.splicer.tsOffset)
+		//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
+		//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
+		// slice tricks non-order preserving delete
+		// *packet = rtp.Packet{}
+		// rtpPacketPool.Put(ipacket)
+		handlePacket(m)
 
-		isvideo := m.rxid == Video
+	case m := <-subAddTrackCh:
 
-		if isvideo {
-			iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
-			if iskeyframe {
-				rxid2state[m.rxid].active = true
-			}
-		}
-
-		for i, tr := range txtracks {
-
-			send := m.rxid == tr.txid
-			if !send {
-				continue
-			}
-
-			packet := *m.packet //make a copy
-			// var ipacket interface{}
-			// ipacket = rtpPacketPool.Get()
-			// packet = ipacket.(*rtp.Packet)
-
-			SpliceRTP(tr.splicer, &packet, time.Now().UnixNano(), int64(m.rxClockRate))
-
-			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
-			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
-
-			err := tr.track.WriteRTP(&packet)
-			if err == io.ErrClosedPipe {
-				log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
-
-				// slice tricks non-order preserving delete
-				txtracks[i] = txtracks[len(txtracks)-1]
-				txtracks[len(txtracks)-1] = nil
-				txtracks = txtracks[:len(txtracks)-1]
-
-			}
-
-			// *packet = rtp.Packet{}
-			// rtpPacketPool.Put(ipacket)
-
-		}
+		txtracks = append(txtracks, m.txtrack)
 
 	case <-mediaDebugTickerChan:
 
-		for i, v := range rxid2state {
-			medialog.Println("rx", TrackId(i).String(), "active=", v.active)
-		}
+		medialog.Println("receivingVideo", receivingVideo)
+		medialog.Println("sendingIdleVid", sendingIdleVid)
+
 		for i, v := range txtracks {
 			medialog.Println("tx", TrackId(i).String(), i, "ssrc", v.splicer.lastSSRC)
 		}
@@ -1161,23 +1154,79 @@ func msgOnce() {
 
 	case now := <-ticker100ms.C:
 
-		//fmt.Println("Tick at", tk)
+		receivingVideo = now.Sub(lastVideoRxTime) <= time.Second
 
-		active := now.Sub(rxid2state[Video].lastReceipt) <= time.Second
+	}
+}
 
-		transition2idle := rxid2state[Video].active && !active
-		rxid2state[Video].active = active
+func handlePacket(m MsgRxPacket) {
+	iskeyframe := false
 
-		if !transition2idle {
-			break
+	if m.rxid == Audio {
+		return
+	}
+
+	if m.rxid == IdleVideo {
+		if !receivingVideo && !sendingIdleVid {
+			iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+			if iskeyframe {
+				sendingIdleVid = true
+			}
+		}
+		if !sendingIdleVid {
+			return
+		}
+	} else if m.rxid == Video {
+		lastVideoRxTime = time.Now()
+
+		if receivingVideo && sendingIdleVid {
+			iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+			if iskeyframe {
+				sendingIdleVid = false
+			}
+		}
+		if sendingIdleVid {
+			return
+		}
+	}
+
+	for i, tr := range txtracks {
+
+		if m.rxid != tr.txid {
+			sendanyway := m.rxid == IdleVideo && tr.txid == Video
+			if sendanyway {
+				goto sendit
+			}
+			continue
 		}
 
-		if mediaDebug {
-			medialog.Printf("### rx video went idle")
+	sendit:
+
+		o := *m.packet
+
+		pkt := SpliceRTP(tr.splicer, &o, time.Now().UnixNano(), int64(m.rxClockRate))
+
+		key := ""
+		if (m.rxid == IdleVideo || m.rxid == Video) && rtpstuff.IsH264Keyframe(m.packet.Payload) {
+			key = "##"
 		}
 
-		// went idle.
+		if tr.txid == Video {
+			println(333, "0x"+strconv.FormatInt(int64(pkt.SSRC), 16),
+				pkt.SequenceNumber, pkt.Timestamp, len(pkt.Payload),
+				key)
 
+		}
+
+		err := tr.track.WriteRTP(pkt)
+		if err == io.ErrClosedPipe {
+			log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
+
+			txtracks[i] = txtracks[len(txtracks)-1]
+			txtracks[len(txtracks)-1] = nil
+			txtracks = txtracks[:len(txtracks)-1]
+
+		}
 
 	}
 }
@@ -1300,17 +1349,52 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 // and also more robust to seqno bug/jumps on input
 //
 // This grabs mutex after doing a fast, non-mutexed check for applicability
-func SpliceRTP(s *RtpSplicer, in *rtp.Packet, unixnano int64, rtphz int64) {
+var _ = SpliceRTPInPlace
+
+func SpliceRTPInPlace(state *RtpSplicer, pkt *rtp.Packet, unixnano int64, rtphz int64) {
 
 	forceKeyFrame := false
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
-	if in.SSRC != s.lastSSRC || forceKeyFrame {
+	if pkt.SSRC != state.lastSSRC || forceKeyFrame {
 		if mediaDebug {
-			medialog.Printf("### SpliceRTP: %p: ssrc changed new=%v cur=%v", s, in.SSRC, s.lastSSRC)
+			medialog.Printf("### SpliceRTP: %p: ssrc changed new=%v cur=%v", state, pkt.SSRC, state.lastSSRC)
 		}
+
+		td := unixnano - state.lastUnixnanosNow // nanos
+		if td < 0 {
+			td = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
+		}
+		td *= rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
+		if td == 0 {
+			td = 1
+		}
+		state.tsOffset = pkt.Timestamp - (state.lastTS + uint32(td))
+		state.snOffset = pkt.SequenceNumber - state.lastSN - 1
+	}
+
+	state.lastUnixnanosNow = unixnano
+	state.lastTS = pkt.Timestamp
+	state.lastSN = pkt.SequenceNumber
+	state.lastSSRC = pkt.SSRC
+
+	pkt.Timestamp -= state.tsOffset
+	pkt.SequenceNumber -= state.snOffset
+
+}
+
+func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.Packet {
+
+	forceKeyFrame := false
+
+	copy := *o
+	// credit to Orlando Co of ion-sfu
+	// for helping me decide to go this route and keep it simple
+	// code is modeled on code from ion-sfu
+	if o.SSRC != s.lastSSRC || forceKeyFrame {
+		log.Printf("SpliceRTP: %p: ssrc changed new=%v cur=%v", s, o.SSRC, s.lastSSRC)
 
 		td := unixnano - s.lastUnixnanosNow // nanos
 		if td < 0 {
@@ -1320,8 +1404,8 @@ func SpliceRTP(s *RtpSplicer, in *rtp.Packet, unixnano int64, rtphz int64) {
 		if td == 0 {
 			td = 1
 		}
-		s.tsOffset = in.Timestamp - (s.lastTS + uint32(td))
-		s.snOffset = in.SequenceNumber - s.lastSN - 1
+		s.tsOffset = o.Timestamp - (s.lastTS + uint32(td))
+		s.snOffset = o.SequenceNumber - s.lastSN - 1
 
 		//log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
 		// old approach/abandoned
@@ -1337,12 +1421,20 @@ func SpliceRTP(s *RtpSplicer, in *rtp.Packet, unixnano int64, rtphz int64) {
 		//s.addTS = s.lastSentTS + clockDelta
 	}
 
+	// we don't want to change original packet, it gets
+	// passed into this routine many times for many subscribers
+
+	copy.Timestamp -= s.tsOffset
+	copy.SequenceNumber -= s.snOffset
+	//	tsdelta := int64(copy.Timestamp) - int64(s.lastSentTS) // int64 avoids rollover issues
+	// if !ssrcChanged && tsdelta > 0 {              // Track+measure uint32 timestamp deltas
+	// 	s.trackTimestampDeltas(uint32(tsdelta))
+	// }
+
 	s.lastUnixnanosNow = unixnano
-	s.lastTS = in.Timestamp
-	s.lastSN = in.SequenceNumber
-	s.lastSSRC = in.SSRC
+	s.lastTS = copy.Timestamp
+	s.lastSN = copy.SequenceNumber
+	s.lastSSRC = copy.SSRC
 
-	in.Timestamp -= s.tsOffset
-	in.SequenceNumber -= s.snOffset
-
+	return &copy
 }
