@@ -1,3 +1,75 @@
+func writePacket2Pcap(rtpbuf []byte) {
+	var err error
+	// err = binary.Write(pcapFile, binary.LittleEndian, int32(len(buf)))
+	// checkFatal(err)
+
+	// err = binary.Write(pcapFile, binary.LittleEndian, int32(0))
+	// checkFatal(err)
+
+	// _, err = pcapFile.Write(buf)
+	// checkFatal(err)
+
+	// Let's craft network packets
+	buf := gopacket.NewSerializeBuffer()
+
+	opts := gopacket.SerializeOptions{
+		FixLengths: true,
+	}
+
+	ethernetLayer := &layers.Ethernet{
+		SrcMAC: []byte{0, 0, 0, 0, 0, 0},
+		DstMAC: []byte{0, 0, 0, 0, 0, 0},
+	}
+
+	ethernetLayer.EthernetType = layers.EthernetTypeIPv4
+
+	ipv4 := &layers.IPv4{
+		Version: 4,
+		SrcIP:   net.IP([]byte{127, 0, 0, 1}),
+		DstIP:   net.IP([]byte{127, 0, 0, 1}),
+		TTL:     128,
+	}
+
+	ipv4.Protocol = layers.IPProtocolUDP
+
+	err = gopacket.SerializeLayers(buf, opts,
+		ethernetLayer,
+		ipv4,
+		&layers.UDP{
+			SrcPort: layers.UDPPort(1000),
+			DstPort: layers.UDPPort(2000),
+		},
+		gopacket.Payload(rtpbuf),
+	)
+	checkFatal(err)
+
+	ci := gopacket.CaptureInfo{
+		Timestamp:      time.Now(),
+		CaptureLength:  len(buf.Bytes()),
+		Length:         len(buf.Bytes()),
+		InterfaceIndex: 0,
+		AncillaryData:  []interface{}{},
+	}
+
+	err = pcapWr.WritePacket(ci, buf.Bytes())
+	checkFatal(err)
+	// no flush needed, os.file is unbuffered
+
+	// c := rtpdump.Packet{
+	// 	Offset:  time.Since(startTime),
+	// 	IsRTCP:  false,
+	// 	Payload: buf,
+	// }
+
+	// err = rtpdumpWr.WritePacket(c)
+	//checkFatal(err)
+}
+
+
+
+
+
+
 
 func keyFrameHelper(payload []byte, mimetype string) bool {
 	switch mimetype {
