@@ -65,6 +65,23 @@ func writePacket2Pcap(rtpbuf []byte) {
 	//checkFatal(err)
 }
 
+if *rtpdumpSave {
+			var err error
+			pcapFile, err = os.Create("deadsfu-out.pcap")
+			checkFatal(err)
+
+			pcapWr = pcapgo.NewWriter(pcapFile)
+			err = pcapWr.WriteFileHeader(1600, layers.LinkTypeEthernet)
+			checkFatal(err)
+
+			// hdr := rtpdump.Header{
+			// 	Start:  time.Now(),
+			// 	Source: net.ParseIP("127.0.0.1"),
+			// 	Port:   5042,
+			// }
+			// rtpdumpWr, err = rtpdump.NewWriter(a, hdr)
+			// checkFatal(err)
+		}
 
 
 
