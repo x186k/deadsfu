@@ -15,11 +15,13 @@ var httpListenAddr = pflag.String("http-listen-addr", ":8080", "The address at w
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
 var obsKey = pflag.String("obs-key", "", "Enable OBS/FTL ingest. Sample value: '123-abc'")
+var rtpout = pflag.String("rtpout", "", "addr:port to send rtp, ie: '127.0.0.1:4444'")
+var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlFromDiskFlag = pflag.Bool("z-html-from-disk", false, "do not use embed html, use files from disk")
 var cpuprofile = pflag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 var debug = pflag.StringSlice("z-debug", []string{}, "comma separated list of debug flags. use 'help' to view")
 
 var Usage = func() {
-	pflag.PrintDefaults()	
+	pflag.PrintDefaults()
 }
