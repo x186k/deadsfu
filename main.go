@@ -5,12 +5,12 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
 	"errors"
 	"net"
+	"path"
 	"strconv"
 
 	"fmt"
@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"sync"
 
-	mrand "math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -278,11 +277,7 @@ func init() {
 
 	go logGoroutineCountToDebugLog()
 
-	log.Printf("idleScreenH264Pcapng len=%d md5=%x", len(idleScreenH264Pcapng), md5.Sum(idleScreenH264Pcapng))
-	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
-	checkFatal(err)
-
-	go idleLoopPlayer(p)
+	go idleLoopPlayer("deadsfu-binaries/idlevid")
 
 	// XXX msgLoop touches rxid2state, so we have 2 GR touching a map
 	// but, let's be honest, it's the only toucher of rxid2state after this point
@@ -828,34 +823,124 @@ func randomHex(n int) string {
 	return hex.EncodeToString(bytes)
 }
 
-func idleLoopPlayer(p []rtp.Packet) {
+func idleLoopPlayer(dir string) {
 
-	n := len(p)
-	delta1 := time.Second / time.Duration(n)
-	delta2 := uint32(90000 / n)
-	mrand.Seed(time.Now().UnixNano())
-	seq := uint16(mrand.Uint32())
-	ts := mrand.Uint32()
+	// files, err := ioutil.ReadDir(dir)
+	// checkFatal(err)
+
+	pkts := make([]rtp.Packet, 0)
+
+	seqbase := 0
+
+	for i := 0; i < 1000000; i++ {
+
+		name := path.Join(dir, fmt.Sprintf("rtp%d.rtp", i))
+
+		pktbuf, err := ioutil.ReadFile(name)
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		checkFatal(err)
+
+		var p rtp.Packet
+
+		err = p.Unmarshal(pktbuf)
+		checkFatal(err)
+
+		if i == 0 {
+			seqbase = int(p.SequenceNumber)
+		} else {
+			want := i + seqbase
+			got := int(p.SequenceNumber)
+			if want != got {
+				checkFatal(fmt.Errorf("bad rtp sequence number file/want/got %s %d %d", name, want, got))
+			}
+		}
+
+		pkts = append(pkts, p)
+
+	}
+
+	var sps rtp.Packet
+	var pps rtp.Packet
+
+	{
+		newseqno := uint16(0)
+		p2 := make([]rtp.Packet, 0)
+		for _, p := range pkts {
+
+			if p.Payload[0]&0x1f == 7 {
+				sps = p
+			} else if p.Payload[0]&0x1f == 8 {
+				pps = p
+			} else {
+				// remove SEI and access-delimeter
+				if p.Payload[0] != 6 && p.Payload[0] != 9 {
+					p.SequenceNumber = newseqno
+					newseqno++
+					p2 = append(p2, p)
+					if mediaDebug {
+						medialog.Printf("idle pkt %d %#v", p.Payload[0], p.Header)
+					}
+				}
+			}
+		}
+		pkts = p2
+	}
+
+	fps := 5
+	seqno := uint16(0)
+	tstotal := uint32(0)
+
+	basetime := time.Now()
+
+	framedur90 := uint32(90000 / fps)
+
+	pktsDur90 := pkts[len(pkts)-1].Timestamp - pkts[0].Timestamp
+
+	totalDur90 := pktsDur90/framedur90*framedur90 + framedur90
 
 	for {
-		for _, tmp := range p {
-			v := tmp // critical!, if we use original packets, something bad happens.
-			// (not sure what exactly)
 
-			time.Sleep(delta1)
-			v.SequenceNumber = seq
-			seq++
-			v.Timestamp = ts
-			// if *logPackets {
-			// 	logPacket(logPacketIn, &v)
-			// }
+		sps.SequenceNumber = seqno
+		seqno++
+		sps.Timestamp = tstotal
+		rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &sps, rxClockRate: 90000}
 
-			//fmt.Printf(" tx idle msg %x iskey %v len %v\n", v.Payload[0:10],rtpstuff.IsH264Keyframe(v.Payload),len(v.Payload))
+		pps.SequenceNumber = seqno
+		seqno++
+		pps.Timestamp = tstotal
+		rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &pps, rxClockRate: 90000}
 
-			rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &v, rxClockRate: 90000}
+		//send sps pps every 20 
+		for i := 0; i < 20; i++ {
+
+			for _, pkt := range pkts {
+
+				// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
+				tsdelta := pkt.Timestamp - pkts[0].Timestamp
+
+				tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
+
+				when := basetime.Add(tsdeltaDur)
+
+				time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
+
+				pkt.SequenceNumber = seqno
+				seqno++
+				pkt.Timestamp = tsdelta + tstotal
+
+				copy := pkt // critical!, we must make a copy!
+				rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
+
+			}
+
+			tstotal += totalDur90
+			basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
+
+			time.Sleep(time.Until(basetime))
 
 		}
-		ts += delta2
 	}
 }
 
