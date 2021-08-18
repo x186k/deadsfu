@@ -10,6 +10,8 @@ import (
 	"embed"
 	"encoding/hex"
 	"errors"
+	"net"
+	"strconv"
 
 	"fmt"
 	"io"
@@ -41,6 +43,8 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+
+	//"github.com/pion/webrtc/v3/pkg/media/rtpdump"
 
 	"github.com/pion/webrtc/v3"
 
@@ -186,6 +190,12 @@ func logGoroutineCountToDebugLog() {
 	}
 }
 
+// var pcapFile *os.File
+// var pcapWr *pcapgo.Writer
+var rtpoutConn *net.UDPConn
+
+//var startTime time.Time = time.Now()
+
 // should this be 'init' or 'initXXX'
 // if we want this func to be called everyttime we run tests, then
 // it should be init(), otherwise initXXX()
@@ -194,13 +204,6 @@ func logGoroutineCountToDebugLog() {
 // But! this means we need to determine if we are a test or not,
 // so we can not call flag.Parse() or not
 func init() {
-
-	// dir, err := content.ReadDir(".")
-	// checkFatal(err)
-	// for k, v := range dir {
-	// 	println(88, k, v.Name())
-	// }
-	// panic(99)
 
 	if _, err := htmlContent.ReadFile("html/index.html"); err != nil {
 		panic("index.html failed to embed correctly")
@@ -249,6 +252,26 @@ func init() {
 			log.Printf("'main' debug enabled")
 		} else {
 			silenceLogger(log.Default())
+		}
+
+		if *rtpout != "" {
+			raddr, err := net.ResolveUDPAddr("udp", *rtpout)
+			checkFatal(err)
+			var laddr *net.UDPAddr = nil
+			if raddr.IP.IsLoopback() && *rtpWireshark {
+				//when sending packets to loopback, if there is no receiver
+				// we would get icmp dest unreachables
+				// so we open it to/from ourself, we won't  read the pkts, but
+				// the OS will throw them away when they overflow
+				// without this, and the ICMP errors, we lose packets
+				// this allows us to use wireshark on 127.0.0.1 without issues
+				//note, if I want to use gstreamer or ffprobe, etc, this must not be done
+
+				laddr = raddr
+
+			}
+			rtpoutConn, err = net.DialUDP("udp", laddr, raddr)
+			checkFatal(err)
 		}
 
 	}
@@ -458,9 +481,11 @@ func attemptSingleFtlSession() {
 		checkFatal(err)
 
 		switch p.Header.PayloadType {
-		case 96:
+		case 200:
+			log.Println("got ftl sender report")
+		case 96: //0x7b
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
-		case 97:
+		case 97: //0x7c
 			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 		}
 	}
@@ -1106,7 +1131,7 @@ func (x TrackId) String() string {
 		return "IdleVid"
 	}
 
-	panic("<bad TrackId>")
+	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
 func msgLoop() {
@@ -1123,48 +1148,50 @@ func msgOnce() {
 		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
 		//println(6666,m.rxidstate.rxid)
 
-		iskeyframe := false
-
 		if m.rxid == Audio {
 			break
 		}
 
-		if m.rxid == IdleVideo {
-			if !receivingVideo && !sendingIdleVid {
-				iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+		idlePkt := m.rxid == IdleVideo
+
+		mainVidPkt := m.rxid == Video
+
+		if idlePkt { //&& foo {
+			if !receivingVideo {
+				iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = true
 				}
 			}
-			if !sendingIdleVid {
-				break
-			}
-		} else if m.rxid == Video {
+
+		} else if mainVidPkt {
 			lastVideoRxTime = time.Now()
 
-			if receivingVideo && sendingIdleVid {
-				iskeyframe = rtpstuff.IsH264Keyframe(m.packet.Payload)
+			if receivingVideo {
+				iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
 				}
 			}
-			if sendingIdleVid {
-				break
-			}
+		}
+
+		if sendingIdleVid && mainVidPkt {
+			return
+		}
+		if !sendingIdleVid && idlePkt {
+			return
 		}
 
 		for i, tr := range txtracks {
 
 			// send vid on video track, etc
-			if m.rxid != tr.txid {
-				sendanyway := m.rxid == IdleVideo && tr.txid == Video
-				if sendanyway {
-					goto sendit
-				}
+
+			sametrack := m.rxid == tr.txid
+			idle4vid := m.rxid == IdleVideo && tr.txid == Video
+			if !sametrack && !idle4vid {
 				continue
 			}
 
-		sendit:
 			//pline()
 
 			o := *m.packet //make a copy
@@ -1188,6 +1215,24 @@ func msgOnce() {
 
 			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
 			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
+
+			if true {
+
+				if m.rxid == IdleVideo || m.rxid == Video {
+
+					ptmp := pkt
+					ptmp.SSRC = 0x12345678 //jm19
+					ptmp.PayloadType = 96  //jm19
+					// ptmp.Extension = false
+					// ptmp.Extensions = []rtp.Extension{}
+					rtpbuf, err := ptmp.Marshal()
+					checkFatal(err)
+
+					_, _ = rtpoutConn.Write(rtpbuf)
+					//checkFatal(err)
+
+				}
+			}
 
 			err := tr.track.WriteRTP(pkt)
 			if err == io.ErrClosedPipe {
@@ -1215,7 +1260,7 @@ func msgOnce() {
 		medialog.Println("sendingIdleVid", sendingIdleVid)
 
 		for i, v := range txtracks {
-			medialog.Println("tx", TrackId(i).String(), i, "ssrc", v.splicer.lastSSRC)
+			medialog.Println("tx#", i, "ssrc", v.splicer.lastSSRC)
 		}
 		medialog.Println()
 
@@ -1344,7 +1389,9 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 // and also more robust to seqno bug/jumps on input
 //
 // This grabs mutex after doing a fast, non-mutexed check for applicability
-func SplicxeRTP(state *RtpSplicer, pkt *rtp.Packet, unixnano int64, rtphz int64) {
+var _ = SpliceRTPNew
+
+func SpliceRTPNew(state *RtpSplicer, pkt *rtp.Packet, unixnano int64, rtphz int64) {
 
 	forceKeyFrame := false
 
