@@ -912,7 +912,7 @@ func idleLoopPlayer(dir string) {
 		pps.Timestamp = tstotal
 		rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &pps, rxClockRate: 90000}
 
-		//send sps pps every 20 
+		//send sps pps every 20
 		for i := 0; i < 20; i++ {
 
 			for _, pkt := range pkts {
