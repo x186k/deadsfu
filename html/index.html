@@ -81,7 +81,7 @@
     <!-- controls helps user turn on audio -->
 
     <div class="text-center">
-      <video id="video1" class="" autoplay controls muted width="1024" frameborder="2" poster="cam.svg" allowfullscreen>
+      <video id="video1" class="" autoplay controls muted width="1024" frameborder="2" allowfullscreen>
       </video>
     </div>
 
@@ -283,7 +283,7 @@
         pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
         const xstate = document.getElementById('xstate')
         pc.onconnectionstatechange = e => {
-          console.debug('>onconnectionstatechange', pc.connectionState )
+          console.debug('>onconnectionstatechange', pc.connectionState)
           xstate.textContent = pc.connectionState
           if (pc.connectionState === "failed") {
             /* possibly reconfigure the connection in some way here */
