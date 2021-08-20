@@ -861,31 +861,35 @@ func idleLoopPlayer(dir string) {
 
 	}
 
-	var sps rtp.Packet
-	var pps rtp.Packet
+	// var sps rtp.Packet
+	// var pps rtp.Packet
 
 	{
 		newseqno := uint16(0)
 		p2 := make([]rtp.Packet, 0)
 		for _, p := range pkts {
 
-			if p.Payload[0]&0x1f == 7 {
-				sps = p
-			} else if p.Payload[0]&0x1f == 8 {
-				pps = p
-			} else {
-				// remove SEI and access-delimeter
-				if p.Payload[0] != 6 && p.Payload[0] != 9 {
-					p.SequenceNumber = newseqno
-					newseqno++
-					p2 = append(p2, p)
-					if mediaDebug {
-						medialog.Printf("idle pkt %d %#v", p.Payload[0], p.Header)
-					}
+			// if p.Payload[0]&0x1f == 7 {
+			// 	sps = p
+			// } else if p.Payload[0]&0x1f == 8 {
+			// 	pps = p
+			// } else {
+			// remove SEI and access-delimeter
+			if p.Payload[0] != 6 && p.Payload[0] != 9 {
+				p.SequenceNumber = newseqno
+				newseqno++
+				p2 = append(p2, p)
+				if mediaDebug {
+					medialog.Printf("idle pkt %d %#v", p.Payload[0], p.Header)
 				}
 			}
+			//}
 		}
 		pkts = p2
+	}
+
+	if len(pkts) == 0 {
+		checkFatal(fmt.Errorf("cannot load idle packets"))
 	}
 
 	fps := 5
@@ -902,15 +906,15 @@ func idleLoopPlayer(dir string) {
 
 	for {
 
-		sps.SequenceNumber = seqno
-		seqno++
-		sps.Timestamp = tstotal
-		rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &sps, rxClockRate: 90000}
+		// sps.SequenceNumber = seqno
+		// seqno++
+		// sps.Timestamp = tstotal
+		// rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &sps, rxClockRate: 90000}
 
-		pps.SequenceNumber = seqno
-		seqno++
-		pps.Timestamp = tstotal
-		rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &pps, rxClockRate: 90000}
+		// pps.SequenceNumber = seqno
+		// seqno++
+		// pps.Timestamp = tstotal
+		// rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &pps, rxClockRate: 90000}
 
 		//send sps pps every 20
 		for i := 0; i < 20; i++ {
