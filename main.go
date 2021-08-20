@@ -277,7 +277,7 @@ func init() {
 
 	go logGoroutineCountToDebugLog()
 
-	go idleLoopPlayer("deadsfu-binaries/idlevid")
+	go idleLoopPlayer("deadsfu-binaries/idlevid.nosync")
 
 	// XXX msgLoop touches rxid2state, so we have 2 GR touching a map
 	// but, let's be honest, it's the only toucher of rxid2state after this point
