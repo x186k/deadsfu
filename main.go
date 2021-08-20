@@ -1233,10 +1233,6 @@ func msgOnce() {
 		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
 		//println(6666,m.rxidstate.rxid)
 
-		if m.rxid == Audio {
-			break
-		}
-
 		idlePkt := m.rxid == IdleVideo
 
 		mainVidPkt := m.rxid == Video
