@@ -1242,20 +1242,22 @@ func msgOnce() {
 		mainVidPkt := m.rxid == Video
 
 		if idlePkt { //&& foo {
-			if !receivingVideo {
+			if !receivingVideo && !sendingIdleVid {
 				iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = true
+					elog.Println("SWITCH TO IDLE, NOT INPUT VIDEO")
 				}
 			}
 
 		} else if mainVidPkt {
 			lastVideoRxTime = time.Now()
 
-			if receivingVideo {
+			if receivingVideo && sendingIdleVid {
 				iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
+					elog.Println("SWITCH TO INPUT, NOT IDLE VIDEO")
 				}
 			}
 		}
