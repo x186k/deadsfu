@@ -345,4 +345,8 @@ maybe --my-ipaddr <address> stunserver or local or public
 - for either run-time or:
 - post run-time consistency checking
 
+# 8/18/21
 
+screen flow text:
+DeadSFU: Use --idle-screen to replace this screen
+No Input Present
