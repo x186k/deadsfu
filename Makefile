@@ -18,6 +18,14 @@ all: build-push
 
 
 build-push:
+	# you CANNOT do a build with dirty directory
+	@status=$$(git status --porcelain); \
+	if [ ! -z "$${status}" ]; \
+	then \
+		echo "Error - working directory is dirty. Commit those changes!"; \
+		exit 1; \
+	fi
+	
 	@test -n "$(VER)"  # $$VER
 	git tag -m "" -a ${VER}
 	# if no tag specified, it defaults to latest:, SO DONT ADD :${VER}
