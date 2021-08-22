@@ -1293,7 +1293,7 @@ func msgOnce() {
 			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
 			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
 
-			if true {
+			if rtpoutConn != nil {
 
 				if m.rxid == IdleVideo || m.rxid == Video {
 
