@@ -1116,41 +1116,6 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	log.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
 	log.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
 
-	var trackname string // store trackname here, reduce locks
-	if track.RID() == "" {
-		//not proper simulcast!
-		// either upstream SFU we are downstream of,
-		// or we are getting ingress request from non-simulcast browser (or OBS)
-
-		log.Println("using TrackId/msid: stream trackid for trackname:", track.ID())
-		if *dialIngressURL != "" {
-			// we are dialing, and thus we are downstream of SFU
-			if !strings.HasPrefix(track.ID(), "video") {
-				panic("Non conforming track.ID() on ingress")
-			}
-			trackname = track.ID()
-		} else {
-			// we are downstream of Browser and there is no RID on this video track
-			// presume this is a non-simulcast browser sending
-			// track ID will just be a guid or random data from browser
-			trackname = "video0"
-			// we could check for multiple video tracks and panic()
-			// but maybe ignoring this issue will help some poor soul.
-			// var numNonRIDVideoTracks int32
-			// if atomic.AddInt32(&numNonRIDVideoTracks,1)>1 {
-			// 	panic("")
-			// }
-		}
-
-	} else {
-		log.Println("using RID for trackname:", track.RID())
-		trackname = track.RID()
-	}
-
-	if trackname != "video0" && trackname != "video1" && trackname != "video2" {
-		panic("only track names video0,video1,video2 supported:" + trackname)
-	}
-
 	go func() {
 		var err error
 
