@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"hash/crc64"
 	"io"
@@ -17,7 +16,6 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/x186k/deadsfu/rtpstuff"
 	//this is kinda weird, but works, so we use it.
 	//main "github.com/x186k/deadsfu"
 )
@@ -63,8 +61,8 @@ func TestPubSub(t *testing.T) {
 
 	pkthash[calccrc(fake)] = 2
 
-	p, _, err := rtpstuff.ReadPcap2RTP(bytes.NewReader(idleScreenH264Pcapng))
-	checkFatal(err)
+	p := readRTPFromZip(idleClipZipBytes)
+
 	for _, v := range p {
 		crc := calccrc(v.Raw)
 
@@ -184,7 +182,6 @@ func startMultiTrackPublisher(t *testing.T) {
 
 	video1, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/h264", SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"}, "1", "1")
 	checkFatal(err)
-
 
 	rtpSender, err := pc.AddTrack(video1)
 	checkFatal(err)

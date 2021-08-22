@@ -85,6 +85,52 @@ if *rtpdumpSave {
 
 
 
+		// ReadPcap2RTP reads a pcapng into an array of packets
+// no mutex needed
+func ReadPcap2RTP(reader io.Reader) ([]rtp.Packet, []time.Time, error) {
+	var pkts []rtp.Packet
+	var timestamps []time.Time
+
+	r, err := pcapgo.NewNgReader(reader, pcapgo.DefaultNgReaderOptions)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for {
+		data, capinfo, err := r.ReadPacketData()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Decode a packet
+		packet := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
+
+		udplayer := packet.Layer(layers.LayerTypeUDP)
+		if udplayer == nil {
+			panic("non-udp in pcap")
+		}
+
+		udp, _ := udplayer.(*layers.UDP)
+
+		var p rtp.Packet
+		err = p.Unmarshal(udp.Payload)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		pkts = append(pkts, p)
+		timestamps = append(timestamps, capinfo.Timestamp)
+	}
+
+	return pkts, timestamps, nil
+}
+
+
+
+
 
 
 

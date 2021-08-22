@@ -3,14 +3,12 @@ package main
 //force new build
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"embed"
-	"encoding/hex"
 	"errors"
 	"net"
-	"path"
 	"strconv"
 
 	"fmt"
@@ -46,8 +44,6 @@ import (
 	//"github.com/pion/webrtc/v3/pkg/media/rtpdump"
 
 	"github.com/pion/webrtc/v3"
-
-	"github.com/x186k/deadsfu/rtpstuff"
 )
 
 var lastVideoRxTime time.Time
@@ -57,8 +53,8 @@ var sendingIdleVid bool
 //go:embed html/*
 var htmlContent embed.FS
 
-//go:embed deadsfu-binaries/idle.screen.h264.pcapng
-var idleScreenH264Pcapng []byte
+//go:embed deadsfu-binaries/idle-clip.zip
+var idleClipZipBytes []byte
 
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
@@ -208,10 +204,6 @@ func init() {
 		panic("index.html failed to embed correctly")
 	}
 
-	if strings.HasPrefix(string(idleScreenH264Pcapng[0:10]), "version ") {
-		panic("You have NOT built the binaries correctly. idle data is missing")
-	}
-
 	istest := strings.HasSuffix(os.Args[0], ".test")
 	if !istest {
 
@@ -277,7 +269,7 @@ func init() {
 
 	go logGoroutineCountToDebugLog()
 
-	go idleLoopPlayer("deadsfu-binaries/idlevid.nosync")
+	go idleLoopPlayer()
 
 	// XXX msgLoop touches rxid2state, so we have 2 GR touching a map
 	// but, let's be honest, it's the only toucher of rxid2state after this point
@@ -816,81 +808,54 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	return nil
 }
 
-func randomHex(n int) string {
-	bytes := make([]byte, n)
-	_, err := rand.Read(bytes)
-	checkFatal(err)
-	return hex.EncodeToString(bytes)
-}
+func idleLoopPlayer() {
 
-func idleLoopPlayer(dir string) {
+	var pkts []rtp.Packet
 
-	// files, err := ioutil.ReadDir(dir)
-	// checkFatal(err)
-
-	pkts := make([]rtp.Packet, 0)
-
-	seqbase := 0
-
-	for i := 0; i < 1000000; i++ {
-
-		name := path.Join(dir, fmt.Sprintf("rtp%d.rtp", i))
-
-		pktbuf, err := ioutil.ReadFile(name)
-		if errors.Is(err, os.ErrNotExist) {
-			break
+	if *idleClipZipfile == "" && *idleClipServerInput == "" {
+		if len(idleClipZipBytes) == 0 {
+			checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
 		}
+		pkts = readRTPFromZip(idleClipZipBytes)
+	} else if *idleClipServerInput != "" {
+
+		inp, err := ioutil.ReadFile(*idleClipServerInput)
 		checkFatal(err)
 
-		var p rtp.Packet
+		rdr := bytes.NewReader(inp)
 
-		err = p.Unmarshal(pktbuf)
+		req, err := http.NewRequest("POST", *idleClipServerURL, rdr)
 		checkFatal(err)
 
-		if i == 0 {
-			seqbase = int(p.SequenceNumber)
-		} else {
-			want := i + seqbase
-			got := int(p.SequenceNumber)
-			if want != got {
-				checkFatal(fmt.Errorf("bad rtp sequence number file/want/got %s %d %d", name, want, got))
-			}
-		}
+		req.Header.Set("Content-Type", "application/octet-stream")
 
-		pkts = append(pkts, p)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		checkFatal(err)
+		defer resp.Body.Close()
 
-	}
+		fmt.Println("response Status:", resp.Status)
+		body, err := ioutil.ReadAll(resp.Body)
+		checkFatal(err)
+		pkts = readRTPFromZip(body)
+		elog.Println(len(pkts), "encoded rtp packets retrieved from", *idleClipServerURL)
 
-	// var sps rtp.Packet
-	// var pps rtp.Packet
+	} else if *idleClipZipfile != "" {
+		buf, err := ioutil.ReadFile(*idleClipZipfile)
+		checkFatal(err)
+		pkts = readRTPFromZip(buf)
 
-	{
-		newseqno := uint16(0)
-		p2 := make([]rtp.Packet, 0)
-		for _, p := range pkts {
-
-			// if p.Payload[0]&0x1f == 7 {
-			// 	sps = p
-			// } else if p.Payload[0]&0x1f == 8 {
-			// 	pps = p
-			// } else {
-			// remove SEI and access-delimeter
-			if p.Payload[0] != 6 && p.Payload[0] != 9 {
-				p.SequenceNumber = newseqno
-				newseqno++
-				p2 = append(p2, p)
-				if mediaDebug {
-					medialog.Printf("idle pkt %d %#v", p.Payload[0], p.Header)
-				}
-			}
-			//}
-		}
-		pkts = p2
+	} else {
+		panic("badlogic")
 	}
 
 	if len(pkts) == 0 {
-		checkFatal(fmt.Errorf("cannot load idle packets"))
+		if len(pkts) == 0 {
+			checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
+		}
 	}
+
+	pkts = removeH264AccessDelimiterAndSEI(pkts)
 
 	fps := 5
 	seqno := uint16(0)
@@ -948,11 +913,36 @@ func idleLoopPlayer(dir string) {
 	}
 }
 
-func dialUpstream(baseurl string) {
+func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
+	// var sps rtp.Packet
+	// var pps rtp.Packet
 
-	txid := randomHex(8)
+	// if p.Payload[0]&0x1f == 7 {
+	// 	sps = p
+	// } else if p.Payload[0]&0x1f == 8 {
+	// 	pps = p
+	// } else {
+	// remove SEI and access-delimeter
+	//}
 
-	dialurl := baseurl + "?issfu=1&txid=" + txid
+	newseqno := uint16(0)
+	p2 := make([]rtp.Packet, 0)
+	for _, p := range pkts {
+
+		if p.Payload[0] != 6 && p.Payload[0] != 9 {
+			p.SequenceNumber = newseqno
+			newseqno++
+			p2 = append(p2, p)
+			if mediaDebug {
+				medialog.Printf("idle pkt %d %#v", p.Payload[0], p.Header)
+			}
+		}
+
+	}
+	return p2
+}
+
+func dialUpstream(dialurl string) {
 
 	log.Println("dialUpstream url:", dialurl)
 
@@ -1243,7 +1233,7 @@ func msgOnce() {
 
 		if idlePkt { //&& foo {
 			if !receivingVideo && !sendingIdleVid {
-				iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
+				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = true
 					elog.Println("SWITCH TO IDLE, NOT INPUT VIDEO")
@@ -1254,7 +1244,7 @@ func msgOnce() {
 			lastVideoRxTime = time.Now()
 
 			if receivingVideo && sendingIdleVid {
-				iskeyframe := rtpstuff.IsH264Keyframe(m.packet.Payload)
+				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
 					elog.Println("SWITCH TO INPUT, NOT IDLE VIDEO")
@@ -1564,4 +1554,126 @@ func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.P
 	s.lastSSRC = copy.SSRC
 
 	return &copy
+}
+
+// isH264Keyframe detects when an RFC6184 payload contains an H264 SPS (8)
+// most encoders will follow this with an PPS (7), and maybe SEI
+// this code has evolved from:
+// from https://github.com/jech/galene/blob/codecs/rtpconn/rtpreader.go#L45
+// the original IDR detector was written by Juliusz Chroboczek @jech from the awesome Galene SFU
+// Types sps=7 pps=8 IDR-slice=5
+// no writes expects immutable []byte, so
+// no mutex is taken
+func isH264Keyframe(payload []byte) bool {
+	if len(payload) < 1 {
+		return false
+	}
+	nalu := payload[0] & 0x1F
+	if nalu == 0 {
+		// reserved
+		return false
+	} else if nalu <= 23 {
+		// simple NALU
+		return nalu == 7
+	} else if nalu == 24 || nalu == 25 || nalu == 26 || nalu == 27 {
+		// STAP-A, STAP-B, MTAP16 or MTAP24
+		i := 1
+		if nalu == 25 || nalu == 26 || nalu == 27 {
+			// skip DON
+			i += 2
+		}
+		for i < len(payload) {
+			if i+2 > len(payload) {
+				return false
+			}
+			length := uint16(payload[i])<<8 |
+				uint16(payload[i+1])
+			i += 2
+			if i+int(length) > len(payload) {
+				return false
+			}
+			offset := 0
+			if nalu == 26 {
+				offset = 3
+			} else if nalu == 27 {
+				offset = 4
+			}
+			if offset >= int(length) {
+				return false
+			}
+			n := payload[i+offset] & 0x1F
+			if n == 7 {
+				return true
+			} else if n >= 24 {
+				// is this legal?
+				println("Non-simple NALU within a STAP")
+			}
+			i += int(length)
+		}
+		if i == len(payload) {
+			return false
+		}
+		return false
+	} else if nalu == 28 || nalu == 29 {
+		// FU-A or FU-B
+		if len(payload) < 2 {
+			return false
+		}
+		if (payload[1] & 0x80) == 0 {
+			// not a starting fragment
+			return false
+		}
+		return payload[1]&0x1F == 7
+	}
+	return false
+}
+
+func readRTPFromZip(buf []byte) []rtp.Packet {
+	// Open a zip archive for reading.
+
+	if len(buf) == 0 {
+		checkFatal(fmt.Errorf("zero-length rtp-zip file not gunna work"))
+	}
+
+	bufrdr := bytes.NewReader(buf)
+
+	r, err := zip.NewReader(bufrdr, int64(len(buf)))
+	checkFatal(err)
+
+	pkts := make([]rtp.Packet, 0)
+
+	seqbase := int(0)
+	for i, f := range r.File {
+
+		var p rtp.Packet
+
+		rc, err := f.Open()
+		checkFatal(err)
+
+		buf, err := ioutil.ReadAll(rc)
+		checkFatal(err)
+
+		elog.Println(f.Name, i, len(buf))
+
+		err = p.Unmarshal(buf)
+		checkFatal(err)
+
+		if i == 0 {
+			seqbase = int(p.SequenceNumber)
+		} else {
+			want := i + seqbase
+			got := int(p.SequenceNumber)
+			if want != got {
+				checkFatal(fmt.Errorf("idle-clip bad: bad rtp sequence number file/want/got %d %d", want, got))
+			}
+		}
+
+		pkts = append(pkts, p)
+
+		rc.Close()
+
+	}
+
+	return pkts
+
 }

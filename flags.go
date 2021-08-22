@@ -22,6 +22,10 @@ var htmlFromDiskFlag = pflag.Bool("z-html-from-disk", false, "do not use embed h
 var cpuprofile = pflag.Int("z-cpu-profile", 0, "number of seconds to run + turn on profiling")
 var debug = pflag.StringSlice("z-debug", []string{}, "comma separated list of debug flags. use 'help' to view")
 
+var idleClipServerURL = pflag.String("idle-clip-server-url", "http://localhost:8088/idle-clip", "what server to hit when using --idle-clip-server-input")
+var idleClipServerInput = pflag.String("idle-clip-server-input", "", "a .jpg, .png, .mov, etc to use for your Idle Clip")
+var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile for the Idle Clip")
+
 var Usage = func() {
 	pflag.PrintDefaults()
 }
