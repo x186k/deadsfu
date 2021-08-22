@@ -1653,8 +1653,6 @@ func readRTPFromZip(buf []byte) []rtp.Packet {
 		buf, err := ioutil.ReadAll(rc)
 		checkFatal(err)
 
-		elog.Println(f.Name, i, len(buf))
-
 		err = p.Unmarshal(buf)
 		checkFatal(err)
 
@@ -1672,6 +1670,10 @@ func readRTPFromZip(buf []byte) []rtp.Packet {
 
 		rc.Close()
 
+	}
+
+	if mediaDebug {
+		medialog.Printf("Read %d idle-clip packets", len(pkts))
 	}
 
 	return pkts
