@@ -307,6 +307,12 @@ func main() {
 		}
 
 		mux.Handle("/", http.FileServer(http.FS(f)))
+		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
+			_, _ = rw.Write([]byte(getDefRouteIntfAddrIPv4().String()))
+		})
+		mux.HandleFunc("/ipv6", func(rw http.ResponseWriter, r *http.Request) {
+			_, _ = rw.Write([]byte(getDefRouteIntfAddrIPv6().String()))
+		})
 
 	}
 	mux.HandleFunc(subPath, SubHandler)
@@ -1201,7 +1207,7 @@ func msgOnce() {
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = true
-					elog.Println("SWITCH TO IDLE, NOT INPUT VIDEO")
+					elog.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
 				}
 			}
 
@@ -1212,7 +1218,7 @@ func msgOnce() {
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
-					elog.Println("SWITCH TO INPUT, NOT IDLE VIDEO")
+					elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
 				}
 			}
 		}
@@ -1643,4 +1649,24 @@ func readRTPFromZip(buf []byte) []rtp.Packet {
 
 	return pkts
 
+}
+
+func getDefRouteIntfAddrIPv6() net.IP {
+	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080" // not important, does not hit the wire
+	cc, err := net.Dial("udp6", googleDNSIPv6)          // doesnt send packets
+	if err == nil {
+		cc.Close()
+		return cc.LocalAddr().(*net.UDPAddr).IP
+	}
+	return nil
+}
+
+func getDefRouteIntfAddrIPv4() net.IP {
+	const googleDNSIPv4 = "8.8.8.8:8080"       // not important, does not hit the wire
+	cc, err := net.Dial("udp4", googleDNSIPv4) // doesnt send packets
+	if err == nil {
+		cc.Close()
+		return cc.LocalAddr().(*net.UDPAddr).IP
+	}
+	return nil
 }
