@@ -1,7 +1,7 @@
 
 
 
-VER := $(shell git describe  --abbrev=0 --tags)
+# VER := $(shell git describe  --abbrev=0 --tags)
 
 # lets just skip building a proper dependency tree
 # thus, always build
@@ -12,12 +12,12 @@ VER := $(shell git describe  --abbrev=0 --tags)
 # tag examples
 # git tag -a v1.4 -m "my version 1.4"
 
-all: build-push
+all:
 
 
 
-
-build-push:
+# implies push
+build:
 	# you CANNOT do a build with dirty directory
 	@status=$$(git status --porcelain); \
 	if [ ! -z "$${status}" ]; \
