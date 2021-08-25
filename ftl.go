@@ -65,6 +65,9 @@ func ftlServer(listenResolveAddr, port string, streamkey string) (udpconn *net.U
 
 	if !scanner.Scan() {
 		err = scanner.Err()
+		if err == nil {
+			err = fmt.Errorf("EOF on OBS/FTL")
+		}
 		return
 	}
 	if l = scanner.Text(); l != "HMAC" {
@@ -75,6 +78,9 @@ func ftlServer(listenResolveAddr, port string, streamkey string) (udpconn *net.U
 
 	if !scanner.Scan() {
 		err = scanner.Err()
+		if err == nil {
+			err = fmt.Errorf("EOF on OBS/FTL")
+		}
 		return
 	}
 	if l = scanner.Text(); l != "" {
@@ -93,6 +99,9 @@ func ftlServer(listenResolveAddr, port string, streamkey string) (udpconn *net.U
 
 	if !scanner.Scan() {
 		err = scanner.Err()
+		if err == nil {
+			err = fmt.Errorf("EOF on OBS/FTL")
+		}
 		return
 	}
 	connectMsg := "CONNECT " + myid + " $"

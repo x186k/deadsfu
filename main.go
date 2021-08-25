@@ -376,6 +376,12 @@ func attemptSingleFtlSession() {
 		logNotFatal(err)
 		return
 	}
+	if udpconn == nil {
+		panic("got nil udpconn from ftlServer()")
+	}
+	if tcpconn == nil {
+		panic("got nil tcpconn from ftlServer()")
+	}
 	defer udpconn.Close()
 	defer tcpconn.Close()
 
