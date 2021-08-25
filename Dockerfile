@@ -12,7 +12,7 @@ FROM alpine:3.14.0
 RUN apk --no-cache add ca-certificates
 COPY --from=0 /app/main /app/main
 EXPOSE 8080 8084
-CMD ["/app/main"] 
+ENTRYPOINT ["/app/main"] 
 
 
 # https://docs.docker.com/develop/develop-images/multistage-build/
