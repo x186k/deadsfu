@@ -35,8 +35,6 @@ import (
 
 	//"github.com/davecgh/go-spew/spew"
 
-	_ "embed"
-
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
