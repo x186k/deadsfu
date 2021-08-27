@@ -26,8 +26,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/spf13/pflag"
-
 	"github.com/pkg/profile"
 	"golang.org/x/sync/semaphore"
 
@@ -38,15 +36,15 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-
-	//"github.com/pion/webrtc/v3/pkg/media/rtpdump"
-
 	"github.com/pion/webrtc/v3"
+	//"github.com/pion/webrtc/v3/pkg/media/rtpdump"
 )
 
 var lastVideoRxTime time.Time
 var receivingVideo bool
 var sendingIdleVid bool
+
+var httpsHostPort = ""
 
 //go:embed html/*
 var htmlContent embed.FS
@@ -169,7 +167,8 @@ var Version = "version-unset"
 
 // This should allow us to use checkFatal() more, and checkFatal() less
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
-var medialog = log.New(os.Stdout, "M ", log.Lmicroseconds|log.LUTC)
+var medialog = log.New(io.Discard, "", 0)
+var ddnslog = log.New(io.Discard, "", 0)
 
 func logGoroutineCountToDebugLog() {
 	n := runtime.NumGoroutine()
@@ -204,65 +203,7 @@ func init() {
 
 	istest := strings.HasSuffix(os.Args[0], ".test")
 	if !istest {
-
-		//we do this to eliminate double error message on -z
-		//hack city
-		//pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ContinueOnError)
-		pflag.Usage = Usage // my own usage handle
-		//this will print unknown flags errors twice, but just deal with it
-		pflag.Parse()
-		if *help {
-			Usage()
-			os.Exit(0)
-		}
-
-		log.SetFlags(log.Lmicroseconds | log.LUTC)
-		log.SetPrefix("D ")
-		log.SetOutput(os.Stdout)
-
-		mainlog := false
-
-		for _, v := range *debug {
-			switch v {
-			case "":
-				// do nothing
-			case "media":
-				mediaDebugTickerChan = time.NewTicker(4 * time.Second).C
-				mediaDebug = true
-			case "main":
-				mainlog = true
-			case "help":
-				fallthrough
-			default:
-				elog.Fatal("--z-debug sub-flags are: main, help, media")
-			}
-		}
-		if mainlog {
-			log.Printf("'main' debug enabled")
-		} else {
-			silenceLogger(log.Default())
-		}
-
-		if *rtpout != "" {
-			raddr, err := net.ResolveUDPAddr("udp", *rtpout)
-			checkFatal(err)
-			var laddr *net.UDPAddr = nil
-			if raddr.IP.IsLoopback() && *rtpWireshark {
-				//when sending packets to loopback, if there is no receiver
-				// we would get icmp dest unreachables
-				// so we open it to/from ourself, we won't  read the pkts, but
-				// the OS will throw them away when they overflow
-				// without this, and the ICMP errors, we lose packets
-				// this allows us to use wireshark on 127.0.0.1 without issues
-				//note, if I want to use gstreamer or ffprobe, etc, this must not be done
-
-				laddr = raddr
-
-			}
-			rtpoutConn, err = net.DialUDP("udp", laddr, raddr)
-			checkFatal(err)
-		}
-
+		parseAndHandleFlags()
 	}
 
 	go logGoroutineCountToDebugLog()
@@ -275,11 +216,6 @@ func init() {
 	go msgLoop()
 }
 
-func silenceLogger(l *log.Logger) {
-	l.SetOutput(ioutil.Discard)
-	l.SetPrefix("")
-	l.SetFlags(0)
-}
 
 func main() {
 	var err error
@@ -306,10 +242,16 @@ func main() {
 
 		mux.Handle("/", http.FileServer(http.FS(f)))
 		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
-			_, _ = rw.Write([]byte(getDefRouteIntfAddrIPv4().String()))
+			x, err := getDefRouteIntfAddrIPv4()
+			if err == nil {
+				_, _ = rw.Write([]byte(x.String()))
+			}
 		})
 		mux.HandleFunc("/ipv6", func(rw http.ResponseWriter, r *http.Request) {
-			_, _ = rw.Write([]byte(getDefRouteIntfAddrIPv6().String()))
+			x, err := getDefRouteIntfAddrIPv6()
+			if err == nil {
+				_, _ = rw.Write([]byte(x.String()))
+			}
 		})
 
 	}
@@ -333,9 +275,19 @@ func main() {
 
 	go func() {
 		// httpLn, err := net.Listen("tcp", laddr)
-		err := http.ListenAndServe(*httpListenAddr, mux)
+		err := http.ListenAndServe(*httpFlag, mux)
 		panic(err)
 	}()
+
+	if *httpsDomain != "" {
+
+		go func() {
+
+			startHttpsListener(*httpsDomain, mux)
+
+		}()
+
+	}
 
 	elog.Printf("SFU HTTP IS READY")
 
@@ -1078,12 +1030,10 @@ func text2pcapLog(log *log.Logger, inbuf []byte) {
 	log.Print(b.String())
 }
 
-var _ = logPacket
-
 // logPacket writes text2pcap compatible lines
-func logPacket(log *log.Logger, packet *rtp.Packet) {
-	text2pcapLog(log, packet.Raw)
-}
+// func logPacket(log *log.Logger, packet *rtp.Packet) {
+// 	text2pcapLog(log, packet.)
+// }
 
 // logPacketNewSSRCValue writes text2pcap compatible lines
 // but, this packet will NOT contain RTP,
@@ -1655,22 +1605,25 @@ func readRTPFromZip(buf []byte) []rtp.Packet {
 
 }
 
-func getDefRouteIntfAddrIPv6() net.IP {
+func getDefRouteIntfAddrIPv6() (net.IP, error) {
 	const googleDNSIPv6 = "[2001:4860:4860::8888]:8080" // not important, does not hit the wire
 	cc, err := net.Dial("udp6", googleDNSIPv6)          // doesnt send packets
-	if err == nil {
-		cc.Close()
-		return cc.LocalAddr().(*net.UDPAddr).IP
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	cc.Close()
+	return cc.LocalAddr().(*net.UDPAddr).IP, nil
 }
 
-func getDefRouteIntfAddrIPv4() net.IP {
+func getDefRouteIntfAddrIPv4() (net.IP, error) {
 	const googleDNSIPv4 = "8.8.8.8:8080"       // not important, does not hit the wire
 	cc, err := net.Dial("udp4", googleDNSIPv4) // doesnt send packets
-	if err == nil {
-		cc.Close()
-		return cc.LocalAddr().(*net.UDPAddr).IP
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	cc.Close()
+	return cc.LocalAddr().(*net.UDPAddr).IP, nil
+
 }

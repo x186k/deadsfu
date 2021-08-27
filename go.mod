@@ -3,8 +3,13 @@ module github.com/x186k/deadsfu
 go 1.16
 
 require (
+	github.com/caddyserver/certmagic v0.13.1
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/libdns/cloudflare v0.1.0
+	github.com/libdns/duckdns v0.1.1
+	github.com/libdns/libdns v0.2.1
+	github.com/miekg/dns v1.1.42
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/pion/interceptor v0.0.13
 	github.com/pion/rtcp v1.2.6
@@ -13,12 +18,14 @@ require (
 	github.com/pkg/profile v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
+	github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a
+	go.uber.org/multierr v1.6.0 // indirect
+	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
-	golang.org/x/net v0.0.0-20210726213435-c6fcb2dbf985 // indirect
+	golang.org/x/net v0.0.0-20210726213435-c6fcb2dbf985
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
 // replace github.com/spf13/pflag => ../pflag

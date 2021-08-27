@@ -64,7 +64,9 @@ func TestPubSub(t *testing.T) {
 	p := readRTPFromZip(idleClipZipBytes)
 
 	for _, v := range p {
-		crc := calccrc(v.Raw)
+		raw, err := v.Marshal()
+		checkFatal(err)
+		crc := calccrc(raw)
 
 		pkthash[crc] = 1
 
@@ -92,7 +94,9 @@ func TestPubSub(t *testing.T) {
 
 			_ = fmt.Print
 			_ = p
-			found := pkthash[calccrc(p.Raw)]
+			raw, err := p.Marshal()
+			checkFatal(err)
+			found := pkthash[calccrc(raw)]
 			fmt.Printf(" rx test-pc %v %v %v\n", mimetype, len(p.Payload), found)
 			if mimetype == "video/H264" {
 				atomic.AddInt32(&numvid, 1)
