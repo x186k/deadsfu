@@ -189,8 +189,8 @@ https related flags help:
 -1 or --https-domain <domain>
 	Use this option the domain name, and optional port for https. 
 	Defaults to port 8443 for the port. Use domain:port if you need something else.
-	With this flag,  a certifcate will be aquired from Let's Encrypt.
-	BY USING THIS FLAG, you consent to agreeing to the Let's Encrypts terms.
+	With this flag,  a certificate will be aquired from Let's Encrypt.
+	BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
 
 -2 or --https-dns-provider <provider>
 	You can use: ddns5, duckdns, cloudflare
