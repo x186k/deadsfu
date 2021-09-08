@@ -216,7 +216,6 @@ func init() {
 	go msgLoop()
 }
 
-
 func main() {
 	var err error
 	println("deadsfu Version " + Version)
@@ -384,6 +383,8 @@ func attemptSingleFtlSession() {
 	lastping := time.Now()
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
+
+	connected := false
 	for {
 
 		select {
@@ -407,12 +408,24 @@ func attemptSingleFtlSession() {
 
 		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
 		checkFatal(err)
-		n, err := udpconn.Read(buf)
+		n, readaddr, err := udpconn.ReadFromUDP(buf)
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			continue
 		} else if err != nil {
 			elog.Println(fmt.Errorf("OBS/FTL: UDP FAIL, CLOSING: %w", err))
 			return
+		}
+
+		//this increases security
+		if !connected {
+			connected = true
+
+			udpconn.Close()
+			addr, err := net.ResolveUDPAddr("udp4", ":8084")
+			checkFatal(err)
+
+			udpconn, err = net.DialUDP("udp", addr, readaddr)
+			checkFatal(err)
 		}
 
 		lastudp = time.Now()
