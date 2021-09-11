@@ -1666,17 +1666,27 @@ func obsProxyModeRtpReader() {
 		"port":      {strconv.Itoa(laddr.Port)},
 	}
 
+	log.Println("default client timeout", http.DefaultClient.Timeout)
+
 	resp, err := http.PostForm(*obsProxyMode, data)
 	checkFatal(err)
-
-	{
-		buf, err := ioutil.ReadAll(resp.Body)
-		checkFatal(err)
-
-		if string(buf) != "OK" {
-			checkFatal(fmt.Errorf("did not receive OK from proxy"))
-		}
+	respbuf, err := ioutil.ReadAll(resp.Body)
+	checkFatal(err)
+	if string(respbuf) != "OK" {
+		checkFatal(fmt.Errorf("did not receive OK from proxy"))
 	}
+
+	go func() {
+		ping := url.Values{
+			"ping": {""},
+		}
+		for {
+			//this is a proxy health checker
+			_, err := http.PostForm(*obsProxyMode, ping)
+			checkFatal(err)
+			time.Sleep(time.Second * 10)
+		}
+	}()
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
