@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -43,8 +44,6 @@ import (
 var lastVideoRxTime time.Time
 var receivingVideo bool
 var sendingIdleVid bool
-
-var httpsHostPort = ""
 
 //go:embed html/*
 var htmlContent embed.FS
@@ -266,9 +265,18 @@ func main() {
 	if *obsKey != "" {
 
 		go func() {
-			for {
-				attemptSingleFtlSession()
+			if *obsProxyMode == "" {
+
+				for {
+					attemptSingleFtlSession()
+				}
+
+			} else {
+
+				obsProxyModeRtpReader()
+
 			}
+
 		}()
 	}
 
@@ -281,9 +289,7 @@ func main() {
 	if *httpsDomain != "" {
 
 		go func() {
-
 			startHttpsListener(*httpsDomain, mux)
-
 		}()
 
 	}
@@ -1639,4 +1645,100 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 	cc.Close()
 	return cc.LocalAddr().(*net.UDPAddr).IP, nil
 
+}
+
+func obsProxyModeRtpReader() {
+
+	udpaddr, err := net.ResolveUDPAddr("udp", ":0")
+	checkFatal(err)
+
+	udpconn, err := net.ListenUDP("udp", udpaddr)
+	checkFatal(err)
+
+	// we will need a fancier way of detecting the port
+	// if/when we allow proxying across firewalls,
+	// but there is little need for that now.
+
+	laddr := udpconn.LocalAddr().(*net.UDPAddr)
+
+	data := url.Values{
+		"streamkey": {*obsKey},
+		"port":      {strconv.Itoa(laddr.Port)},
+	}
+
+	resp, err := http.PostForm(*obsProxyMode, data)
+	checkFatal(err)
+
+	{
+		buf, err := ioutil.ReadAll(resp.Body)
+		checkFatal(err)
+
+		if string(buf) != "OK" {
+			checkFatal(fmt.Errorf("did not receive OK from proxy"))
+		}
+	}
+
+	lastudp := time.Now()
+	buf := make([]byte, 2000)
+
+	connected := false
+	active := false
+	for {
+
+		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
+		checkFatal(err)
+		n, readaddr, err := udpconn.ReadFromUDP(buf)
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+
+			if active && time.Since(lastudp) > time.Second*3/2 { // 1.5 second
+				elog.Println("FTL RTPRX: UDP PKTS *NOT* FLOWING")
+				active = false
+			}
+
+			continue
+		} else if err != nil {
+			checkFatal(fmt.Errorf("FTL RTPRX: UDP FAIL, EXITING: %w", err))
+		}
+
+		lastudp = time.Now()
+
+		if !active {
+			active = true
+			elog.Println("FTL RTPRX: UDP PKTS ARE FLOWING")
+		}
+
+		//this increases security
+		if !connected {
+			elog.Println("FTL RTPRX: RECEIVING DATA")
+			connected = true
+
+			udpconn.Close()
+			addr, err := net.ResolveUDPAddr("udp4", ":8084")
+			checkFatal(err)
+
+			udpconn, err = net.DialUDP("udp", addr, readaddr)
+			checkFatal(err)
+		}
+
+		if n < 12 {
+			continue
+		}
+
+		var p rtp.Packet
+
+		b := make([]byte, n)
+		copy(b, buf[:n])
+
+		err = p.Unmarshal(b)
+		checkFatal(err)
+
+		switch p.Header.PayloadType {
+		case 200:
+			log.Println("got ftl sender report")
+		case 96: //0x7b
+			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
+		case 97: //0x7c
+			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
+		}
+	}
 }

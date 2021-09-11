@@ -23,6 +23,7 @@ import (
 var httpFlag = pflag.String("http", ":8080", "The addr:port at which http will bind/listen. addr may be empty")
 
 var obsKey = pflag.String("obs-key", "123-abc", "Set the OBS Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
+var obsProxyMode = pflag.String("obs-proxy-mode", "", "url where to register with trusted ftl-proxy. ie: 'https://foo.bar/register'")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
@@ -35,7 +36,7 @@ var httpsUseDns01Challenge = pflag.BoolP("https-dns01-challenge", "5", false, "W
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
 
-var rtpout = pflag.String("rtp-send", "", "addr:port to send rtp, ie: '127.0.0.1:4444'")
+var rtptx = pflag.String("rtp-send", "", "addr:port to send rtp, ie: '127.0.0.1:4444'")
 var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlFromDiskFlag = pflag.Bool("html-from-disk", false, "do not use embed html, use files from disk")
@@ -101,8 +102,8 @@ func parseAndHandleFlags() {
 		}
 	}
 
-	if *rtpout != "" {
-		raddr, err := net.ResolveUDPAddr("udp", *rtpout)
+	if *rtptx != "" {
+		raddr, err := net.ResolveUDPAddr("udp", *rtptx)
 		checkFatal(err)
 		var laddr *net.UDPAddr = nil
 		if raddr.IP.IsLoopback() && *rtpWireshark {
