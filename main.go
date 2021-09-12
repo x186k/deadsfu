@@ -42,7 +42,7 @@ import (
 )
 
 var lastVideoRxTime time.Time
-var receivingVideo bool
+
 var sendingIdleVid bool
 
 //go:embed html/*
@@ -85,7 +85,6 @@ const (
 )
 
 var ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
-var ticker100ms = time.NewTicker(100 * time.Millisecond)
 var mediaDebugTickerChan = make(<-chan time.Time)
 var mediaDebug = false
 
@@ -1168,15 +1167,15 @@ func msgOnce() {
 	select {
 
 	case m := <-rxMediaCh:
-		//fmt.Printf(" xtx %x\n",m.packet.Payload[0:10])
-		//println(6666,m.rxidstate.rxid)
 
 		idlePkt := m.rxid == IdleVideo
 
 		mainVidPkt := m.rxid == Video
 
-		if idlePkt { //&& foo {
-			if !receivingVideo && !sendingIdleVid {
+		if idlePkt {
+			rxActive := time.Since(lastVideoRxTime) <= time.Second
+
+			if !rxActive && !sendingIdleVid {
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = true
@@ -1187,7 +1186,7 @@ func msgOnce() {
 		} else if mainVidPkt {
 			lastVideoRxTime = time.Now()
 
-			if receivingVideo && sendingIdleVid {
+			if sendingIdleVid {
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
@@ -1277,17 +1276,12 @@ func msgOnce() {
 
 	case <-mediaDebugTickerChan:
 
-		medialog.Println("receivingVideo", receivingVideo)
 		medialog.Println("sendingIdleVid", sendingIdleVid)
 
 		for i, v := range txtracks {
 			medialog.Println("tx#", i, "ssrc", v.splicer.lastSSRC)
 		}
 		medialog.Println()
-
-	case now := <-ticker100ms.C:
-
-		receivingVideo = now.Sub(lastVideoRxTime) <= time.Second
 
 	}
 }
