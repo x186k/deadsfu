@@ -1668,36 +1668,41 @@ func obsProxyModeRtpReader() {
 
 	log.Println("default client timeout", http.DefaultClient.Timeout)
 
-	resp, err := http.PostForm(*obsProxyMode, data)
-	checkFatal(err)
-	respbuf, err := ioutil.ReadAll(resp.Body)
-	checkFatal(err)
-	if string(respbuf) != "OK" {
-		checkFatal(fmt.Errorf("did not receive OK from proxy"))
-	}
-
 	go func() {
-		ping := url.Values{
-			"ping": {""},
-		}
 		for {
-			//this is a proxy health checker
-			_, err := http.PostForm(*obsProxyMode, ping)
-			checkFatal(err)
-			time.Sleep(time.Second * 10)
+
+			resp, err := http.PostForm(*obsProxyMode, data)
+			if err != nil {
+				elog.Println("SFU failed registration with proxy err:", err)
+				time.Sleep(time.Second * 3)
+				continue
+			}
+
+			respbuf, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				elog.Println("SFU failed registration with proxy err:", err)
+				time.Sleep(time.Second * 3)
+				continue
+			}
+			if string(respbuf) != "OK" {
+				elog.Print("SFU failed registration with proxy wanted:OK, got:", string(respbuf))
+			}
+
+			time.Sleep(time.Second * 3)
 		}
 	}()
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
 
-	connected := false
+	//connected := false
 	active := false
 	for {
 
 		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
 		checkFatal(err)
 		n, readaddr, err := udpconn.ReadFromUDP(buf)
+		_ = readaddr
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 
 			if active && time.Since(lastudp) > time.Second*3/2 { // 1.5 second
