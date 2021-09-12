@@ -1722,18 +1722,9 @@ func obsProxyModeRtpReader() {
 			elog.Println("FTL RTPRX: UDP PKTS ARE FLOWING")
 		}
 
-		//this increases security
-		if !connected {
-			elog.Println("FTL RTPRX: RECEIVING DATA")
-			connected = true
-
-			udpconn.Close()
-			addr, err := net.ResolveUDPAddr("udp4", ":8084")
-			checkFatal(err)
-
-			udpconn, err = net.DialUDP("udp", addr, readaddr)
-			checkFatal(err)
-		}
+		// There may benefits to issuing linux connect() call
+		// but we are not doing it right now
+		// udpconn, err = net.DialUDP("udp", laddr, readaddr)
 
 		if n < 12 {
 			continue
