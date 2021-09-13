@@ -4,9 +4,11 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"net"
 	"strconv"
@@ -21,7 +23,6 @@ import (
 	"sync"
 
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -164,7 +165,7 @@ var Version = "version-unset"
 // var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
 
 // This should allow us to use checkFatal() more, and checkFatal() less
-var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC)
+var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC|log.Lshortfile)
 var medialog = log.New(io.Discard, "", 0)
 var ddnslog = log.New(io.Discard, "", 0)
 
@@ -264,7 +265,7 @@ func main() {
 	if *obsKey != "" {
 
 		go func() {
-			if *obsProxyMode == "" {
+			if *obsProxyIP == "" {
 
 				for {
 					attemptSingleFtlSession()
@@ -272,7 +273,11 @@ func main() {
 
 			} else {
 
-				obsProxyModeRtpReader()
+				go func() {
+					ftlProxyRegisterAndReceive()
+					elog.Println("ftl proxy registation done, exiting")
+					os.Exit(0)
+				}()
 
 			}
 
@@ -1641,50 +1646,81 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 
 }
 
-func obsProxyModeRtpReader() {
+// do two things:
+// create udp socket, and receive rtp on it
+// create tcp socket, and dial and register with proxy on it
+func ftlProxyRegisterAndReceive() {
 
+	// don't use 8084, so we can test everything on the same box
 	udpaddr, err := net.ResolveUDPAddr("udp", ":0")
-	checkFatal(err)
+	if err != nil {
+		elog.Println(err)
+		return
+	}
 
 	udpconn, err := net.ListenUDP("udp", udpaddr)
-	checkFatal(err)
+	if err != nil {
+		elog.Println(err)
+		return
+	}
+	defer udpconn.Close()
 
+	elog.Println("rtp rx addr", udpconn.LocalAddr())
 	// we will need a fancier way of detecting the port
 	// if/when we allow proxying across firewalls,
 	// but there is little need for that now.
 
 	laddr := udpconn.LocalAddr().(*net.UDPAddr)
 
-	data := url.Values{
-		"streamkey": {*obsKey},
-		"port":      {strconv.Itoa(laddr.Port)},
+	arr := strings.Split(*obsKey, "-")
+	if len(arr) != 2 {
+		elog.Fatalln("fatal: bad stream key in --obs-key")
 	}
 
-	log.Println("default client timeout", http.DefaultClient.Timeout)
+	if *obsProxyPassword == "" {
+		elog.Fatalln("fatal: --obs-proxy-password not supplied")
+	}
 
-	go func() {
-		for {
+	type FtlRegistrationInfo struct {
+		Hmackey   string
+		Channelid string
+		Port      int
+		Secret    string
+	}
 
-			resp, err := http.PostForm(*obsProxyMode, data)
-			if err != nil {
-				elog.Println("SFU failed registration with proxy err:", err)
-				time.Sleep(time.Second * 3)
-				continue
-			}
+	z := &FtlRegistrationInfo{
+		Channelid: arr[0],
+		Hmackey:   arr[1],
+		Port:      laddr.Port,
+		Secret:    *obsProxyPassword,
+	}
 
-			respbuf, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				elog.Println("SFU failed registration with proxy err:", err)
-				time.Sleep(time.Second * 3)
-				continue
-			}
-			if string(respbuf) != "OK" {
-				elog.Print("SFU failed registration with proxy wanted:OK, got:", string(respbuf))
-			}
+	raddr, err := net.ResolveTCPAddr("tcp", *obsProxyIP)
+	checkFatal(err)
 
-			time.Sleep(time.Second * 3)
-		}
-	}()
+	conn, err := net.DialTCP("tcp", nil, raddr)
+	checkFatal(err)
+	defer conn.Close()
+
+	err = conn.SetKeepAlive(true)
+	checkFatal(err)
+
+	err = conn.SetKeepAlivePeriod(time.Second * 15)
+	checkFatal(err)
+
+	wr := bufio.NewWriter(conn)
+
+	jsonbuf, err := json.Marshal(z)
+	checkFatal(err)
+
+	line := "REGISTER " + string(jsonbuf) + "\r\n"
+
+	err = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	checkFatal(err)
+	_, err = wr.WriteString(line)
+	checkFatal(err)
+	err = conn.SetWriteDeadline(time.Time{})
+	checkFatal(err)
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)

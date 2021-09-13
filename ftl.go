@@ -190,7 +190,6 @@ func ftlServer(listenResolveAddr, port string, streamkey string) (udpconn *net.U
 	// we cannot do this here, as we don't know the remote port
 	// we do this in the packet read loop
 	// udpconn, err = net.DialUDP("udp", addr, raddr)
-	
 
 	udpconn, err = net.ListenUDP("udp4", addr)
 	//fatal

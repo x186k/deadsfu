@@ -23,7 +23,8 @@ import (
 var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. example is ':8080' ")
 
 var obsKey = pflag.String("obs-key", "123-abc", "Set the OBS Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var obsProxyMode = pflag.String("obs-proxy-mode", "", "url where to register with trusted ftl-proxy. ie: 'https://foo.bar/register'")
+var obsProxyIP = pflag.String("obs-proxy-addr", "", "ip or hostname for ftl/obs proxy, do not include port. port 8084 will be used")
+var obsProxyPassword = pflag.String("obs-proxy-password", "", "password to register with ftl/obs proxy. required for proxy use")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
