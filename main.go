@@ -328,6 +328,7 @@ func main() {
 	println("profiling done, exit")
 }
 
+// XXX needs to be updated from ftl-proxy
 func attemptSingleFtlSession() {
 
 	elog.Println("OBS/FTL: WAITING FOR CONNECTION")
@@ -1167,6 +1168,8 @@ func msgLoop() {
 	}
 }
 
+var numrx = 0
+
 func msgOnce() {
 
 	select {
@@ -1185,17 +1188,20 @@ func msgOnce() {
 				if iskeyframe {
 					sendingIdleVid = true
 					elog.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
+					numrx = 0
 				}
 			}
 
 		} else if mainVidPkt {
+			elog.Println("pkt")
 			lastVideoRxTime = time.Now()
 
 			if sendingIdleVid {
+				numrx++
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
-					elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
+					elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP numrx:", numrx)
 				}
 			}
 		}
@@ -1682,20 +1688,23 @@ func ftlProxyRegisterAndReceive() {
 	}
 
 	type FtlRegistrationInfo struct {
-		Hmackey   string
-		Channelid string
-		Port      int
-		Secret    string
+		Hmackey          string
+		Channelid        string
+		Port             int
+		ObsProxyPassword string
 	}
 
 	z := &FtlRegistrationInfo{
-		Channelid: arr[0],
-		Hmackey:   arr[1],
-		Port:      laddr.Port,
-		Secret:    *obsProxyPassword,
+		Channelid:        arr[0],
+		Hmackey:          arr[1],
+		Port:             laddr.Port,
+		ObsProxyPassword: *obsProxyPassword,
 	}
 
-	raddr, err := net.ResolveTCPAddr("tcp", *obsProxyIP)
+	jsonbuf, err := json.Marshal(z)
+	checkFatal(err)
+
+	raddr, err := net.ResolveTCPAddr("tcp", *obsProxyIP+":8084")
 	checkFatal(err)
 
 	conn, err := net.DialTCP("tcp", nil, raddr)
@@ -1705,22 +1714,32 @@ func ftlProxyRegisterAndReceive() {
 	err = conn.SetKeepAlive(true)
 	checkFatal(err)
 
-	err = conn.SetKeepAlivePeriod(time.Second * 15)
+	err = conn.SetKeepAlivePeriod(time.Second * 5)
 	checkFatal(err)
 
 	wr := bufio.NewWriter(conn)
 
-	jsonbuf, err := json.Marshal(z)
-	checkFatal(err)
-
 	line := "REGISTER " + string(jsonbuf) + "\r\n"
 
-	err = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	err = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	checkFatal(err)
 	_, err = wr.WriteString(line)
 	checkFatal(err)
 	err = conn.SetWriteDeadline(time.Time{})
 	checkFatal(err)
+	err = wr.Flush()
+	checkFatal(err)
+
+	go func() {
+		defer conn.Close()    //shutdown this
+		defer udpconn.Close() //shutdown this
+
+		b := make([]byte, 1)
+		// should block until proxy dies/goes away
+		_, err = conn.Read(b)
+		log.Println("proxy dead/gone: read returned", err)
+
+	}()
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)

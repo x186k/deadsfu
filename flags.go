@@ -24,8 +24,7 @@ var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/l
 
 var obsKey = pflag.String("obs-key", "123-abc", "Set the OBS Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
 var obsProxyIP = pflag.String("obs-proxy-addr", "", "ip or hostname for ftl/obs proxy, do not include port. port 8084 will be used")
-var obsProxyPassword = pflag.String("obs-proxy-password", "", "password to register with ftl/obs proxy. required for proxy use")
-
+var obsProxyPassword = pflag.StringP("obs-proxy-password", "s", "", "password to register with ftl/obs proxy. required for proxy use")
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
 var httpsDomain = pflag.StringP("https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
