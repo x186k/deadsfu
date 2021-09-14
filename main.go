@@ -1193,11 +1193,11 @@ func msgOnce() {
 			}
 
 		} else if mainVidPkt {
-			
+			numrx++
+
 			lastVideoRxTime = time.Now()
 
 			if sendingIdleVid {
-				numrx++
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
