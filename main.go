@@ -1193,7 +1193,7 @@ func msgOnce() {
 			}
 
 		} else if mainVidPkt {
-			elog.Println("pkt")
+			
 			lastVideoRxTime = time.Now()
 
 			if sendingIdleVid {
