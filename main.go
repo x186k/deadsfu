@@ -1683,7 +1683,7 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 		}
 
 		a := &myFtlServer{}
-		a.Hmackey = arr[2]
+		a.Hmackey = arr[1]
 	}
 
 	return nil, false
