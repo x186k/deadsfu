@@ -35,8 +35,6 @@ func startHttpsListener(hostport string, mux *http.ServeMux) {
 	httpsHasCertificate := make(chan bool)
 	go reportHttpsReadyness(httpsHasCertificate)
 
-
-
 	ca := certmagic.LetsEncryptProductionCA
 	if false {
 		ca = certmagic.LetsEncryptStagingCA
@@ -254,8 +252,6 @@ func reportHttpsReadyness(ready chan bool) {
 	}
 }
 
-
-
 func reportOpenPort(hostport, network string) {
 
 	tcpaddr, err := net.ResolveTCPAddr(network, hostport)
@@ -284,8 +280,6 @@ func reportOpenPort(hostport, network string) {
 		elog.Printf("IPAddr %v port:%v IS NOT OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
 	}
 }
-
-
 
 // canConnectThroughProxy uses an internet proxy to see if my ports are open
 // network should be either tcp4 or tcp6, not tcp

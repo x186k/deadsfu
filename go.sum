@@ -114,6 +114,8 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a h1:3MHOw+STEPfEb0cvsGzjjE9LrDVwb0iedtFFTnhYiaU=
 github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a/go.mod h1:9FAoj8bfSg+cVEoDIyMfI+4GAtFllfDfLOW20S74JsM=
+github.com/x186k/ftlserver v0.0.0-20210915032410-6c9799c55b19 h1:dRQVtD9wB6UH3Kks3RUJkIlgjZvEUKbqtjZeFkkq2iw=
+github.com/x186k/ftlserver v0.0.0-20210915032410-6c9799c55b19/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.uber.org/atomic v1.6.0/go.mod h1:sABNBOSYdrvTF6hTgEIbc7YasKWGhgEQZyfxyTvoXHQ=
 go.uber.org/atomic v1.7.0 h1:ADUqmZGgLDDfbSL9ZmPxKTybcoEYHgpYfELNoN+7hsw=

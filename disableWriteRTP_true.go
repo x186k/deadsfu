@@ -1,3 +1,4 @@
+//go:build disableWriteRTP
 // +build disableWriteRTP
 
 package main

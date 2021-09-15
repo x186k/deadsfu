@@ -73,8 +73,8 @@ import (
 // 			return false, false
 // 		} else if nalu <= 23 {
 // 			// simple NALU
-// 			//cam 
-// 			// you really need to go a little deeper and 
+// 			//cam
+// 			// you really need to go a little deeper and
 // 			// look at: first_mb_in_slice
 // 			// slice_header( ) { C Descriptor  first_mb_in_slice
 // 			return nalu == 5, true
@@ -134,6 +134,3 @@ import (
 // 		return false, false
 // 	}
 // }
-
-
-
