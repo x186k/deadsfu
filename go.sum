@@ -116,6 +116,8 @@ github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a h1:3MHOw+STEPfEb
 github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a/go.mod h1:9FAoj8bfSg+cVEoDIyMfI+4GAtFllfDfLOW20S74JsM=
 github.com/x186k/ftlserver v0.0.0-20210915032410-6c9799c55b19 h1:dRQVtD9wB6UH3Kks3RUJkIlgjZvEUKbqtjZeFkkq2iw=
 github.com/x186k/ftlserver v0.0.0-20210915032410-6c9799c55b19/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
+github.com/x186k/ftlserver v0.0.0-20210915040547-af4b7626fc44 h1:A4EEwuO6G3GOCaWRVJR2aBgfjx/YgToZdpY1+q0hj/k=
+github.com/x186k/ftlserver v0.0.0-20210915040547-af4b7626fc44/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.uber.org/atomic v1.6.0/go.mod h1:sABNBOSYdrvTF6hTgEIbc7YasKWGhgEQZyfxyTvoXHQ=
 go.uber.org/atomic v1.7.0 h1:ADUqmZGgLDDfbSL9ZmPxKTybcoEYHgpYfELNoN+7hsw=
