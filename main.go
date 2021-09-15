@@ -1676,7 +1676,11 @@ func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 }
 
 func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, bool) {
-	if strings.HasPrefix(*obsKey, requestChanid+"-") {
+	want := requestChanid + "-"
+	match := strings.HasPrefix(*obsKey, want)
+	dbg.Println("ftl/findserver/channelid match:", match)
+
+	if match {
 		arr := strings.Split(*obsKey, "-")
 		if len(arr) != 2 {
 			inf.Fatalln("fatal: bad stream key in --obs-key")
@@ -1684,6 +1688,7 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 
 		a := &myFtlServer{}
 		a.Hmackey = arr[1]
+		return a, true
 	}
 
 	return nil, false
