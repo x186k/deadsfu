@@ -39,7 +39,9 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
+
 	//"github.com/pion/webrtc/v3/pkg/media/rtpdump"
+	"github.com/x186k/ftlserver"
 )
 
 var lastVideoRxTime time.Time
@@ -135,13 +137,6 @@ func checkFatal(err error) {
 	if err != nil {
 		_, fileName, fileLine, _ := runtime.Caller(1)
 		elog.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
-	}
-}
-
-func logNotFatal(err error) {
-	if err != nil {
-		_, fileName, fileLine, _ := runtime.Caller(1)
-		elog.Printf("NON-FATAL ERROR %s:%d %v", filepath.Base(fileName), fileLine, err)
 	}
 }
 
@@ -268,7 +263,7 @@ func main() {
 			if *obsProxyIP == "" {
 
 				for {
-					attemptSingleFtlSession()
+					startFtlListener(elog, log.Default())
 				}
 
 			} else {
@@ -326,142 +321,6 @@ func main() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
-}
-
-// XXX needs to be updated from ftl-proxy
-func attemptSingleFtlSession() {
-
-	elog.Println("OBS/FTL: WAITING FOR CONNECTION")
-
-	udpconn, tcpconn, kv, scanner, err := ftlServer("", "8084", *obsKey)
-	if err != nil {
-		logNotFatal(err)
-		return
-	}
-	if udpconn == nil {
-		panic("got nil udpconn from ftlServer()")
-	}
-	if tcpconn == nil {
-		panic("got nil tcpconn from ftlServer()")
-	}
-	defer udpconn.Close()
-	defer tcpconn.Close()
-
-	elog.Println("OBS/FTL: GOT GOOD CONNECTION")
-
-	if kv["VideoCodec"] != "H264" {
-		checkFatal(fmt.Errorf("ftl: unsupported video codec: %v", kv["VideoCodec"]))
-	}
-	if kv["AudioCodec"] != "OPUS" {
-		checkFatal(fmt.Errorf("ftl: unsupported audio codec: %v", kv["AudioCodec"]))
-	}
-
-	pingchan := make(chan bool)
-	disconnectCh := make(chan bool)
-
-	// PING goroutine
-	// this will silently go away when the socket gets closed
-	go func() {
-		log.Println("ftl: ping responder running")
-		for scanner.Scan() {
-			l := scanner.Text()
-
-			// XXX PING is sometimes followed by streamkey-id
-			// but we don't validate it.
-			// it is checked for Connect message
-			if strings.HasPrefix(l, "PING ") {
-				log.Println("ftl: ping!")
-				fmt.Fprintf(tcpconn, "201\n")
-
-				pingchan <- true
-			} else if l == "" {
-				//ignore blank
-			} else if l == "DISCONNECT" {
-				disconnectCh <- true
-			} else {
-				// unexpected
-				elog.Println("ftl: unexpected msg:", l)
-			}
-		}
-		//silently finish goroutine on scanner error or socket close
-	}()
-
-	//XXX consider use of rtp.Packet pool
-	//println(999,buf[1],p.Header.PayloadType)
-	// default:
-	// 	checkFatal(fmt.Errorf("bad RTP payload from FTL: %d", p.Header.PayloadType))
-
-	lastping := time.Now()
-	lastudp := time.Now()
-	buf := make([]byte, 2000)
-
-	connected := false
-	for {
-
-		select {
-		case m, more := <-pingchan:
-			if m && more {
-				lastping = time.Now()
-			}
-		case <-disconnectCh:
-			elog.Println("OBS/FTL: SERVER DISCONNECTED")
-			return
-		default:
-		}
-		if time.Since(lastping) > time.Second*11 {
-			elog.Println("OBS/FTL: PINGING TIMEOUT, CLOSING")
-			return
-		}
-		if time.Since(lastudp) > time.Second*3/2 { // 1.5 second
-			elog.Println("OBS/FTL: UDP/RX TIMEOUT, CLOSING")
-			return
-		}
-
-		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
-		checkFatal(err)
-		n, readaddr, err := udpconn.ReadFromUDP(buf)
-		if errors.Is(err, os.ErrDeadlineExceeded) {
-			continue
-		} else if err != nil {
-			elog.Println(fmt.Errorf("OBS/FTL: UDP FAIL, CLOSING: %w", err))
-			return
-		}
-
-		//this increases security
-		if !connected {
-			connected = true
-
-			udpconn.Close()
-			addr, err := net.ResolveUDPAddr("udp4", ":8084")
-			checkFatal(err)
-
-			udpconn, err = net.DialUDP("udp", addr, readaddr)
-			checkFatal(err)
-		}
-
-		lastudp = time.Now()
-
-		if n < 12 {
-			continue
-		}
-
-		var p rtp.Packet
-
-		b := make([]byte, n)
-		copy(b, buf[:n])
-
-		err = p.Unmarshal(b)
-		checkFatal(err)
-
-		switch p.Header.PayloadType {
-		case 200:
-			log.Println("got ftl sender report")
-		case 96: //0x7b
-			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
-		case 97: //0x7c
-			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
-		}
-	}
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
@@ -1687,14 +1546,7 @@ func ftlProxyRegisterAndReceive() {
 		elog.Fatalln("fatal: --obs-proxy-password not supplied")
 	}
 
-	type FtlRegistrationInfo struct {
-		Hmackey          string
-		Channelid        string
-		Port             int
-		ObsProxyPassword string
-	}
-
-	z := &FtlRegistrationInfo{
+	z := &ftlserver.FtlRegistrationInfo{
 		Channelid:        arr[0],
 		Hmackey:          arr[1],
 		Port:             laddr.Port,
@@ -1796,4 +1648,80 @@ func ftlProxyRegisterAndReceive() {
 			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 		}
 	}
+}
+
+func startFtlListener(inf *log.Logger, dbg *log.Logger) {
+
+	config := &net.ListenConfig{}
+	ln, err := config.Listen(context.Background(), "tcp", ":8084")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer ln.Close()
+
+	for {
+		log.Println("ftl/waiting for accept")
+
+		netconn, err := ln.Accept()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		log.Println("ftl/socket accepted")
+
+		tcpconn := netconn.(*net.TCPConn)
+		ftlserver.NewTcpSession(inf, dbg, tcpconn, nil, findserver)
+		netconn.Close()
+	}
+}
+
+func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, bool) {
+	if strings.HasPrefix(*obsKey, requestChanid+"-") {
+		arr := strings.Split(*obsKey, "-")
+		if len(arr) != 2 {
+			inf.Fatalln("fatal: bad stream key in --obs-key")
+		}
+
+		a := &myFtlServer{}
+		a.Hmackey = arr[2]
+	}
+
+	return nil, false
+}
+
+type myFtlServer struct {
+	Hmackey string
+	badrtp  int
+}
+
+func (x *myFtlServer) GetHmackey(_ *log.Logger, _ *log.Logger) string {
+	return x.Hmackey
+}
+
+func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) bool {
+	var err error
+
+	var p rtp.Packet
+
+	err = p.Unmarshal(pkt)
+	if err != nil {
+		x.badrtp++
+		if x.badrtp < 10 {
+			return true
+		} else {
+			log.Println("ftl/obs: too many RTP decode failures, closing")
+			return false
+		}
+	}
+
+	switch p.Header.PayloadType {
+	case 200:
+		//log.Println("got ftl sender report")
+	case 96: //0x7b
+		rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
+	case 97: //0x7c
+		rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
+	}
+
+	return true //okay
 }
