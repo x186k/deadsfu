@@ -1257,18 +1257,17 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 // p gets modified
 func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz int64) {
 
-
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
-	if p.SSRC != s.lastSSRC  {
+	if p.SSRC != s.lastSSRC {
 
 		td1 := unixnano - s.lastUnixnanosNow // nanos
 		if td1 < 0 {
 			td1 = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
 		}
 		//td2 := td1 * rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
-		td2 := td1 /  (int64(time.Second)/rtphz) //convert nanos -> 90khz or similar clockrate. speed not important
+		td2 := td1 / (int64(time.Second) / rtphz) //convert nanos -> 90khz or similar clockrate. speed not important
 		if td2 == 0 {
 			td2 = 1
 		}
@@ -1655,11 +1654,29 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	switch p.Header.PayloadType {
 	case 200:
 		//log.Println("got ftl sender report")
-	case 96: //0x7b
+	case 96:
 		p.SSRC = x.videossrc // each FTL session should have different SSRC for downstream splicer
 		rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 
-	case 97: //0x7c
+	case 97:
+
+		// check for the starter packets that confuse chrome, and toss them: len(pkt)==1404
+		if len(pkt) > 600 {
+			//opustoc := p.Payload[0] //typically 0xfc from https://www.rfc-editor.org/rfc/rfc6716.html#section-3.1
+
+			nzero := 0
+			const nzeroCount = 10
+			for i := 0; i < nzeroCount; i++ {
+				if p.Payload[i] == 0 {
+					nzero++
+				}
+			}
+			if nzero == nzeroCount {
+				// bogus, non opus packet
+				break
+			}
+		}
+
 		p.SSRC = x.audiossrc // each FTL session should have different SSRC for downstream splicer
 		rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 	}
