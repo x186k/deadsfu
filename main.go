@@ -1639,6 +1639,8 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 
 		a := &myFtlServer{}
 		a.Hmackey = arr[1]
+		a.audiossrc = uint32(rand.Int63())
+		a.videossrc = uint32(rand.Int63())
 		return a, true
 	}
 
@@ -1646,8 +1648,9 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 }
 
 type myFtlServer struct {
-	Hmackey string
-	badrtp  int
+	Hmackey              string
+	badrtp               int
+	audiossrc, videossrc uint32
 }
 
 func (x *myFtlServer) GetHmackey(_ *log.Logger, _ *log.Logger) string {
@@ -1674,8 +1677,11 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	case 200:
 		//log.Println("got ftl sender report")
 	case 96: //0x7b
+		p.SSRC = x.videossrc // each FTL session should have different SSRC for downstream splicer
 		rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
+
 	case 97: //0x7c
+		p.SSRC = x.audiossrc // each FTL session should have different SSRC for downstream splicer
 		rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 	}
 
