@@ -118,10 +118,11 @@ type RtpSplicer struct {
 type TrackId int32
 
 const (
-	IdleVideo TrackId = 0
-	Video     TrackId = iota
-	Audio     TrackId = iota
-	Data      TrackId = iota
+	IdleVideo  TrackId = 0
+	Video      TrackId = iota
+	Audio      TrackId = iota
+	Data       TrackId = iota
+	NumTrackId         = iota
 )
 
 // size optimized, not readability
@@ -1027,7 +1028,7 @@ func msgLoop() {
 	}
 }
 
-var numrx = 0
+var inputSplicers = make([]RtpSplicer, NumTrackId)
 
 func msgOnce() {
 
@@ -1047,12 +1048,10 @@ func msgOnce() {
 				if iskeyframe {
 					sendingIdleVid = true
 					elog.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
-					numrx = 0
 				}
 			}
 
 		} else if mainVidPkt {
-			numrx++
 
 			lastVideoRxTime = time.Now()
 
@@ -1060,7 +1059,7 @@ func msgOnce() {
 				iskeyframe := isH264Keyframe(m.packet.Payload)
 				if iskeyframe {
 					sendingIdleVid = false
-					elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP numrx:", numrx)
+					elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
 				}
 			}
 		}
@@ -1072,59 +1071,41 @@ func msgOnce() {
 			return
 		}
 
+		var txtype TrackId
+
+		//keep in mind pion ignores both payloadtype, ssrc when you use write()
+		switch m.rxid {
+		case Audio:
+			txtype = Audio
+			m.packet.PayloadType = 80 // ignored by Pion
+		case Video:
+			fallthrough
+		case IdleVideo:
+			txtype = Video
+			m.packet.PayloadType = 100 // ignored by Pion
+		}
+
+		pkt := *m.packet // make copy
+		SpliceRTP(txtype, &inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
+
+		if txtype == Audio && rtpoutConn != nil {
+			//ptmp := pkt //copy
+			rtpbuf, err := pkt.Marshal()
+			checkFatal(err)
+			_, _ = rtpoutConn.Write(rtpbuf)
+		}
+
 		for i, tr := range txtracks {
 
-			// send vid on video track, etc
-
-			sametrack := m.rxid == tr.txid
-			idle4vid := m.rxid == IdleVideo && tr.txid == Video
-			if !sametrack && !idle4vid {
+			ismatch := txtype == tr.txid
+			//println(i,ismatch,txtype)
+			if !ismatch {
 				continue
 			}
-
 			//pline()
 
-			o := *m.packet //make a copy
-			// var ipacket interface{}
-			// ipacket = rtpPacketPool.Get()
-			// packet = ipacket.(*rtp.Packet)
-
-			pkt := SpliceRTP(tr.splicer, &o, time.Now().UnixNano(), int64(m.rxClockRate))
-
-			// key := ""
-			// if (m.rxid == IdleVideo || m.rxid == Video) && rtpstuff.IsH264Keyframe(m.packet.Payload) {
-			// 	key = "##"
-			// }
-
-			// if tr.txid == Video {
-			// 	println(333, "0x"+strconv.FormatInt(int64(pkt.SSRC), 16),
-			// 		pkt.SequenceNumber, pkt.Timestamp, len(pkt.Payload),
-			// 		key)
-			// 	// tr.splicer.snOffset, tr.splicer.tsOffset)
-			// }
-
-			//fmt.Printf("write send=%v ix=%d mediarxid=%d txtracks[i].rxid=%d  %x %x %x\n",
-			//	send, i, rxid, tr.rxid, packet.SequenceNumber, packet.Timestamp, packet.SSRC)
-
-			if rtpoutConn != nil {
-
-				if m.rxid == IdleVideo || m.rxid == Video {
-
-					ptmp := pkt
-					ptmp.SSRC = 0x12345678 //jm19
-					ptmp.PayloadType = 96  //jm19
-					// ptmp.Extension = false
-					// ptmp.Extensions = []rtp.Extension{}
-					rtpbuf, err := ptmp.Marshal()
-					checkFatal(err)
-
-					_, _ = rtpoutConn.Write(rtpbuf)
-					//checkFatal(err)
-
-				}
-			}
-
-			err := tr.track.WriteRTP(pkt)
+			err := tr.track.WriteRTP(&pkt)
+			//println(pkt.SequenceNumber,pkt.Timestamp)
 			if err == io.ErrClosedPipe {
 				log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
 
@@ -1134,9 +1115,6 @@ func msgOnce() {
 				txtracks = txtracks[:len(txtracks)-1]
 
 			}
-
-			// *packet = rtp.Packet{}
-			// rtpPacketPool.Put(ipacket)
 
 		}
 
