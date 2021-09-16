@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"math/rand"
 	"net"
 	"strconv"
 
@@ -264,7 +265,7 @@ func main() {
 			if *obsProxyIP == "" {
 
 				for {
-					startFtlListener(elog, log.Default())
+					startFtlListener(elog, elog)
 				}
 
 			} else {
@@ -1461,11 +1462,11 @@ func ftlProxyRegisterAndReceive() {
 
 	arr := strings.Split(*obsKey, "-")
 	if len(arr) != 2 {
-		elog.Fatalln("fatal: bad stream key in --obs-key")
+		elog.Fatalln("fatal: bad stream key in --ftl-key")
 	}
 
 	if *obsProxyPassword == "" {
-		elog.Fatalln("fatal: --obs-proxy-password not supplied")
+		elog.Fatalln("fatal: --ftl-proxy-password not supplied")
 	}
 
 	z := &ftlserver.FtlRegistrationInfo{
@@ -1612,7 +1613,7 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 	if match {
 		arr := strings.Split(*obsKey, "-")
 		if len(arr) != 2 {
-			inf.Fatalln("fatal: bad stream key in --obs-key")
+			inf.Fatalln("fatal: bad stream key in --ftl-key")
 		}
 
 		a := &myFtlServer{}
