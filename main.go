@@ -1274,94 +1274,38 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 // and also more robust to seqno bug/jumps on input
 //
 // This grabs mutex after doing a fast, non-mutexed check for applicability
-var _ = SpliceRTPNew
 
-func SpliceRTPNew(state *RtpSplicer, pkt *rtp.Packet, unixnano int64, rtphz int64) {
+// p gets modified
+func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz int64) {
 
-	forceKeyFrame := false
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
-	if pkt.SSRC != state.lastSSRC || forceKeyFrame {
-		if mediaDebug {
-			medialog.Printf("### SpliceRTP: %p: ssrc changed new=%v cur=%v", state, pkt.SSRC, state.lastSSRC)
-		}
+	if p.SSRC != s.lastSSRC  {
 
-		td := unixnano - state.lastUnixnanosNow // nanos
-		if td < 0 {
-			td = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
+		td1 := unixnano - s.lastUnixnanosNow // nanos
+		if td1 < 0 {
+			td1 = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
 		}
-		td *= rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
-		if td == 0 {
-			td = 1
+		//td2 := td1 * rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
+		td2 := td1 /  (int64(time.Second)/rtphz) //convert nanos -> 90khz or similar clockrate. speed not important
+		if td2 == 0 {
+			td2 = 1
 		}
-		state.tsOffset = pkt.Timestamp - (state.lastTS + uint32(td))
-		state.snOffset = pkt.SequenceNumber - state.lastSN - 1
+		s.tsOffset = p.Timestamp - (s.lastTS + uint32(td2))
+		s.snOffset = p.SequenceNumber - s.lastSN - 1
+
+		elog.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
 	}
 
-	state.lastUnixnanosNow = unixnano
-	state.lastTS = pkt.Timestamp
-	state.lastSN = pkt.SequenceNumber
-	state.lastSSRC = pkt.SSRC
-
-	pkt.Timestamp -= state.tsOffset
-	pkt.SequenceNumber -= state.snOffset
-
-}
-
-func SpliceRTP(s *RtpSplicer, o *rtp.Packet, unixnano int64, rtphz int64) *rtp.Packet {
-
-	forceKeyFrame := false
-
-	copy := *o
-	// credit to Orlando Co of ion-sfu
-	// for helping me decide to go this route and keep it simple
-	// code is modeled on code from ion-sfu
-	if o.SSRC != s.lastSSRC || forceKeyFrame {
-		log.Printf("SpliceRTP: %p: ssrc changed new=%v cur=%v", s, o.SSRC, s.lastSSRC)
-
-		td := unixnano - s.lastUnixnanosNow // nanos
-		if td < 0 {
-			td = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
-		}
-		td *= rtphz / int64(time.Second) //convert nanos -> 90khz or similar clockrate
-		if td == 0 {
-			td = 1
-		}
-		s.tsOffset = o.Timestamp - (s.lastTS + uint32(td))
-		s.snOffset = o.SequenceNumber - s.lastSN - 1
-
-		//log.Println(11111,	copy.SequenceNumber - s.snOffset,s.lastSN)
-		// old approach/abandoned
-		// timestamp := unixnano * rtphz / int64(time.Second)
-		// s.addTS = uint32(timestamp)
-
-		//2970 is just a number that worked very with with chrome testing
-		// is it just a fallback
-		//clockDelta := s.findMostFrequentDelta(uint32(2970))
-
-		//s.tsFrequencyDelta = s.tsFrequencyDelta[:0] // reset frequency table
-
-		//s.addTS = s.lastSentTS + clockDelta
-	}
-
-	// we don't want to change original packet, it gets
-	// passed into this routine many times for many subscribers
-
-	copy.Timestamp -= s.tsOffset
-	copy.SequenceNumber -= s.snOffset
-	//	tsdelta := int64(copy.Timestamp) - int64(s.lastSentTS) // int64 avoids rollover issues
-	// if !ssrcChanged && tsdelta > 0 {              // Track+measure uint32 timestamp deltas
-	// 	s.trackTimestampDeltas(uint32(tsdelta))
-	// }
+	p.Timestamp -= s.tsOffset
+	p.SequenceNumber -= s.snOffset
 
 	s.lastUnixnanosNow = unixnano
-	s.lastTS = copy.Timestamp
-	s.lastSN = copy.SequenceNumber
-	s.lastSSRC = copy.SSRC
-
-	return &copy
+	s.lastTS = p.Timestamp
+	s.lastSN = p.SequenceNumber
+	s.lastSSRC = p.SSRC
 }
 
 // isH264Keyframe detects when an RFC6184 payload contains an H264 SPS (8)
