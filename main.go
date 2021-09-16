@@ -1540,6 +1540,11 @@ func ftlProxyRegisterAndReceive() {
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
 
+	// OBS always sends the same ssrc, I think
+	// but we want to change the ssrc we OBS reconnects so the splicer works.
+	audiossrc := uint32(rand.Int63())
+	videossrc := uint32(rand.Int63())
+
 	//connected := false
 	active := false
 	for {
@@ -1587,8 +1592,10 @@ func ftlProxyRegisterAndReceive() {
 		case 200:
 			log.Println("got ftl sender report")
 		case 96: //0x7b
+			p.SSRC = videossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 		case 97: //0x7c
+			p.SSRC = audiossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 		}
 	}
