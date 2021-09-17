@@ -1468,6 +1468,10 @@ func ftlProxyRegisterAndReceive() {
 		elog.Fatalln("fatal: --ftl-proxy-password not supplied")
 	}
 
+	tmp64, err := strconv.ParseInt(arr[0], 10, 64)
+	checkFatal(err)
+	channelid := uint32(tmp64)
+
 	z := &ftlserver.FtlRegistrationInfo{
 		Channelid:        arr[0],
 		Hmackey:          arr[1],
@@ -1522,7 +1526,7 @@ func ftlProxyRegisterAndReceive() {
 	// but we want to change the ssrc we OBS reconnects so the splicer works.
 	audiossrc := uint32(rand.Int63())
 	videossrc := uint32(rand.Int63())
-
+	badssrc := 0
 	//connected := false
 	active := false
 	for {
@@ -1569,12 +1573,23 @@ func ftlProxyRegisterAndReceive() {
 		switch p.Header.PayloadType {
 		case 200:
 			log.Println("got ftl sender report")
-		case 96: //0x7b
+		case 96:
+			if p.SSRC != channelid+1 {
+				badssrc++
+				break
+			}
 			p.SSRC = videossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
-		case 97: //0x7c
+		case 97:
+			if p.SSRC != channelid {
+				badssrc++
+				break
+			}
 			p.SSRC = audiossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
+		}
+		if badssrc > 0 && badssrc%100 == 10 {
+			elog.Println("Bad SSRC media received :(  count:", badssrc)
 		}
 	}
 }
@@ -1615,10 +1630,14 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 			inf.Fatalln("fatal: bad stream key in --ftl-key")
 		}
 
+		tmp64, err := strconv.ParseInt(arr[0], 10, 64)
+		checkFatal(err)
+
 		a := &myFtlServer{}
 		a.Hmackey = arr[1]
 		a.audiossrc = uint32(rand.Int63())
 		a.videossrc = uint32(rand.Int63())
+		a.channelid = uint32(tmp64)
 		return a, true
 	}
 
@@ -1626,9 +1645,12 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 }
 
 type myFtlServer struct {
-	Hmackey              string
-	badrtp               int
-	audiossrc, videossrc uint32
+	Hmackey   string
+	badrtp    int
+	badssrc   int
+	audiossrc uint32
+	videossrc uint32
+	channelid uint32
 }
 
 func (x *myFtlServer) GetHmackey(_ *log.Logger, _ *log.Logger) string {
@@ -1655,6 +1677,10 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	case 200:
 		//log.Println("got ftl sender report")
 	case 96:
+		if p.SSRC != x.channelid+1 {
+			x.badssrc++
+			break
+		}
 		p.SSRC = x.videossrc // each FTL session should have different SSRC for downstream splicer
 		rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 
@@ -1676,9 +1702,15 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 				break
 			}
 		}
-
+		if p.SSRC != x.channelid {
+			x.badssrc++
+			break
+		}
 		p.SSRC = x.audiossrc // each FTL session should have different SSRC for downstream splicer
 		rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
+	}
+	if x.badssrc > 0 && x.badssrc%100 == 10 {
+		elog.Println("Bad SSRC media received :(  count:", x.badssrc)
 	}
 
 	return true //okay
