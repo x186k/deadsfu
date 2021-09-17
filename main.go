@@ -281,6 +281,11 @@ func main() {
 		}()
 	}
 
+	if *httpFlag == "" {
+		Usage()
+		os.Exit(-1)
+	}
+
 	go func() {
 		// httpLn, err := net.Listen("tcp", laddr)
 		err := http.ListenAndServe(*httpFlag, mux)

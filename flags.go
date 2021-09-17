@@ -20,7 +20,7 @@ import (
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 
-var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. example is ':8080' ")
+var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 
 var ftlKey = pflag.String("ftl-key", "123-abc", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
 var ftlProxyIP = pflag.String("ftl-proxy-addr", "", "ip or hostname for ftl/obs proxy, do not include port. port 8084 will be used")
