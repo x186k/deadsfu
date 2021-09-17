@@ -22,9 +22,9 @@ import (
 
 var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. example is ':8080' ")
 
-var obsKey = pflag.String("ftl-key", "123-abc", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var obsProxyIP = pflag.String("ftl-proxy-addr", "", "ip or hostname for ftl/obs proxy, do not include port. port 8084 will be used")
-var obsProxyPassword = pflag.StringP("ftl-proxy-password", "s", "", "password to register with ftl/obs proxy. required for proxy use")
+var ftlKey = pflag.String("ftl-key", "123-abc", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
+var ftlProxyIP = pflag.String("ftl-proxy-addr", "", "ip or hostname for ftl/obs proxy, do not include port. port 8084 will be used")
+var ftlProxyPassword = pflag.StringP("ftl-proxy-password", "s", "", "password to register with ftl/obs proxy. required for proxy use")
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
 var httpsDomain = pflag.StringP("https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")

@@ -259,10 +259,10 @@ func main() {
 	}
 
 	//ftl if choosen
-	if *obsKey != "" {
+	if *ftlKey != "" {
 
 		go func() {
-			if *obsProxyIP == "" {
+			if *ftlProxyIP == "" {
 
 				for {
 					startFtlListener(elog, elog)
@@ -1459,12 +1459,12 @@ func ftlProxyRegisterAndReceive() {
 
 	laddr := udpconn.LocalAddr().(*net.UDPAddr)
 
-	arr := strings.Split(*obsKey, "-")
+	arr := strings.Split(*ftlKey, "-")
 	if len(arr) != 2 {
 		elog.Fatalln("fatal: bad stream key in --ftl-key")
 	}
 
-	if *obsProxyPassword == "" {
+	if *ftlProxyPassword == "" {
 		elog.Fatalln("fatal: --ftl-proxy-password not supplied")
 	}
 
@@ -1472,13 +1472,13 @@ func ftlProxyRegisterAndReceive() {
 		Channelid:        arr[0],
 		Hmackey:          arr[1],
 		Port:             laddr.Port,
-		ObsProxyPassword: *obsProxyPassword,
+		ObsProxyPassword: *ftlProxyPassword,
 	}
 
 	jsonbuf, err := json.Marshal(z)
 	checkFatal(err)
 
-	raddr, err := net.ResolveTCPAddr("tcp", *obsProxyIP+":8084")
+	raddr, err := net.ResolveTCPAddr("tcp", *ftlProxyIP+":8084")
 	checkFatal(err)
 
 	conn, err := net.DialTCP("tcp", nil, raddr)
@@ -1606,11 +1606,11 @@ func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 
 func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, bool) {
 	want := requestChanid + "-"
-	match := strings.HasPrefix(*obsKey, want)
+	match := strings.HasPrefix(*ftlKey, want)
 	dbg.Println("ftl/findserver/channelid match:", match)
 
 	if match {
-		arr := strings.Split(*obsKey, "-")
+		arr := strings.Split(*ftlKey, "-")
 		if len(arr) != 2 {
 			inf.Fatalln("fatal: bad stream key in --ftl-key")
 		}
