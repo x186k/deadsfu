@@ -17,6 +17,8 @@ github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0/go.mod h1:W
 github.com/golang/protobuf v1.4.0/go.mod h1:jodUvKwWbYaEsadDk5Fwe5c77LiNKVO9IDvqG2KuDX0=
 github.com/golang/protobuf v1.4.2/go.mod h1:oDoupMAO8OvCJWAcko0GGGIgR6R6ocIYbsSw735rRwI=
 github.com/golang/protobuf v1.4.3/go.mod h1:oDoupMAO8OvCJWAcko0GGGIgR6R6ocIYbsSw735rRwI=
+github.com/gomodule/redigo v1.8.5 h1:nRAxCa+SVsyjSBrtZmG/cqb6VbTmuRzpg/PoTFlpumc=
+github.com/gomodule/redigo v1.8.5/go.mod h1:P9dn9mFrCBvWhGE1wpxx6fgq7BAeLBk+UUUzlpkBYO0=
 github.com/google/go-cmp v0.3.0/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
 github.com/google/go-cmp v0.3.1/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
 github.com/google/go-cmp v0.4.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
@@ -114,12 +116,14 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a h1:3MHOw+STEPfEb0cvsGzjjE9LrDVwb0iedtFFTnhYiaU=
 github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a/go.mod h1:9FAoj8bfSg+cVEoDIyMfI+4GAtFllfDfLOW20S74JsM=
-github.com/x186k/ftlserver v0.0.0-20210915032410-6c9799c55b19 h1:dRQVtD9wB6UH3Kks3RUJkIlgjZvEUKbqtjZeFkkq2iw=
-github.com/x186k/ftlserver v0.0.0-20210915032410-6c9799c55b19/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
-github.com/x186k/ftlserver v0.0.0-20210915040547-af4b7626fc44 h1:A4EEwuO6G3GOCaWRVJR2aBgfjx/YgToZdpY1+q0hj/k=
-github.com/x186k/ftlserver v0.0.0-20210915040547-af4b7626fc44/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
 github.com/x186k/ftlserver v0.0.0-20210915043355-87d2df509725 h1:KKB5h3/Ar1Nx0anelRiBkxPhbZe3dmHlEZZwIye2qqI=
 github.com/x186k/ftlserver v0.0.0-20210915043355-87d2df509725/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
+github.com/x186k/ftlserver v0.0.0-20210918202232-773f382ea754 h1:qSD/bvD1yZo6q/ywOfuJT0g4YZtSQo8cN5bTLsT6Zt0=
+github.com/x186k/ftlserver v0.0.0-20210918202232-773f382ea754/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
+github.com/x186k/ftlserver v0.0.0-20210918202817-abd6a6e3c171 h1:gTyo3iuBhZ9JXbEg3rsx6rbGX77cVJhshYjltybTRLk=
+github.com/x186k/ftlserver v0.0.0-20210918202817-abd6a6e3c171/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
+github.com/x186k/ftlserver v0.0.0-20210918210050-4f45bcc794ca h1:2UddYzs5bzY0Aj1ZZQieIiUWMyrZvaNpQZ1cK1vPAfs=
+github.com/x186k/ftlserver v0.0.0-20210918210050-4f45bcc794ca/go.mod h1:3l1ErI8s6iEaBjjW+KHaEIkkkidwYw0yr3Xv1mVqDrQ=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.uber.org/atomic v1.6.0/go.mod h1:sABNBOSYdrvTF6hTgEIbc7YasKWGhgEQZyfxyTvoXHQ=
 go.uber.org/atomic v1.7.0 h1:ADUqmZGgLDDfbSL9ZmPxKTybcoEYHgpYfELNoN+7hsw=

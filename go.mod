@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/caddyserver/certmagic v0.13.1
+	github.com/gomodule/redigo v1.8.5
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libdns/cloudflare v0.1.0
@@ -19,7 +20,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a
-	github.com/x186k/ftlserver v0.0.0-20210915043355-87d2df509725
+	github.com/x186k/ftlserver v0.0.0-20210918210050-4f45bcc794ca
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
