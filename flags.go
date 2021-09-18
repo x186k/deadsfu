@@ -24,7 +24,7 @@ import (
 
 var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 
-var ftlKey = pflag.String("ftl-key", "123-abc", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
+var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
 var clusterMode = pflag.Bool("cluster", false, "non-standalone DeadSFU mode. Requires REDIS. See docs. env var: REDIS_URL must be set!")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
