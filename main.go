@@ -1480,7 +1480,7 @@ func clusterFtlReceive() {
 	checkFatal(err)
 	chanid := uint32(chanid64)
 	hmackey := ftlsplit[1]
-	userkey := "user:" + chanidStr
+	userkey := "user:" + chanidStr +":ftl"
 
 	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
 
@@ -1499,7 +1499,7 @@ func clusterFtlReceive() {
 			err = rconn.Send("MULTI")
 			checkFatal(err)
 			err = rconn.Send("hmset", userkey,
-				"ftl.hmackey", hmackey, "ftl.addr.port", addrport)
+				"hmackey", hmackey, "addr.port", addrport)
 			checkFatal(err)
 			err = rconn.Send("EXPIRE", userkey, "2")
 			checkFatal(err)
