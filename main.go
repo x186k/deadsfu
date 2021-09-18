@@ -4,11 +4,9 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
 	"bytes"
 	"context"
 	"embed"
-	"encoding/json"
 	"errors"
 	"math/rand"
 	"net"
@@ -262,19 +260,19 @@ func main() {
 	if *ftlKey != "" {
 
 		go func() {
-			if *ftlProxyIP == "" {
+			if *clusterMode {
+
+				go func() {
+					clusterFtlReceive()
+					elog.Println("ftl proxy registation done, exiting")
+					os.Exit(0)
+				}()
+
+			} else {
 
 				for {
 					startFtlListener(elog, elog)
 				}
-
-			} else {
-
-				go func() {
-					ftlProxyRegisterAndReceive()
-					elog.Println("ftl proxy registation done, exiting")
-					os.Exit(0)
-				}()
 
 			}
 
@@ -1441,88 +1439,52 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 // do two things:
 // create udp socket, and receive rtp on it
 // create tcp socket, and dial and register with proxy on it
-func ftlProxyRegisterAndReceive() {
+func clusterFtlReceive() {
+	var err error
 
 	// don't use 8084, so we can test everything on the same box
-	udpaddr, err := net.ResolveUDPAddr("udp", ":0")
-	if err != nil {
-		elog.Println(err)
-		return
-	}
 
-	udpconn, err := net.ListenUDP("udp", udpaddr)
+	udpconn, err := net.ListenPacket("udp", ":0")
 	if err != nil {
 		elog.Println(err)
 		return
 	}
 	defer udpconn.Close()
 
+	udpaddr := udpconn.LocalAddr().(*net.UDPAddr)
+
 	elog.Println("rtp rx addr", udpconn.LocalAddr())
 	// we will need a fancier way of detecting the port
 	// if/when we allow proxying across firewalls,
 	// but there is little need for that now.
 
-	laddr := udpconn.LocalAddr().(*net.UDPAddr)
+	// _, err =redisconn.Do("MONITOR")
+	// checkFatal(err)
+	// for {
+	// 	line, _ := redis.String(redisconn.Receive())
+	// 	fmt.Printf("%s\n", line)
+	// }
 
-	arr := strings.Split(*ftlKey, "-")
-	if len(arr) != 2 {
+	// XXX switch to redis/monitor someday
+	addr, err := getDefRouteIntfAddrIPv4()
+	checkFatal(err)
+
+	//get channelid, hmackey
+	ftlsplit := strings.Split(*ftlKey, "-")
+	if len(ftlsplit) != 2 {
 		elog.Fatalln("fatal: bad stream key in --ftl-key")
 	}
-
-	if *ftlProxyPassword == "" {
-		elog.Fatalln("fatal: --ftl-proxy-password not supplied")
-	}
-
-	tmp64, err := strconv.ParseInt(arr[0], 10, 64)
+	chanidStr := ftlsplit[0]
+	chanid64, err := strconv.ParseInt(chanidStr, 10, 64)
 	checkFatal(err)
-	channelid := uint32(tmp64)
+	chanid := uint32(chanid64)
+	hmackey := ftlsplit[1]
+	userkey := "user:" + chanidStr
 
-	z := &ftlserver.FtlRegistrationInfo{
-		Channelid:        arr[0],
-		Hmackey:          arr[1],
-		Port:             laddr.Port,
-		ObsProxyPassword: *ftlProxyPassword,
-	}
+	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
 
-	jsonbuf, err := json.Marshal(z)
+	_, err = redisconn.Do("hmset", userkey, "ftl.hmackey", hmackey, "ftl.addr.port", addrport)
 	checkFatal(err)
-
-	raddr, err := net.ResolveTCPAddr("tcp", *ftlProxyIP+":8084")
-	checkFatal(err)
-
-	conn, err := net.DialTCP("tcp", nil, raddr)
-	checkFatal(err)
-	defer conn.Close()
-
-	err = conn.SetKeepAlive(true)
-	checkFatal(err)
-
-	err = conn.SetKeepAlivePeriod(time.Second * 5)
-	checkFatal(err)
-
-	wr := bufio.NewWriter(conn)
-
-	line := "REGISTER " + string(jsonbuf) + "\r\n"
-
-	err = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	checkFatal(err)
-	_, err = wr.WriteString(line)
-	checkFatal(err)
-	err = conn.SetWriteDeadline(time.Time{})
-	checkFatal(err)
-	err = wr.Flush()
-	checkFatal(err)
-
-	go func() {
-		defer conn.Close()    //shutdown this
-		defer udpconn.Close() //shutdown this
-
-		b := make([]byte, 1)
-		// should block until proxy dies/goes away
-		_, err = conn.Read(b)
-		log.Println("proxy dead/gone: read returned", err)
-
-	}()
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
@@ -1538,8 +1500,7 @@ func ftlProxyRegisterAndReceive() {
 
 		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
 		checkFatal(err)
-		n, readaddr, err := udpconn.ReadFromUDP(buf)
-		_ = readaddr
+		n, _, err := udpconn.ReadFrom(buf)
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 
 			if active && time.Since(lastudp) > time.Second*3/2 { // 1.5 second
@@ -1579,14 +1540,14 @@ func ftlProxyRegisterAndReceive() {
 		case 200:
 			log.Println("got ftl sender report")
 		case 96:
-			if p.SSRC != channelid+1 {
+			if p.SSRC != chanid+1 {
 				badssrc++
 				break
 			}
 			p.SSRC = videossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 		case 97:
-			if p.SSRC != channelid {
+			if p.SSRC != chanid {
 				badssrc++
 				break
 			}
@@ -1619,12 +1580,12 @@ func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 		log.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
-		ftlserver.NewTcpSession(inf, dbg, tcpconn, nil, findserver)
+		ftlserver.NewTcpSession(inf, dbg, tcpconn, findserver)
 		netconn.Close()
 	}
 }
 
-func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, bool) {
+func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, string) {
 	want := requestChanid + "-"
 	match := strings.HasPrefix(*ftlKey, want)
 	dbg.Println("ftl/findserver/channelid match:", match)
@@ -1639,27 +1600,21 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 		checkFatal(err)
 
 		a := &myFtlServer{}
-		a.Hmackey = arr[1]
 		a.audiossrc = uint32(rand.Int63())
 		a.videossrc = uint32(rand.Int63())
 		a.channelid = uint32(tmp64)
-		return a, true
+		return a, arr[1]
 	}
 
-	return nil, false
+	return nil, ""
 }
 
 type myFtlServer struct {
-	Hmackey   string
 	badrtp    int
 	badssrc   int
 	audiossrc uint32
 	videossrc uint32
 	channelid uint32
-}
-
-func (x *myFtlServer) GetHmackey(_ *log.Logger, _ *log.Logger) string {
-	return x.Hmackey
 }
 
 func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) bool {

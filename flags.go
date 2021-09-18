@@ -14,6 +14,8 @@ import (
 	"github.com/libdns/duckdns"
 	"github.com/spf13/pflag"
 	"github.com/x186k/ddns5libdns"
+
+	"github.com/gomodule/redigo/redis"
 )
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
@@ -23,8 +25,8 @@ import (
 var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 
 var ftlKey = pflag.String("ftl-key", "123-abc", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var ftlProxyIP = pflag.String("ftl-proxy-addr", "", "ip or hostname for ftl/obs proxy, do not include port. port 8084 will be used")
-var ftlProxyPassword = pflag.StringP("ftl-proxy-password", "s", "", "password to register with ftl/obs proxy. required for proxy use")
+var clusterMode = pflag.Bool("cluster", false, "non-standalone DeadSFU mode. Requires REDIS. See docs. env var: REDIS_URL must be set!")
+
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
 var httpsDomain = pflag.StringP("https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
@@ -60,6 +62,18 @@ var Usage = func() {
 	x.AddFlag(pflag.CommandLine.Lookup("fullhelp"))
 	x.SortFlags = false
 	x.PrintDefaults()
+}
+
+var redisconn redis.Conn
+
+func connectRedis() {
+	var err error
+	url := os.Getenv("REDIS_URL")
+	if url == "" {
+		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
+	}
+	redisconn, err = redis.DialURL(url)
+	checkFatal(err)
 }
 
 func parseAndHandleFlags() {
@@ -179,6 +193,11 @@ func parseAndHandleFlags() {
 				Resolvers:          []string{},
 			}
 		}
+
+	}
+
+	if *clusterMode {
+		connectRedis()
 
 	}
 
