@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gomodule/redigo/redis"
 	"github.com/pkg/profile"
 	"golang.org/x/sync/semaphore"
 
@@ -1483,8 +1484,33 @@ func clusterFtlReceive() {
 
 	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
 
-	_, err = redisconn.Do("hmset", userkey, "ftl.hmackey", hmackey, "ftl.addr.port", addrport)
-	checkFatal(err)
+	go func() {
+		/*
+			there is a race here, but it is okay.
+			the ftl-proxy might see an SFU in redis, after the SFU disappears
+			but, the packets comming from the the proxy should get Icmp bounced
+			causing unix.ECONNREFUSED error back to the proxy.
+			The proxy will see these and give up eventually.
+			look for unix.ECONNREFUSED in the proxy.
+		*/
+		defer udpconn.Close() //not really needed, but good habit
+
+		for {
+			err = rconn.Send("MULTI")
+			checkFatal(err)
+			err = rconn.Send("hmset", userkey,
+				"ftl.hmackey", hmackey, "ftl.addr.port", addrport)
+			checkFatal(err)
+			err = rconn.Send("EXPIRE", userkey, "2")
+			checkFatal(err)
+			rr, err := redis.Values(rconn.Do("EXEC"))
+			checkFatal(err)
+			if rr[0].(string) != "OK" {
+				checkFatal(fmt.Errorf("redis exec fail %w", err))
+			}
+			time.Sleep(time.Second)
+		}
+	}()
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
