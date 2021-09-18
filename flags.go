@@ -64,7 +64,7 @@ var Usage = func() {
 	x.PrintDefaults()
 }
 
-var redisconn redis.Conn
+var rconn redis.Conn
 
 func connectRedis() {
 	var err error
@@ -72,7 +72,7 @@ func connectRedis() {
 	if url == "" {
 		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
 	}
-	redisconn, err = redis.DialURL(url)
+	rconn, err = redis.DialURL(url)
 	checkFatal(err)
 }
 
