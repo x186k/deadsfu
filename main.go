@@ -275,7 +275,7 @@ func main() {
 	} else if *ftlKey != "" { //direct, non cluster ftl
 
 		go func() {
-			startFtlListener(elog, elog)
+			startFtlListener(elog, log.Default())
 			panic("never")
 		}()
 
