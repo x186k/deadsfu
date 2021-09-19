@@ -25,7 +25,7 @@ import (
 var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 
 var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var clusterMode = pflag.Bool("cluster", false, "non-standalone DeadSFU mode. Requires REDIS. See docs. env var: REDIS_URL must be set!")
+var clusterMode = pflag.Bool("cluster-mode", false, "non-standalone DeadSFU mode. Requires REDIS. See docs. env var: REDIS_URL must be set!")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
@@ -64,16 +64,17 @@ var Usage = func() {
 	x.PrintDefaults()
 }
 
-var rconn redis.Conn
-
-func connectRedis() {
+func newRedisConn() (redis.Conn, error) {
 	var err error
 	url := os.Getenv("REDIS_URL")
 	if url == "" {
-		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
+		return nil, fmt.Errorf("REDIS_URL must be set for cluster mode")
 	}
-	rconn, err = redis.DialURL(url)
-	checkFatal(err)
+	conn, err := redis.DialURL(url)
+	if err != nil {
+		return nil, fmt.Errorf("redis.DialURL, %w", err)
+	}
+	return conn, nil
 }
 
 func parseAndHandleFlags() {
@@ -193,11 +194,6 @@ func parseAndHandleFlags() {
 				Resolvers:          []string{},
 			}
 		}
-
-	}
-
-	if *clusterMode {
-		connectRedis()
 
 	}
 
