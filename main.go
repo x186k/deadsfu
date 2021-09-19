@@ -263,7 +263,7 @@ func main() {
 	if *clusterMode {
 
 		if *ftlKey == "" {
-			elog.Fatalln("--ftl-key must be used with --cluster")
+			elog.Fatalln("--ftl-key must be used with --cluster--mode")
 			os.Exit(0)
 		}
 
@@ -1486,6 +1486,9 @@ func clusterFtlReceive() {
 	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
 
 	go func() {
+		rconn, err := newRedisConn()
+		checkFatal(err)
+		defer rconn.Close()
 		/*
 			there is a race here, but it is okay.
 			the ftl-proxy might see an SFU in redis, after the SFU disappears
