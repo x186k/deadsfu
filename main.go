@@ -257,27 +257,28 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
+	//if *clusterMode && *ftlKey == ""
+
 	//ftl if choosen
-	if *ftlKey != "" {
+	if *clusterMode {
+
+		if *ftlKey == "" {
+			elog.Fatalln("--ftl-key must be used with --cluster")
+			os.Exit(0)
+		}
 
 		go func() {
-			if *clusterMode {
-
-				go func() {
-					clusterFtlReceive()
-					elog.Println("ftl proxy registation done, exiting")
-					os.Exit(0)
-				}()
-
-			} else {
-
-				for {
-					startFtlListener(elog, elog)
-				}
-
-			}
-
+			clusterFtlReceive()
+			panic("never")
 		}()
+
+	} else if *ftlKey != "" { //direct, non cluster ftl
+
+		go func() {
+			startFtlListener(elog, elog)
+			panic("never")
+		}()
+
 	}
 
 	if *httpFlag == "" {
@@ -1278,7 +1279,7 @@ func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz
 		s.tsOffset = p.Timestamp - (s.lastTS + uint32(td2))
 		s.snOffset = p.SequenceNumber - s.lastSN - 1
 
-		elog.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
+		log.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
 	}
 
 	p.Timestamp -= s.tsOffset
@@ -1480,7 +1481,7 @@ func clusterFtlReceive() {
 	checkFatal(err)
 	chanid := uint32(chanid64)
 	hmackey := ftlsplit[1]
-	userkey := "user:" + chanidStr +":ftl"
+	userkey := "user:" + chanidStr + ":ftl"
 
 	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
 
@@ -1568,14 +1569,14 @@ func clusterFtlReceive() {
 		case 96:
 			if p.SSRC != chanid+1 {
 				badssrc++
-				break
+				continue
 			}
 			p.SSRC = videossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 		case 97:
 			if p.SSRC != chanid {
 				badssrc++
-				break
+				continue
 			}
 			p.SSRC = audiossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
@@ -1584,6 +1585,8 @@ func clusterFtlReceive() {
 			elog.Println("Bad SSRC media received :(  count:", badssrc)
 		}
 	}
+	//unreachable
+	//return
 }
 
 func startFtlListener(inf *log.Logger, dbg *log.Logger) {
@@ -1591,24 +1594,26 @@ func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 	config := &net.ListenConfig{}
 	ln, err := config.Listen(context.Background(), "tcp", ":8084")
 	if err != nil {
-		log.Fatalln(err)
+		inf.Fatalln(err)
 	}
 	defer ln.Close()
 
 	for {
-		log.Println("ftl/waiting for accept")
+		inf.Println("ftl/waiting for accept")
 
 		netconn, err := ln.Accept()
 		if err != nil {
-			log.Fatalln(err)
+			inf.Fatalln(err)
 		}
 
-		log.Println("ftl/socket accepted")
+		inf.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
 		ftlserver.NewTcpSession(inf, dbg, tcpconn, findserver)
 		netconn.Close()
 	}
+	// unreachable
+	//return
 }
 
 func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, string) {
