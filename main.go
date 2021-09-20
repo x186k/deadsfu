@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/gomodule/redigo/redis"
 	"github.com/pkg/profile"
 	"golang.org/x/sync/semaphore"
@@ -295,12 +296,6 @@ func main() {
 		os.Exit(-1)
 	}
 
-	go func() {
-		// httpLn, err := net.Listen("tcp", laddr)
-		err := http.ListenAndServe(*httpFlag, mux)
-		panic(err)
-	}()
-
 	if *httpsDomain != "" {
 
 		go func() {
@@ -308,6 +303,15 @@ func main() {
 		}()
 
 	}
+
+	go func() {
+		if *httpsDomain != "" {
+			a := certmagic.DefaultACME.HTTPChallengeHandler(mux)
+			panic(http.ListenAndServe(*httpFlag, a))
+		} else {
+			panic(http.ListenAndServe(*httpFlag, mux))
+		}
+	}()
 
 	elog.Printf("SFU HTTP IS READY")
 
