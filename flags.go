@@ -145,12 +145,11 @@ func parseAndHandleFlags() {
 
 		_, _, err := net.SplitHostPort(*httpsDomain)
 		if err != nil && strings.Contains(err.Error(), "missing port") {
-			foo := *httpsDomain + ":8443"
+			foo := *httpsDomain + ":443"
 			httpsDomain = &foo
 		}
-		host, port, err := net.SplitHostPort(*httpsDomain)
+		host, _, err := net.SplitHostPort(*httpsDomain)
 		checkFatal(err)
-		_ = port
 
 		var provider DDNSUnion
 		switch *httpsDnsProvider {
@@ -204,7 +203,7 @@ https related flags help:
 
 -1 or --https-domain <domain>
 	Use this option the domain name, and optional port for https. 
-	Defaults to port 8443 for the port. Use domain:port if you need something else.
+	Defaults to port 443 for the port. Use domain:port if you need something else.
 	With this flag,  a certificate will be aquired from Let's Encrypt.
 	BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
 

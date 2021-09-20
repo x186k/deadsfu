@@ -257,8 +257,6 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
-	//if *clusterMode && *ftlKey == ""
-
 	//ftl if choosen
 	if *clusterMode {
 
@@ -267,8 +265,19 @@ func main() {
 			os.Exit(0)
 		}
 
+		if *httpsDomain == "" {
+			elog.Fatalln("--https-domain must be used with --cluster--mode")
+			os.Exit(0)
+		}
+
+		rconn, err := newRedisConn()
+		checkFatal(err)
+		defer rconn.Close()
+
+		registerDomainOnRedis(rconn, *httpsDomain)
+
 		go func() {
-			clusterFtlReceive()
+			clusterFtlReceive(rconn)
 			panic("never")
 		}()
 
@@ -1441,7 +1450,7 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 // do two things:
 // create udp socket, and receive rtp on it
 // create tcp socket, and dial and register with proxy on it
-func clusterFtlReceive() {
+func clusterFtlReceive(rconn redis.Conn) {
 	var err error
 
 	// don't use 8084, so we can test everything on the same box
@@ -1486,9 +1495,7 @@ func clusterFtlReceive() {
 	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
 
 	go func() {
-		rconn, err := newRedisConn()
-		checkFatal(err)
-		defer rconn.Close()
+
 		/*
 			there is a race here, but it is okay.
 			the ftl-proxy might see an SFU in redis, after the SFU disappears
@@ -1708,4 +1715,8 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	}
 
 	return true //okay
+}
+
+func registerDomainOnRedis(rconn redis.Conn, domain string) {
+
 }
