@@ -88,7 +88,6 @@ func startHttpsListener(hostport string, mux *http.ServeMux) {
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
 
-
 	// if *tlsOldVersions { /// XXX only to work with cosmos OBS studio
 	// 	tlsConfig.MinVersion = 0
 	// }
