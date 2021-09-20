@@ -62,7 +62,7 @@ var Usage = func() {
 	x.AddFlag(pflag.CommandLine.Lookup("fullhelp"))
 	x.SortFlags = false
 	x.PrintDefaults()
-	fmt.Fprint(os.Stderr,"\nOne of --http or --https-domain is required\n\n")
+	fmt.Fprint(os.Stderr, "\nOne of --http or --https-domain is required\n\n")
 }
 
 func newRedisConn() (redis.Conn, error) {
