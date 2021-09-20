@@ -291,7 +291,7 @@ func main() {
 
 	}
 
-	if *httpFlag == "" {
+	if *httpFlag == "" && *httpsDomain == "" {
 		Usage()
 		os.Exit(-1)
 	}
