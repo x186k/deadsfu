@@ -205,6 +205,7 @@ https related flags help:
 -1 or --https-domain <domain>
 	Use this option the domain name, and optional port for https. 
 	Defaults to port 443 for the port. Use domain:port if you need something else.
+	Port zero is valid, for auto-assign.
 	With this flag,  a certificate will be aquired from Let's Encrypt.
 	BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
 
