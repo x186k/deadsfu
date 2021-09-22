@@ -13,3 +13,4 @@ cover.out
 
 deadsfu-binaries
 deadsfu-out.pcap
+*.pprof
