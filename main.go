@@ -345,16 +345,20 @@ func main() {
 
 	}
 
+	// http
 	go func() {
+		ln, err := net.Listen("tcp", *httpFlag)
+		checkFatal(err)
+
+		elog.Println("SFU HTTP IS READY ON", ln.Addr())
+
 		if *httpsDomain != "" {
 			a := certmagic.DefaultACME.HTTPChallengeHandler(mux)
-			panic(http.ListenAndServe(*httpFlag, a))
+			panic(http.Serve(ln, a))
 		} else {
-			panic(http.ListenAndServe(*httpFlag, mux))
+			panic(http.Serve(ln, mux))
 		}
 	}()
-
-	elog.Printf("SFU HTTP IS READY")
 
 	//the user can specify zero for port, and Linux/etc will choose a port
 
