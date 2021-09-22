@@ -14,8 +14,6 @@ import (
 	"github.com/libdns/duckdns"
 	"github.com/spf13/pflag"
 	"github.com/x186k/ddns5libdns"
-
-	"github.com/gomodule/redigo/redis"
 )
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
@@ -63,19 +61,6 @@ var Usage = func() {
 	x.SortFlags = false
 	x.PrintDefaults()
 	fmt.Fprint(os.Stderr, "\nOne of --http or --https-domain is required\n\n")
-}
-
-func newRedisConn() (redis.Conn, error) {
-	var err error
-	url := os.Getenv("REDIS_URL")
-	if url == "" {
-		return nil, fmt.Errorf("REDIS_URL must be set for cluster mode")
-	}
-	conn, err := redis.DialURL(url)
-	if err != nil {
-		return nil, fmt.Errorf("redis.DialURL, %w", err)
-	}
-	return conn, nil
 }
 
 func parseAndHandleFlags() {
