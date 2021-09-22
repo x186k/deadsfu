@@ -287,60 +287,59 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
-	if *clusterMode && *ftlKey == "" {
-		elog.Fatalln("--ftl-key must be used with --cluster--mode")
-		os.Exit(0)
-	}
-
-	if *clusterMode && *httpsDomain == "" {
-		elog.Fatalln("--https-domain must be used with --cluster--mode")
-		os.Exit(0)
-	}
-
-	//ftl if choosen
-	if *clusterMode {
-
-		newRedisPool()
-
-		privateip := getMyIPFromRedis(ctx)
-
-		udpconn, err := net.ListenPacket("udp", ":0")
-		checkFatal(err)
-		defer udpconn.Close()
-		ftlport := udpconn.(*net.UDPConn).LocalAddr().(*net.UDPAddr).Port
-
-		go clusterFtlReceive(ctx, udpconn) //recieve udp loop
-
-		go clusterFtlRedisRegister(ctx, privateip, ftlport) // register with redis loop
-
-	} else if *ftlKey != "" { //direct, non cluster ftl
-
-		go func() {
-			startFtlListener(elog, log.Default())
-			panic("never")
-		}()
-
-	}
+	// if *clusterMode && *httpsDomain == "" {
+	// 	elog.Fatalln("--https-domain must be used with --cluster--mode")
+	// 	os.Exit(0)
+	// }
 
 	if *httpFlag == "" && *httpsDomain == "" {
 		Usage()
 		os.Exit(-1)
 	}
+	if *clusterMode {
+		newRedisPool()
+	}
+
+	if *ftlKey != "" {
+
+		ftludp, err := net.ListenPacket("udp", ":0")
+		checkFatal(err)
+		defer ftludp.Close()
+		ftlport := ftludp.(*net.UDPConn).LocalAddr().(*net.UDPAddr).Port
+
+		if *clusterMode {
+
+			privateip := getMyIPFromRedis(ctx)
+
+			go clusterFtlReceive(ctx, ftludp) //recieve udp loop
+
+			go clusterFtlRedisRegister(ctx, privateip, ftlport) // register with redis loop
+
+		} else {
+
+			go startFtlListener(elog, log.Default())
+
+		}
+
+	}
 
 	if *httpsDomain != "" {
+
 		_, port, err := net.SplitHostPort(*httpsDomain)
 		checkFatal(err)
 		ln, err := net.Listen("tcp", ":"+port)
 		checkFatal(err)
 
 		if *clusterMode {
-			privateip := getMyIPFromRedis(ctx)
-			port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
 
+			port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
+			privateip := getMyIPFromRedis(ctx)
 			go clusterHttpsRedisRegister(ctx, *httpsDomain, privateip, port)
 
 		} else {
+
 			go startHttpsListener(ln, *httpsDomain, mux)
+
 		}
 
 	}
@@ -1492,12 +1491,13 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 
 }
 
-func parseFtlKey() (chanid32 uint32, chanidstr string, hmackey string, err error) {
+func parseFtlKey() (uint32, string, string, error) {
 	ftlsplit := strings.Split(*ftlKey, "-")
 	if len(ftlsplit) != 2 {
 		return 0, "", "", fmt.Errorf("fatal: bad stream key in --ftl-key")
 	}
 	chanidStr := ftlsplit[0]
+	hmackey := ftlsplit[1]
 	chanid64, err := strconv.ParseInt(chanidStr, 10, 64)
 	if err != nil {
 		return 0, "", "", fmt.Errorf("fatal: bad stream key in --ftl-key")
@@ -1585,6 +1585,11 @@ func clusterFtlReceive(ctx context.Context, udpconn net.PacketConn) {
 			p.SSRC = videossrc // each FTL session should have different SSRC for downstream splicer
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 		case 97:
+			// check for the starter packets that confuse chrome, and toss them: len(pkt)==1404
+			if ok := isMysteryOBSFTL(p); !ok {
+				break
+			}
+
 			if p.SSRC != chanid {
 				badssrc++
 				continue
@@ -1689,21 +1694,10 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	case 97:
 
 		// check for the starter packets that confuse chrome, and toss them: len(pkt)==1404
-		if len(pkt) > 600 {
-			//opustoc := p.Payload[0] //typically 0xfc from https://www.rfc-editor.org/rfc/rfc6716.html#section-3.1
-
-			nzero := 0
-			const nzeroCount = 10
-			for i := 0; i < nzeroCount; i++ {
-				if p.Payload[i] == 0 {
-					nzero++
-				}
-			}
-			if nzero == nzeroCount {
-				// bogus, non opus packet
-				break
-			}
+		if ok := isMysteryOBSFTL(p); !ok {
+			break
 		}
+
 		if p.SSRC != x.channelid {
 			x.badssrc++
 			break
@@ -1718,11 +1712,30 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	return true //okay
 }
 
+func isMysteryOBSFTL(p rtp.Packet) (ok bool) {
+	if len(p.Payload) > 600 {
+		//opustoc := p.Payload[0] //typically 0xfc from https://www.rfc-editor.org/rfc/rfc6716.html#section-3.1
+
+		nzero := 0
+		const nzeroCount = 10
+		for i := 0; i < nzeroCount; i++ {
+			if p.Payload[i] == 0 {
+				nzero++
+			}
+		}
+		if nzero == nzeroCount {
+			// bogus, non opus packet
+			return false
+		}
+	}
+	return true
+}
+
 func clusterHttpsRedisRegister(ctx context.Context, domain string, myip net.IP, port int) {
 
 	const lockdur = time.Duration(2 * time.Second)
 
-	nx := strconv.Itoa(int(lockdur / time.Millisecond))
+	px := strconv.Itoa(int(lockdur / time.Millisecond))
 
 	/*
 		there is a race here, but it is okay.
@@ -1751,7 +1764,7 @@ func clusterHttpsRedisRegister(ctx context.Context, domain string, myip net.IP, 
 		err = lock.Refresh(lockdur, nil)
 		checkFatal(err)
 
-		rr, err := rconn.Do("set", key2, addrport, "nx", nx)
+		rr, err := rconn.Do("set", key2, addrport, "px", px)
 		checkFatal(err)
 		checkRedisOk(rr)
 	}
@@ -1767,7 +1780,7 @@ func checkRedisOk(rr interface{}) {
 func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
 
 	const lockdur = time.Duration(2 * time.Second)
-	nx := strconv.Itoa(int(lockdur / time.Millisecond))
+	px := strconv.Itoa(int(lockdur / time.Millisecond))
 
 	/*
 		there is a race here, but it is okay.
@@ -1802,11 +1815,11 @@ func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
 		err = lock.Refresh(lockdur, nil)
 		checkFatal(err)
 
-		rr, err := rconn.Do("set", key2, addrport, "nx", nx)
+		rr, err := rconn.Do("set", key2, addrport, "px", px)
 		checkFatal(err)
 		checkRedisOk(rr)
 
-		rr, err = rconn.Do("set", key3, hmackey, "nx", nx)
+		rr, err = rconn.Do("set", key3, hmackey, "px", px)
 		checkFatal(err)
 		checkRedisOk(rr)
 
@@ -1822,14 +1835,22 @@ func getMyIPFromRedis(ctx context.Context) net.IP {
 	line, err := redigo.String(rconn.Do("client", "info"))
 	checkFatal(err)
 
-	addr := ""
-	foo := int64(0)
-	n, err := fmt.Sscanf(line, "id=%d addr=%s ", &foo, &addr)
+	hostport := ""
+	redisid := int64(0)
+
+	n, err := fmt.Sscanf(line, "id=%d addr=%s ", &redisid, &hostport)
 	checkFatal(err)
 
 	if n != 2 {
 		checkFatal(fmt.Errorf("unable to get IP from redis clientline:%v", line))
 	}
 
-	return net.ParseIP(addr)
+	host, _, err := net.SplitHostPort(hostport)
+	checkFatal(err)
+
+	ipaddr := net.ParseIP(host)
+	if ipaddr == nil {
+		checkFatal(fmt.Errorf("unable to get ip address from redis: %s", line))
+	}
+	return ipaddr
 }
