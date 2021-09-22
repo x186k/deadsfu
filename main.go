@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/gomodule/redigo/redis"
+
 	"github.com/pkg/profile"
 	"golang.org/x/sync/semaphore"
 
@@ -41,13 +41,19 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 
-	//"github.com/pion/webrtc/v3/pkg/media/rtpdump"
 	"github.com/x186k/ftlserver"
+
+	"github.com/cameronelliott/redislock"
+	redislockx "github.com/cameronelliott/redislock/examples/redigo/redisclient"
+	redigo "github.com/gomodule/redigo/redis"
 )
 
 var lastVideoRxTime time.Time
 
 var sendingIdleVid bool
+
+var redisPool *redigo.Pool
+var redisLocker *redislock.Client
 
 //go:embed html/*
 var htmlContent embed.FS
@@ -212,8 +218,31 @@ func init() {
 	go msgLoop()
 }
 
+func newRedisPool() {
+
+	url := os.Getenv("REDIS_URL")
+	if url == "" {
+		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
+	}
+
+	redisPool = &redigo.Pool{
+		MaxIdle:     3,
+		IdleTimeout: 5 * time.Second,
+		// Dial or DialContext must be set. When both are set, DialContext takes precedence over Dial.
+		DialContext: func(ctx context.Context) (redigo.Conn, error) {
+			return DialURLContext(ctx, url)
+		},
+	}
+
+	// threadsafe
+	redisLocker = redislock.New(redislockx.NewRedisLockClient(redisPool))
+}
+
 func main() {
 	var err error
+
+	ctx := context.Background()
+
 	println("deadsfu Version " + Version)
 
 	log.Println("NumGoroutine", runtime.NumGoroutine())
@@ -258,29 +287,31 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
+	if *clusterMode && *ftlKey == "" {
+		elog.Fatalln("--ftl-key must be used with --cluster--mode")
+		os.Exit(0)
+	}
+
+	if *clusterMode && *httpsDomain == "" {
+		elog.Fatalln("--https-domain must be used with --cluster--mode")
+		os.Exit(0)
+	}
+
 	//ftl if choosen
 	if *clusterMode {
 
-		if *ftlKey == "" {
-			elog.Fatalln("--ftl-key must be used with --cluster--mode")
-			os.Exit(0)
-		}
+		newRedisPool()
 
-		if *httpsDomain == "" {
-			elog.Fatalln("--https-domain must be used with --cluster--mode")
-			os.Exit(0)
-		}
+		privateip := getMyIPFromRedis(ctx)
 
-		rconn, err := newRedisConn()
+		udpconn, err := net.ListenPacket("udp", ":0")
 		checkFatal(err)
-		defer rconn.Close()
+		defer udpconn.Close()
+		ftlport := udpconn.(*net.UDPConn).LocalAddr().(*net.UDPAddr).Port
 
-		registerDomainOnRedis(rconn, *httpsDomain)
+		go clusterFtlReceive(ctx, udpconn) //recieve udp loop
 
-		go func() {
-			clusterFtlReceive(rconn)
-			panic("never")
-		}()
+		go clusterFtlRedisRegister(ctx, privateip, ftlport) // register with redis loop
 
 	} else if *ftlKey != "" { //direct, non cluster ftl
 
@@ -297,10 +328,20 @@ func main() {
 	}
 
 	if *httpsDomain != "" {
+		_, port, err := net.SplitHostPort(*httpsDomain)
+		checkFatal(err)
+		ln, err := net.Listen("tcp", ":"+port)
+		checkFatal(err)
 
-		go func() {
-			startHttpsListener(*httpsDomain, mux)
-		}()
+		if *clusterMode {
+			privateip := getMyIPFromRedis(ctx)
+			port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
+
+			go clusterHttpsRedisRegister(ctx, *httpsDomain, privateip, port)
+
+		} else {
+			go startHttpsListener(ln, *httpsDomain, mux)
+		}
 
 	}
 
@@ -1451,81 +1492,32 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 
 }
 
-// do two things:
-// create udp socket, and receive rtp on it
-// create tcp socket, and dial and register with proxy on it
-func clusterFtlReceive(rconn redis.Conn) {
-	var err error
-
-	// don't use 8084, so we can test everything on the same box
-
-	udpconn, err := net.ListenPacket("udp", ":0")
-	if err != nil {
-		elog.Println(err)
-		return
-	}
-	defer udpconn.Close()
-
-	udpaddr := udpconn.LocalAddr().(*net.UDPAddr)
-
-	elog.Println("rtp rx addr", udpconn.LocalAddr())
-	// we will need a fancier way of detecting the port
-	// if/when we allow proxying across firewalls,
-	// but there is little need for that now.
-
-	// _, err =redisconn.Do("MONITOR")
-	// checkFatal(err)
-	// for {
-	// 	line, _ := redis.String(redisconn.Receive())
-	// 	fmt.Printf("%s\n", line)
-	// }
-
-	// XXX switch to redis/monitor someday
-	addr, err := getDefRouteIntfAddrIPv4()
-	checkFatal(err)
-
-	//get channelid, hmackey
+func parseFtlKey() (chanid32 uint32, chanidstr string, hmackey string, err error) {
 	ftlsplit := strings.Split(*ftlKey, "-")
 	if len(ftlsplit) != 2 {
-		elog.Fatalln("fatal: bad stream key in --ftl-key")
+		return 0, "", "", fmt.Errorf("fatal: bad stream key in --ftl-key")
 	}
 	chanidStr := ftlsplit[0]
 	chanid64, err := strconv.ParseInt(chanidStr, 10, 64)
+	if err != nil {
+		return 0, "", "", fmt.Errorf("fatal: bad stream key in --ftl-key")
+	}
+
+	return uint32(chanid64), chanidStr, hmackey, nil
+}
+
+// do two things:
+// create udp socket, and receive rtp on it
+// create tcp socket, and dial and register with proxy on it
+func clusterFtlReceive(ctx context.Context, udpconn net.PacketConn) {
+	var err error
+
+	chanid, _, _, err := parseFtlKey()
 	checkFatal(err)
-	chanid := uint32(chanid64)
-	hmackey := ftlsplit[1]
-	userkey := "user:" + chanidStr + ":ftl"
 
-	addrport := fmt.Sprintf("%s:%d", addr, udpaddr.Port)
+	// don't use 8084, so we can test everything on the same box
 
-	go func() {
-
-		/*
-			there is a race here, but it is okay.
-			the ftl-proxy might see an SFU in redis, after the SFU disappears
-			but, the packets comming from the the proxy should get Icmp bounced
-			causing unix.ECONNREFUSED error back to the proxy.
-			The proxy will see these and give up eventually.
-			look for unix.ECONNREFUSED in the proxy.
-		*/
-		defer udpconn.Close() //not really needed, but good habit
-
-		for {
-			err = rconn.Send("MULTI")
-			checkFatal(err)
-			err = rconn.Send("hmset", userkey,
-				"hmackey", hmackey, "addr.port", addrport)
-			checkFatal(err)
-			err = rconn.Send("EXPIRE", userkey, "2")
-			checkFatal(err)
-			rr, err := redis.Values(rconn.Do("EXEC"))
-			checkFatal(err)
-			if rr[0].(string) != "OK" {
-				checkFatal(fmt.Errorf("redis exec fail %w", err))
-			}
-			time.Sleep(time.Second)
-		}
-	}()
+	elog.Println("rtp rx addr", udpconn.LocalAddr())
 
 	lastudp := time.Now()
 	buf := make([]byte, 2000)
@@ -1538,6 +1530,11 @@ func clusterFtlReceive(rconn redis.Conn) {
 	//connected := false
 	active := false
 	for {
+		select {
+		case <-ctx.Done():
+			return // returning not to leak the goroutine
+		default:
+		}
 
 		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
 		checkFatal(err)
@@ -1721,6 +1718,118 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 	return true //okay
 }
 
-func registerDomainOnRedis(rconn redis.Conn, domain string) {
+func clusterHttpsRedisRegister(ctx context.Context, domain string, myip net.IP, port int) {
 
+	const lockdur = time.Duration(2 * time.Second)
+
+	nx := strconv.Itoa(int(lockdur / time.Millisecond))
+
+	/*
+		there is a race here, but it is okay.
+		if the sfu diseappears, but the proxy still finds it in redis,
+		the https request will fail.
+	*/
+
+	key1 := "domain:" + domain + ":lock"
+	key2 := "domain:" + domain + ":addrport"
+	addrport := fmt.Sprintf("%s:%d", myip, port)
+
+	rconn := redisPool.Get()
+	defer rconn.Close()
+
+	lock, err := redisLocker.Obtain(key1, lockdur, nil)
+	defer func() { _ = lock.Release() }()
+	checkFatal(err)
+
+	for {
+
+		select {
+		case <-ctx.Done():
+			return // returning not to leak the goroutine
+		case <-time.NewTimer(lockdur / 2).C:
+		}
+		err = lock.Refresh(lockdur, nil)
+		checkFatal(err)
+
+		rr, err := rconn.Do("set", key2, addrport, "nx", nx)
+		checkFatal(err)
+		checkRedisOk(rr)
+	}
+
+}
+func checkRedisOk(rr interface{}) {
+	if rr != "OK" {
+		_, fileName, fileLine, _ := runtime.Caller(1)
+		elog.Fatalf("FATAL %s:%d redis not ok: %#v", filepath.Base(fileName), fileLine, rr)
+	}
+}
+
+func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
+
+	const lockdur = time.Duration(2 * time.Second)
+	nx := strconv.Itoa(int(lockdur / time.Millisecond))
+
+	/*
+		there is a race here, but it is okay.
+		the ftl-proxy might see an SFU in redis, after the SFU disappears
+		but, the packets comming from the the proxy should get Icmp bounced
+		causing unix.ECONNREFUSED error back to the proxy.
+		The proxy will see these and give up eventually.
+		look for unix.ECONNREFUSED in the proxy.
+	*/
+
+	_, chanidstr, hmackey, err := parseFtlKey()
+	checkFatal(err)
+	key1 := "ftl:" + chanidstr + ":lock"
+	key2 := "ftl:" + chanidstr + ":addrport"
+	key3 := "ftl:" + chanidstr + ":hmackey"
+	addrport := fmt.Sprintf("%s:%d", privateip, port)
+
+	rconn := redisPool.Get()
+	defer rconn.Close()
+
+	lock, err := redisLocker.Obtain(key1, lockdur, nil)
+	defer func() { _ = lock.Release() }()
+	checkFatal(err)
+
+	for {
+
+		select {
+		case <-ctx.Done():
+			return // returning not to leak the goroutine
+		case <-time.NewTimer(lockdur / 2).C:
+		}
+		err = lock.Refresh(lockdur, nil)
+		checkFatal(err)
+
+		rr, err := rconn.Do("set", key2, addrport, "nx", nx)
+		checkFatal(err)
+		checkRedisOk(rr)
+
+		rr, err = rconn.Do("set", key3, hmackey, "nx", nx)
+		checkFatal(err)
+		checkRedisOk(rr)
+
+	}
+
+}
+
+func getMyIPFromRedis(ctx context.Context) net.IP {
+	rconn, err := redisPool.GetContext(ctx)
+	checkFatal(err)
+	defer rconn.Close()
+
+	line, err := redigo.String(rconn.Do("client", "info"))
+	checkFatal(err)
+
+	addr := ""
+	foo := int64(0)
+	n, err := fmt.Sscanf(line, "id=%d addr=%s ", &foo, &addr)
+	checkFatal(err)
+
+	if n != 2 {
+		checkFatal(fmt.Errorf("unable to get IP from redis clientline:%v", line))
+	}
+
+	return net.ParseIP(addr)
 }
