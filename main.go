@@ -220,13 +220,11 @@ func newRedisPool() {
 func main() {
 	var err error
 
-	parseAndHandleFlags()
+	parseAndHandleFlags() //if !strings.HasSuffix(os.Args[0], ".test") {
+
 	if *pprofFlag {
 		elog.Fatal(http.ListenAndServe(":6060", nil))
 	}
-	time.Sleep(time.Hour)
-
-	//if !strings.HasSuffix(os.Args[0], ".test") {
 
 	validateEmbedFiles()
 	go logGoroutineCountToDebugLog()
