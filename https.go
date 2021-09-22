@@ -26,10 +26,10 @@ type DDNSUnion interface {
 	libdns.RecordSetter
 }
 
-func startHttpsListener(hostport string, mux *http.ServeMux) {
+func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeMux) {
 	var err error
 
-	host, port, err := net.SplitHostPort(hostport)
+	host, _, err := net.SplitHostPort(hostport)
 	checkFatal(err)
 
 	httpsHasCertificate := make(chan bool)
@@ -92,8 +92,6 @@ func startHttpsListener(hostport string, mux *http.ServeMux) {
 	// 	tlsConfig.MinVersion = 0
 	// }
 
-	laddr := ":" + port
-
 	go func() {
 		time.Sleep(time.Second)
 		reportOpenPort(hostport, "tcp4")
@@ -106,7 +104,7 @@ func startHttpsListener(hostport string, mux *http.ServeMux) {
 
 	//small race condition
 
-	httpsLn, err := tls.Listen("tcp", laddr, tlsConfig)
+	httpsLn := tls.NewListener(listener, tlsConfig)
 	checkFatal(err)
 	err = http.Serve(httpsLn, mux)
 	checkFatal(err)
