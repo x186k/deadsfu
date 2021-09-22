@@ -4,6 +4,8 @@ go 1.16
 
 require (
 	github.com/caddyserver/certmagic v0.14.5
+	github.com/cameronelliott/redislock v0.0.0-20210921213343-e1aca42b3191 // indirect
+	github.com/go-redsync/redsync/v4 v4.4.1
 	github.com/gomodule/redigo v1.8.5
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
