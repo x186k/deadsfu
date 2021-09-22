@@ -41,6 +41,7 @@ var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also r
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlFromDiskFlag = pflag.Bool("html-from-disk", false, "do not use embed html, use files from disk")
 var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
+var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :6060")
 var debug = pflag.StringSlice("debug", []string{}, "comma separated list of debug flags. use 'help' for details")
 var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
 

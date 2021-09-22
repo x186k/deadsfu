@@ -46,6 +46,8 @@ import (
 	"github.com/cameronelliott/redislock"
 	redislockx "github.com/cameronelliott/redislock/examples/redigo/redisclient"
 	redigo "github.com/gomodule/redigo/redis"
+
+	_ "net/http/pprof"
 )
 
 var lastVideoRxTime time.Time
@@ -184,38 +186,15 @@ func logGoroutineCountToDebugLog() {
 	}
 }
 
-// var pcapFile *os.File
-// var pcapWr *pcapgo.Writer
 var rtpoutConn *net.UDPConn
 
-//var startTime time.Time = time.Now()
-
-// should this be 'init' or 'initXXX'
-// if we want this func to be called everyttime we run tests, then
-// it should be init(), otherwise initXXX()
-// I suppose testing in this package/dir should be related to the
-// running SFU engine, so we use 'init()'
-// But! this means we need to determine if we are a test or not,
-// so we can not call flag.Parse() or not
 func init() {
+}
 
+func validateEmbedFiles() {
 	if _, err := htmlContent.ReadFile("html/index.html"); err != nil {
 		panic("index.html failed to embed correctly")
 	}
-
-	istest := strings.HasSuffix(os.Args[0], ".test")
-	if !istest {
-		parseAndHandleFlags()
-	}
-
-	go logGoroutineCountToDebugLog()
-
-	go idleLoopPlayer()
-
-	// XXX msgLoop touches rxid2state, so we have 2 GR touching a map
-	// but, let's be honest, it's the only toucher of rxid2state after this point
-	// so, probably okay
-	go msgLoop()
 }
 
 func newRedisPool() {
@@ -240,6 +219,19 @@ func newRedisPool() {
 
 func main() {
 	var err error
+
+	parseAndHandleFlags()
+	if *pprofFlag {
+		elog.Fatal(http.ListenAndServe(":6060", nil))
+	}
+	time.Sleep(time.Hour)
+
+	//if !strings.HasSuffix(os.Args[0], ".test") {
+
+	validateEmbedFiles()
+	go logGoroutineCountToDebugLog()
+	go idleLoopPlayer()
+	go msgLoop()
 
 	ctx := context.Background()
 
