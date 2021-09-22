@@ -335,7 +335,7 @@ func main() {
 
 			port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
 			privateip := getMyIPFromRedis(ctx)
-			go clusterHttpsRedisRegister(ctx, *httpsDomain, privateip, port)
+			go clusterSniRedisRegister(ctx, *httpsDomain, privateip, port)
 
 		}
 
@@ -1620,7 +1620,7 @@ func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 	defer ln.Close()
 
 	for {
-		inf.Println("ftl/waiting for accept")
+		inf.Println("ftl/waiting for accept on:", ln.Addr())
 
 		netconn, err := ln.Accept()
 		if err != nil {
@@ -1736,11 +1736,11 @@ func isMysteryOBSFTL(p rtp.Packet) (ok bool) {
 	return true
 }
 
-func clusterHttpsRedisRegister(ctx context.Context, domain string, myip net.IP, port int) {
+func clusterSniRedisRegister(ctx context.Context, domain string, myip net.IP, port int) {
 
-	const lockdur = time.Duration(2 * time.Second)
+	const lockperiod = time.Duration(2 * time.Second)
 
-	px := strconv.Itoa(int(lockdur / time.Millisecond))
+	px := strconv.Itoa(int(lockperiod / time.Millisecond))
 
 	/*
 		there is a race here, but it is okay.
@@ -1748,14 +1748,17 @@ func clusterHttpsRedisRegister(ctx context.Context, domain string, myip net.IP, 
 		the https request will fail.
 	*/
 
-	key1 := "domain:" + domain + ":lock"
-	key2 := "domain:" + domain + ":addrport"
+	host, _, err := net.SplitHostPort(domain)
+	checkFatal(err)
+
+	key1 := "domain:" + host + ":lock"
+	key2 := "domain:" + host + ":addrport"
 	addrport := fmt.Sprintf("%s:%d", myip, port)
 
 	rconn := redisPool.Get()
 	defer rconn.Close()
 
-	lock, err := redisLocker.Obtain(key1, lockdur, nil)
+	lock, err := redisLocker.Obtain(key1, lockperiod, nil)
 	defer func() { _ = lock.Release() }()
 	checkFatal(err)
 
@@ -1764,9 +1767,9 @@ func clusterHttpsRedisRegister(ctx context.Context, domain string, myip net.IP, 
 		select {
 		case <-ctx.Done():
 			return // returning not to leak the goroutine
-		case <-time.NewTimer(lockdur / 2).C:
+		case <-time.NewTimer(lockperiod / 2).C:
 		}
-		err = lock.Refresh(lockdur, nil)
+		err = lock.Refresh(lockperiod, nil)
 		checkFatal(err)
 
 		rr, err := rconn.Do("set", key2, addrport, "px", px)
@@ -1784,8 +1787,8 @@ func checkRedisOk(rr interface{}) {
 
 func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
 
-	const lockdur = time.Duration(2 * time.Second)
-	px := strconv.Itoa(int(lockdur / time.Millisecond))
+	const lockperiod = time.Duration(2 * time.Second)
+	px := strconv.Itoa(int(lockperiod / time.Millisecond))
 
 	/*
 		there is a race here, but it is okay.
@@ -1806,7 +1809,7 @@ func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
 	rconn := redisPool.Get()
 	defer rconn.Close()
 
-	lock, err := redisLocker.Obtain(key1, lockdur, nil)
+	lock, err := redisLocker.Obtain(key1, lockperiod, nil)
 	defer func() { _ = lock.Release() }()
 	checkFatal(err)
 
@@ -1815,9 +1818,9 @@ func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
 		select {
 		case <-ctx.Done():
 			return // returning not to leak the goroutine
-		case <-time.NewTimer(lockdur / 2).C:
+		case <-time.NewTimer(lockperiod / 2).C:
 		}
-		err = lock.Refresh(lockdur, nil)
+		err = lock.Refresh(lockperiod, nil)
 		checkFatal(err)
 
 		rr, err := rconn.Do("set", key2, addrport, "px", px)
