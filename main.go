@@ -323,6 +323,7 @@ func main() {
 
 	}
 
+	// https
 	if *httpsDomain != "" {
 
 		_, port, err := net.SplitHostPort(*httpsDomain)
@@ -336,11 +337,11 @@ func main() {
 			privateip := getMyIPFromRedis(ctx)
 			go clusterHttpsRedisRegister(ctx, *httpsDomain, privateip, port)
 
-		} else {
-
-			go startHttpsListener(ln, *httpsDomain, mux)
-
 		}
+
+		go startHttpsListener(ln, *httpsDomain, mux)
+
+		elog.Println("SFU HTTPS IS READY ON", ln.Addr())
 
 	}
 
