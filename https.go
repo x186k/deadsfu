@@ -83,7 +83,12 @@ func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeM
 
 	// this call is why we don't use higher level certmagic functions
 	// so agreement isn't always so verbose
-	err = magic.ManageAsync(context.Background(), []string{host})
+	// normally call
+	// magic.ManageAsync()
+	// magic.ManageSync()
+	// magic.ManageSyncContext()
+	// this is effectivly the same as ManageSyncContext()
+	_, err = magic.ClientCredentials(context.Background(), []string{host})
 	checkFatal(err)
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
