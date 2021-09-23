@@ -19,7 +19,6 @@ import (
 	"log"
 	"path/filepath"
 	"runtime"
-	"sync"
 
 	"net/http"
 	"os"
@@ -54,8 +53,10 @@ var lastVideoRxTime time.Time
 
 var sendingIdleVid bool
 
-var redisPool *redigo.Pool
-var redisLocker *redislock.Client
+var (
+	redisPool   *redigo.Pool
+	redisLocker *redislock.Client
+)
 
 //go:embed html/*
 var htmlContent embed.FS
@@ -73,16 +74,6 @@ var peerConnectionConfig = webrtc.Configuration{
 
 var myMetrics struct {
 	dialConnectionRefused uint64
-}
-
-//XXX remove
-var _ = &rtpPacketPool
-
-// nolint:gochecknoglobals
-var rtpPacketPool = sync.Pool{
-	New: func() interface{} {
-		return &rtp.Packet{}
-	},
 }
 
 // https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
@@ -218,6 +209,8 @@ func newRedisPool() {
 }
 
 func main() {
+	println("deadsfu Version " + Version)
+
 	var err error
 
 	parseAndHandleFlags() //if !strings.HasSuffix(os.Args[0], ".test") {
@@ -232,8 +225,6 @@ func main() {
 	go msgLoop()
 
 	ctx := context.Background()
-
-	println("deadsfu Version " + Version)
 
 	log.Println("NumGoroutine", runtime.NumGoroutine())
 
@@ -276,11 +267,6 @@ func main() {
 	if !dialingout {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
-
-	// if *clusterMode && *httpsDomain == "" {
-	// 	elog.Fatalln("--https-domain must be used with --cluster--mode")
-	// 	os.Exit(0)
-	// }
 
 	if *httpFlag == "" && *httpsDomain == "" {
 		Usage()
