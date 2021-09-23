@@ -3,7 +3,7 @@ module github.com/x186k/deadsfu
 go 1.16
 
 require (
-	github.com/caddyserver/certmagic v0.14.5
+	github.com/caddyserver/certmagic v0.14.6-0.20210923203551-1bbe11e2914b
 	github.com/cameronelliott/redislock v0.0.0-20210921213343-e1aca42b3191
 	github.com/gomodule/redigo v1.8.5
 	github.com/google/uuid v1.3.0 // indirect

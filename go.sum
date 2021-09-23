@@ -1,6 +1,6 @@
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/caddyserver/certmagic v0.14.5 h1:y4HcFzLLBMsTv8sSlAPj5K55mvntX8e8ExcmB/lhO6w=
-github.com/caddyserver/certmagic v0.14.5/go.mod h1:/0VQ5og2Jxa5yBQ8eT80wWS7fi/DgNy1uXeXRUJ1Wj0=
+github.com/caddyserver/certmagic v0.14.6-0.20210923203551-1bbe11e2914b h1:lIVMaA+OyTC/871QwU65Oaa6Lz1dHgr/TbNDO4iB4pM=
+github.com/caddyserver/certmagic v0.14.6-0.20210923203551-1bbe11e2914b/go.mod h1:/0VQ5og2Jxa5yBQ8eT80wWS7fi/DgNy1uXeXRUJ1Wj0=
 github.com/cameronelliott/redislock v0.0.0-20210921213343-e1aca42b3191 h1:Dn0RCHdxd7cL5maRlY3Z661/+US8psZWKSejEOO8YmU=
 github.com/cameronelliott/redislock v0.0.0-20210921213343-e1aca42b3191/go.mod h1:vu9VnXj1Hw/M9DVHuzHGhdU6cPN6aTJGB8pxsqpWdbw=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
