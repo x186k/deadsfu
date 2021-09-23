@@ -106,7 +106,10 @@ func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeM
 
 	httpsLn := tls.NewListener(listener, tlsConfig)
 	checkFatal(err)
-	err = http.Serve(httpsLn, mux)
+	// err = http.Serve(httpsLn, mux)
+	// checkFatal(err)
+	srv := &http.Server{Handler: mux}
+	err = srv.Serve(httpsLn)
 	checkFatal(err)
 
 }
