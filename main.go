@@ -222,6 +222,10 @@ func main() {
 	validateEmbedFiles()
 	go logGoroutineCountToDebugLog()
 
+	if *clusterMode {
+		newRedisPool()
+	}
+
 	startSFU()
 }
 
@@ -272,9 +276,6 @@ func startSFU() {
 	if conf.Http == "" && conf.HttpsDomain == "" {
 		Usage()
 		os.Exit(-1)
-	}
-	if *clusterMode {
-		newRedisPool()
 	}
 
 	if *ftlKey != "" {
