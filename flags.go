@@ -16,18 +16,29 @@ import (
 	"github.com/x186k/ddns5libdns"
 )
 
+type Config struct {
+	Http        string
+	HttpsDomain string
+}
+
+var conf Config
+
+func configPflag() {
+
+	pflag.StringVar(&conf.Http, "http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
+	pflag.StringVarP(&conf.HttpsDomain, "https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
+
+}
+
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
-
-var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 
 var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
 var clusterMode = pflag.Bool("cluster-mode", false, "non-standalone DeadSFU mode. Requires REDIS. See docs. env var: REDIS_URL must be set!")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
-var httpsDomain = pflag.StringP("https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
 var httpsDnsProvider = pflag.StringP("https-dns-provider", "2", "", "One of ddns5, duckdns or cloudflare")
 var httpsDnsRegisterIp = pflag.BoolP("https-dns-register-ip", "3", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Uses interface addrs")
 var httpsDnsRegisterIpPublic = pflag.BoolP("https-dns-register-ip-public", "4", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Detects public addrs")
@@ -65,6 +76,8 @@ var Usage = func() {
 }
 
 func parseAndHandleFlags() {
+
+	configPflag()
 
 	//we do this to eliminate double error message on -z
 	//hack city
@@ -124,18 +137,18 @@ func parseAndHandleFlags() {
 		checkFatal(err)
 	}
 
-	if *httpsDomain != "" {
-		if *httpsDomain == "help" {
+	if conf.HttpsDomain != "" {
+		if conf.HttpsDomain == "help" {
 			println(httpsHelp)
 			os.Exit(0)
 		}
 
-		_, _, err := net.SplitHostPort(*httpsDomain)
+		_, _, err := net.SplitHostPort(conf.HttpsDomain)
 		if err != nil && strings.Contains(err.Error(), "missing port") {
-			foo := *httpsDomain + ":443"
-			httpsDomain = &foo
+			foo := conf.HttpsDomain + ":443"
+			conf.HttpsDomain = foo
 		}
-		host, _, err := net.SplitHostPort(*httpsDomain)
+		host, _, err := net.SplitHostPort(conf.HttpsDomain)
 		checkFatal(err)
 
 		var provider DDNSUnion
