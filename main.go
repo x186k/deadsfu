@@ -166,14 +166,14 @@ var medialog = log.New(io.Discard, "", 0)
 var ddnslog = log.New(io.Discard, "", 0)
 
 func logGoroutineCountToDebugLog() {
-	n := runtime.NumGoroutine()
+	n := -1
 	for {
-		time.Sleep(2 * time.Second)
 		nn := runtime.NumGoroutine()
 		if nn != n {
 			log.Println("NumGoroutine", nn)
 			n = nn
 		}
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -211,27 +211,28 @@ func newRedisPool() {
 func main() {
 	println("deadsfu Version " + Version)
 
-	var err error
-
 	parseAndHandleFlags() //if !strings.HasSuffix(os.Args[0], ".test") {
 
 	if *pprofFlag {
-		elog.Fatal(http.ListenAndServe(":6060", nil))
+		go func() {
+			elog.Fatal(http.ListenAndServe(":6060", nil))
+		}()
 	}
 
 	validateEmbedFiles()
 	go logGoroutineCountToDebugLog()
-	go idleLoopPlayer()
-	go msgLoop()
+
+	startSFU()
+}
+
+func startSFU() {
+	var err error
 
 	ctx := context.Background()
 
-	log.Println("NumGoroutine", runtime.NumGoroutine())
+	go idleLoopPlayer()
+	go msgLoop()
 
-	// BEYOND HERE is needed for real operation
-	// but is not needed for unit testing
-
-	// MUX setup
 	mux := http.NewServeMux()
 
 	if !*disableHtml {
@@ -268,7 +269,7 @@ func main() {
 		mux.HandleFunc(pubPath, pubHandler)
 	}
 
-	if *httpFlag == "" && *httpsDomain == "" {
+	if conf.Http == "" && conf.HttpsDomain == "" {
 		Usage()
 		os.Exit(-1)
 	}
@@ -300,9 +301,9 @@ func main() {
 	}
 
 	// https
-	if *httpsDomain != "" {
+	if conf.HttpsDomain != "" {
 
-		_, port, err := net.SplitHostPort(*httpsDomain)
+		_, port, err := net.SplitHostPort(conf.HttpsDomain)
 		checkFatal(err)
 		ln, err := net.Listen("tcp", ":"+port)
 		checkFatal(err)
@@ -311,11 +312,11 @@ func main() {
 
 			port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
 			privateip := getMyIPFromRedis(ctx)
-			go clusterSniRedisRegister(ctx, *httpsDomain, privateip, port)
+			go clusterSniRedisRegister(ctx, conf.HttpsDomain, privateip, port)
 
 		}
 
-		go startHttpsListener(ln, *httpsDomain, mux)
+		go startHttpsListener(ln, conf.HttpsDomain, mux)
 
 		elog.Println("SFU HTTPS IS READY ON", ln.Addr())
 
@@ -323,12 +324,12 @@ func main() {
 
 	// http
 	go func() {
-		ln, err := net.Listen("tcp", *httpFlag)
+		ln, err := net.Listen("tcp", conf.Http)
 		checkFatal(err)
 
 		elog.Println("SFU HTTP IS READY ON", ln.Addr())
 
-		if *httpsDomain != "" {
+		if conf.HttpsDomain != "" {
 			a := certmagic.DefaultACME.HTTPChallengeHandler(mux)
 			panic(http.Serve(ln, a))
 		} else {
