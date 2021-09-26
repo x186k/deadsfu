@@ -179,9 +179,6 @@ func logGoroutineCountToDebugLog() {
 
 var rtpoutConn *net.UDPConn
 
-func init() {
-}
-
 func validateEmbedFiles() {
 	if _, err := htmlContent.ReadFile("html/index.html"); err != nil {
 		panic("index.html failed to embed correctly")
@@ -208,74 +205,48 @@ func newRedisPool() {
 	redisLocker = redislock.New(redislockx.NewRedisLockClient(redisPool))
 }
 
+func init() {
+	validateEmbedFiles()
+	go logGoroutineCountToDebugLog()
+}
+
 func main() {
 	println("deadsfu Version " + Version)
 
-	parseAndHandleFlags() //if !strings.HasSuffix(os.Args[0], ".test") {
-
-	if *pprofFlag {
-		go func() {
-			elog.Fatal(http.ListenAndServe(":6060", nil))
-		}()
-	}
-
-	validateEmbedFiles()
-	go logGoroutineCountToDebugLog()
-
-	if *clusterMode {
-		newRedisPool()
-	}
-
-	startSFU()
-}
-
-func startSFU() {
-	var err error
-
-	ctx := context.Background()
-
-	go idleLoopPlayer()
-	go msgLoop()
-
-	mux := http.NewServeMux()
-
-	if !*disableHtml {
-
-		var f fs.FS
-
-		if *htmlFromDiskFlag {
-			f = os.DirFS("html")
-		} else {
-			f, err = fs.Sub(htmlContent, "html")
-			checkFatal(err)
-		}
-
-		mux.Handle("/", http.FileServer(http.FS(f)))
-		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
-			x, err := getDefRouteIntfAddrIPv4()
-			if err == nil {
-				_, _ = rw.Write([]byte(x.String()))
-			}
-		})
-		mux.HandleFunc("/ipv6", func(rw http.ResponseWriter, r *http.Request) {
-			x, err := getDefRouteIntfAddrIPv6()
-			if err == nil {
-				_, _ = rw.Write([]byte(x.String()))
-			}
-		})
-
-	}
-	mux.HandleFunc(subPath, SubHandler)
-
-	dialingout := *dialIngressURL != ""
-
-	if !dialingout {
-		mux.HandleFunc(pubPath, pubHandler)
-	}
+	conf := parseFlags()
+	oneTimeFlagsActions(&conf) //if !strings.HasSuffix(os.Args[0], ".test") {
 
 	if conf.Http == "" && conf.HttpsDomain == "" {
 		Usage()
 		os.Exit(-1)
+	}
+
+	go idleLoopPlayer()
+	go msgLoop()
+
+	mux, err := setupMux(conf)
+	checkFatal(err)
+
+	if conf.Http != "" {
+		ln, err := net.Listen("tcp", conf.Http)
+		checkFatal(err)
+		var mux2 http.Handler = mux
+		if conf.HttpsDomain != "" {
+			mux2 = certmagic.DefaultACME.HTTPChallengeHandler(mux)
+		}
+		server := &http.Server{Handler: mux2}
+		elog.Println("SFU HTTP IS READY ON", ln.Addr())
+
+		go func() {
+			checkFatal(server.Serve(ln))
+		}()
+	}
+
+	ctx := context.Background() // not really used well
+
+	if conf.HttpsDomain != "" {
+		go startHttpsListener(ctx, conf.HttpsDomain, mux)
+		panic("no")
 	}
 
 	if *ftlKey != "" {
@@ -291,7 +262,10 @@ func startSFU() {
 
 			go clusterFtlReceive(ctx, ftludp) //recieve udp loop
 
-			go clusterFtlRedisRegister(ctx, privateip, ftlport) // register with redis loop
+			go func() {
+				clusterFtlRedisRegister(privateip, ftlport) // register with redis loop
+				panic("no")
+			}()
 
 		} else {
 
@@ -302,41 +276,6 @@ func startSFU() {
 	}
 
 	// https
-	if conf.HttpsDomain != "" {
-
-		_, port, err := net.SplitHostPort(conf.HttpsDomain)
-		checkFatal(err)
-		ln, err := net.Listen("tcp", ":"+port)
-		checkFatal(err)
-
-		if *clusterMode {
-
-			port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
-			privateip := getMyIPFromRedis(ctx)
-			go clusterSniRedisRegister(ctx, conf.HttpsDomain, privateip, port)
-
-		}
-
-		go startHttpsListener(ln, conf.HttpsDomain, mux)
-
-		elog.Println("SFU HTTPS IS READY ON", ln.Addr())
-
-	}
-
-	// http
-	go func() {
-		ln, err := net.Listen("tcp", conf.Http)
-		checkFatal(err)
-
-		elog.Println("SFU HTTP IS READY ON", ln.Addr())
-
-		if conf.HttpsDomain != "" {
-			a := certmagic.DefaultACME.HTTPChallengeHandler(mux)
-			panic(http.Serve(ln, a))
-		} else {
-			panic(http.Serve(ln, mux))
-		}
-	}()
 
 	//the user can specify zero for port, and Linux/etc will choose a port
 
@@ -364,6 +303,51 @@ func startSFU() {
 	time.Sleep(time.Duration(*cpuprofile) * time.Second)
 
 	println("profiling done, exit")
+}
+
+func setupMux(conf SfuConfig) (*http.ServeMux, error) {
+	var err error
+
+	mux := http.NewServeMux()
+
+	if !*disableHtml {
+
+		var f fs.FS
+
+		if *htmlFromDiskFlag {
+			f = os.DirFS("html")
+		} else {
+			f, err = fs.Sub(htmlContent, "html")
+			if err != nil {
+				return nil, fmt.Errorf("fs.sub %w", err)
+			}
+			checkFatal(err)
+		}
+
+		mux.Handle("/", http.FileServer(http.FS(f)))
+		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
+			x, err := getDefRouteIntfAddrIPv4()
+			if err == nil {
+				_, _ = rw.Write([]byte(x.String()))
+			}
+		})
+		mux.HandleFunc("/ipv6", func(rw http.ResponseWriter, r *http.Request) {
+			x, err := getDefRouteIntfAddrIPv6()
+			if err == nil {
+				_, _ = rw.Write([]byte(x.String()))
+			}
+		})
+
+	}
+	mux.HandleFunc(subPath, SubHandler)
+
+	dialingout := *dialIngressURL != ""
+
+	if !dialingout {
+		mux.HandleFunc(pubPath, pubHandler)
+	}
+
+	return mux, nil
 }
 
 func newPeerConnection() *webrtc.PeerConnection {
@@ -1733,37 +1717,36 @@ func clusterSniRedisRegister(ctx context.Context, domain string, myip net.IP, po
 	key2 := "domain:" + host + ":addrport"
 	addrport := fmt.Sprintf("%s:%d", myip, port)
 
-	rconn := redisPool.Get()
+	rconn, err := redisPool.GetContext(ctx)
+	checkFatal(err)
 	defer rconn.Close()
 
 	lock, err := redisLocker.Obtain(key1, lockperiod, nil)
-	defer func() { _ = lock.Release() }()
 	checkFatal(err)
+	defer func() { _ = lock.Release() }()
 
 	for {
 
 		select {
 		case <-ctx.Done():
-			return // returning not to leak the goroutine
+			checkFatal(ctx.Err()) //XXX
+
 		case <-time.NewTimer(lockperiod / 2).C:
+
 		}
 		err = lock.Refresh(lockperiod, nil)
 		checkFatal(err)
 
 		rr, err := rconn.Do("set", key2, addrport, "px", px)
 		checkFatal(err)
-		checkRedisOk(rr)
+		if rr != "OK" {
+			checkFatal(fmt.Errorf("Redis not OK: %s", rr))
+		}
 	}
 
 }
-func checkRedisOk(rr interface{}) {
-	if rr != "OK" {
-		_, fileName, fileLine, _ := runtime.Caller(1)
-		elog.Fatalf("FATAL %s:%d redis not ok: %#v", filepath.Base(fileName), fileLine, rr)
-	}
-}
 
-func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
+func clusterFtlRedisRegister(privateip net.IP, port int) {
 
 	const lockperiod = time.Duration(2 * time.Second)
 	px := strconv.Itoa(int(lockperiod / time.Millisecond))
@@ -1779,38 +1762,43 @@ func clusterFtlRedisRegister(ctx context.Context, privateip net.IP, port int) {
 
 	_, chanidstr, hmackey, err := parseFtlKey()
 	checkFatal(err)
+
 	key1 := "ftl:" + chanidstr + ":lock"
 	key2 := "ftl:" + chanidstr + ":addrport"
 	key3 := "ftl:" + chanidstr + ":hmackey"
 	addrport := fmt.Sprintf("%s:%d", privateip, port)
 
-	rconn := redisPool.Get()
+	rconn, err := redisPool.GetContext(context.Background())
+	checkFatal(err)
 	defer rconn.Close()
 
 	lock, err := redisLocker.Obtain(key1, lockperiod, nil)
-	defer func() { _ = lock.Release() }()
 	checkFatal(err)
+	defer func() { _ = lock.Release() }()
 
 	for {
 
-		select {
-		case <-ctx.Done():
-			return // returning not to leak the goroutine
-		case <-time.NewTimer(lockperiod / 2).C:
-		}
+		<-time.NewTimer(lockperiod / 2).C
+
 		err = lock.Refresh(lockperiod, nil)
 		checkFatal(err)
 
 		rr, err := rconn.Do("set", key2, addrport, "px", px)
 		checkFatal(err)
-		checkRedisOk(rr)
+		if rr != "OK" {
+			checkFatal(fmt.Errorf("Redis not OK: %s", rr))
+		}
 
 		rr, err = rconn.Do("set", key3, hmackey, "px", px)
 		checkFatal(err)
-		checkRedisOk(rr)
+		if rr != "OK" {
+			checkFatal(fmt.Errorf("Redis not OK: %s", rr))
+		}
 
 	}
 
+	// unreachable
+	// return
 }
 
 func getMyIPFromRedis(ctx context.Context) net.IP {
