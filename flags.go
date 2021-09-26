@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -16,18 +17,9 @@ import (
 	"github.com/x186k/ddns5libdns"
 )
 
-type Config struct {
+type SfuConfig struct {
 	Http        string
 	HttpsDomain string
-}
-
-var conf Config
-
-func configPflag() {
-
-	pflag.StringVar(&conf.Http, "http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
-	pflag.StringVarP(&conf.HttpsDomain, "https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
-
 }
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
@@ -75,15 +67,15 @@ var Usage = func() {
 	fmt.Fprint(os.Stderr, "\nOne of --http or --https-domain is required\n\n")
 }
 
-func parseAndHandleFlags() {
+func parseFlags() SfuConfig {
 
-	configPflag()
+	var conf SfuConfig
 
-	//we do this to eliminate double error message on -z
-	//hack city
-	//pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ContinueOnError)
+	pflag.StringVar(&conf.Http, "http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
+	pflag.StringVarP(&conf.HttpsDomain, "https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
+
 	pflag.Usage = Usage // my own usage handle
-	//this will print unknown flags errors twice, but just deal with it
+
 	pflag.Parse()
 	if *help {
 		Usage()
@@ -95,6 +87,20 @@ func parseAndHandleFlags() {
 	}
 
 	log.Default().SetOutput(io.Discard)
+
+	return conf
+}
+func oneTimeFlagsActions(conf *SfuConfig) {
+
+	if *pprofFlag {
+		go func() {
+			elog.Fatal(http.ListenAndServe(":6060", nil))
+		}()
+	}
+
+	if *clusterMode {
+		newRedisPool()
+	}
 
 	for _, v := range *debug {
 		switch v {
