@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -26,10 +28,17 @@ type DDNSUnion interface {
 	libdns.RecordSetter
 }
 
-func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeMux) {
+var _ = wrap
+
+func wrap(err error) error {
+	_, fileName, fileLine, _ := runtime.Caller(1)
+	return fmt.Errorf("at %s:%d %w", filepath.Base(fileName), fileLine, err)
+}
+
+func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux) {
 	var err error
 
-	host, _, err := net.SplitHostPort(hostport)
+	host, port, err := net.SplitHostPort(hostport)
 	checkFatal(err)
 
 	httpsHasCertificate := make(chan bool)
@@ -48,6 +57,7 @@ func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeM
 		DisableTLSALPNChallenge: false,
 	}
 	magic := certmagic.NewDefault()
+
 	magic.OnEvent = func(s string, i interface{}) {
 		_ = i
 		switch s {
@@ -73,25 +83,14 @@ func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeM
 		checkFatal(err)
 		mgrTemplate.Logger = logger
 	}
-	// use certmsgic for manual certificates, as it
-	// will manage oscp stapling
-	// CacheUnmanagedCertificatePEMBytes()
-	// CacheUnmanagedCertificatePEMFile()
-	// CacheUnmanagedTLSCertificate()
+
 	myACME := certmagic.NewACMEManager(magic, mgrTemplate)
 	magic.Issuers = []certmagic.Issuer{myACME}
-
-	// this call is why we don't use higher level certmagic functions
-	// so agreement isn't always so verbose
 
 	err = magic.ManageSync(context.Background(), []string{host})
 	checkFatal(err)
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
-
-	// if *tlsOldVersions { /// XXX only to work with cosmos OBS studio
-	// 	tlsConfig.MinVersion = 0
-	// }
 
 	go func() {
 		time.Sleep(time.Second)
@@ -103,16 +102,26 @@ func startHttpsListener(listener net.Listener, hostport string, mux *http.ServeM
 	}()
 	//elog.Printf("%v IS READY", httpsUrl.String())
 
-	//small race condition
-
-	httpsLn := tls.NewListener(listener, tlsConfig)
+	ln, err := net.Listen("tcp", ":"+port)
 	checkFatal(err)
+
+	//small race condition
+	if *clusterMode {
+		port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
+		privateip := getMyIPFromRedis(ctx)
+		go clusterSniRedisRegister(ctx, host, privateip, port)
+	}
+
+	httpsLn := tls.NewListener(ln, tlsConfig)
+	checkFatal(err)
+
+	elog.Println("SFU HTTPS IS READY ON", ln.Addr())
+
 	// err = http.Serve(httpsLn, mux)
 	// checkFatal(err)
 	srv := &http.Server{Handler: mux}
 	err = srv.Serve(httpsLn)
 	checkFatal(err)
-
 }
 
 // ddnsRegisterIPAddresses will register IP addresses to hostnames
