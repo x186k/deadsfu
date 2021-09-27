@@ -1,0 +1,30 @@
+name: Linter Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  linting:
+    name: Run the linter
+    # The type of runner that the job will run on
+    runs-on: ubuntu-20.04
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      # dont need lfs assets for linting
+      # with:
+      #   lfs: true
+      - uses: actions/setup-go@v2
+        with:
+          go-version: "^1.16.5" # The Go version to download (if necessary) and use.
+      - run: go version
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          #    version: v2.5.2
+          skip-go-installation: true
+          args: --skip-files pion.go

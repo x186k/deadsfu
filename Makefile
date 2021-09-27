@@ -15,10 +15,8 @@
 all:
 
 
-release: linter newtag dockerbuild binbuild
+release: newtag dockerbuild binbuild
 
-linter:
-	golangci-lint run
 
 
 newtag: 
