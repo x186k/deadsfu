@@ -11,4 +11,4 @@ jobs:
       - name: checkout repo
         uses: actions/checkout@v2
       - name: build application
-        run: make build
+        run: make release VER=${{ github.event.release.tag_name }}
