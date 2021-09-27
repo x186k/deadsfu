@@ -53,7 +53,7 @@ $(PLATFORMS):
 	GOOS=$(os) GOARCH=$(arch) go build -o $(binname) $(goflags) .
 	tar -czf $(bintarname) $(binname)
 	rm $(binname)
-	md5 -q $(bintarname) >$(bintarname).md5
+	openssl md5 -r $(bintarname) | sed 's/ .*//g'  >$(bintarname).md5
 
 .PHONY: release $(PLATFORMS)
 
