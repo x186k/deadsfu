@@ -18,7 +18,6 @@ all:
 
 # implies push
 build:
-	# you CANNOT do a build with dirty directory
 	@status=$$(git status --porcelain); \
 	if [ ! -z "$${status}" ]; \
 	then \
