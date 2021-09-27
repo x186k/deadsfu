@@ -43,6 +43,8 @@ goflags = -ldflags "-X main.Version=$(VER)"
 
 binbuild: cleardist $(PLATFORMS)
 	test "$$(git describe --tags)" = "$(VER)"
+	gh auth status
+	gh auth login
 	gh release create $(VER) --notes "" ./dist/*
 
 cleardist:
