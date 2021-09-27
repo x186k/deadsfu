@@ -15,7 +15,10 @@
 all:
 
 
-release: dockerbuild binbuild
+release: clonebinaries dockerbuild binbuild
+
+clonebinaries:
+	git clone https://github.com/x186k/deadsfu-binaries.git
 
 
 # implies push
