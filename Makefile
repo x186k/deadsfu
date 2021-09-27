@@ -43,7 +43,7 @@ goflags = -ldflags "-X main.Version=$(VER)"
 
 binbuild: cleardist $(PLATFORMS)
 	test "$$(git describe --tags)" = "$(VER)"
-	gh release upload $(VER) --clobber --notes "" ./dist/*
+	gh release upload $(VER) --clobber ./dist/*
 
 cleardist:
 	rm -rf dist
