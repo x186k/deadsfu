@@ -15,13 +15,7 @@
 all:
 
 
-release: newtag dockerbuild binbuild
-
-
-
-newtag: 
-	test -n "$(VER)"
-	git tag -m "" -a "$(VER)"
+release: dockerbuild binbuild
 
 
 # implies push
