@@ -39,7 +39,7 @@ os = $(word 1, $(temp))
 arch = $(word 2, $(temp))
 binname = dist/$(os)-$(arch)
 bintarname = $(binname).tar.gz
-goflags = -X main.Version="$(VER)"
+goflags = -ldflags "-X main.Version=$(VER)"
 
 binbuild: cleardist $(PLATFORMS)
 	test "$$(git describe --tags)" = "$(VER)"
