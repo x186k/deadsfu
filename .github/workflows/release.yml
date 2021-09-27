@@ -16,5 +16,9 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: checkout repo
         uses: actions/checkout@v2
+      - name: upgrade go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '^1.17.1' # The Go version to download (if necessary) and use.
       - name: build application
         run: make release VER=${{ github.event.release.tag_name }}
