@@ -191,8 +191,10 @@ func main() {
 
 	if *clusterMode {
 
+		newRedisPoolCerts(nil, nil, nil, false)
 
-		newRedisPoolCerts(crt, key, cacrt, string(redisurl), true)
+		checkRedis()
+
 	}
 
 	if conf.Http == "" && conf.HttpsDomain == "" {

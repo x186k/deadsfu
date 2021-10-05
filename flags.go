@@ -28,7 +28,7 @@ type SfuConfig struct {
 
 var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
 var clusterMode = pflag.Bool("cluster-mode", false, "non-standalone DeadSFU mode. Requires REDIS. See docs.")
-var clusterUrl = pflag.String("cluster-url", "", "url for cluster proxy server, eg: https://dead0.com")
+
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
 var httpsDnsProvider = pflag.StringP("https-dns-provider", "2", "", "One of ddns5, duckdns or cloudflare")

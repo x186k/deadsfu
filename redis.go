@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/url"
 	"os"
 
@@ -33,16 +32,9 @@ func newRedisPoolFiles() {
 	cacrt, err := ioutil.ReadFile("tests/tls/ca.crt")
 	checkFatal(err)
 
-	rurl := os.Getenv("REDIS_URL")
-	if rurl == "" {
-		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
-	}
-
-	newRedisPoolCerts(crt, key, cacrt, rurl)
+	newRedisPoolCerts(crt, key, cacrt, true)
 
 }
-
-var _ = checkRedis
 
 func checkRedis() {
 	rconn := redisPool.Get()
@@ -57,10 +49,15 @@ func checkRedis() {
 		elog.Fatalln("redis fail, expect: PONG, got:", pong)
 	}
 
-	log.Println("redis ping is good!")
+	elog.Println("redis ping is good!")
 }
 
-func newRedisPoolCerts(crt, key, cacrt []byte, rurl string) {
+func newRedisPoolCerts(crt, key, cacrt []byte, redisTls bool) {
+
+	rurl := os.Getenv("REDIS_URL")
+	if rurl == "" {
+		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
+	}
 
 	var do = make([]redigo.DialOption, 0)
 
@@ -68,7 +65,6 @@ func newRedisPoolCerts(crt, key, cacrt []byte, rurl string) {
 	checkFatal(err)
 	_ = uu
 
-	redisTls := true
 	if redisTls {
 		cert, err := tls.X509KeyPair(crt, key)
 		checkFatal(err)
