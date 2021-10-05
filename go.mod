@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/caddyserver/certmagic v0.14.6-0.20210923203551-1bbe11e2914b
 	github.com/cameronelliott/redislock v0.0.0-20210921213343-e1aca42b3191
-	github.com/gomodule/redigo v1.8.5
+	github.com/gomodule/redigo v1.8.6-0.20210930132055-56d644832b68
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libdns/cloudflare v0.1.0
