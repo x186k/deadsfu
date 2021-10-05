@@ -191,48 +191,8 @@ func main() {
 
 	if *clusterMode {
 
-		url := *clusterUrl
-		token := os.Getenv("CLUSTER_TOKEN")
 
-		if url == "" {
-			checkFatal(fmt.Errorf("--cluster-url must be set for cluster mode"))
-		}
-		if !strings.HasPrefix(strings.ToLower(url), "https://") {
-			checkFatal(fmt.Errorf("--cluster-url value must start with https://"))
-		}
-		if token == "" {
-			checkFatal(fmt.Errorf("CLUSTER_TOKEN must be set for cluster mode"))
-		}
-
-		//crt
-		r, err := http.NewRequest("GET", url+"/redis/crt", nil)
-		checkFatal(err)
-		r.Header.Add("Authorization", "Bearer "+token)
-		crt, err := ioutil.ReadAll(r.Body)
-		checkFatal(err)
-
-		//key
-		r, err = http.NewRequest("GET", url+"/redis/key", nil)
-		checkFatal(err)
-		r.Header.Add("Authorization", "Bearer "+token)
-		key, err := ioutil.ReadAll(r.Body)
-		checkFatal(err)
-
-		//cacrt
-		r, err = http.NewRequest("GET", url+"/redis/cacrt", nil)
-		checkFatal(err)
-		r.Header.Add("Authorization", "Bearer "+token)
-		cacrt, err := ioutil.ReadAll(r.Body)
-		checkFatal(err)
-
-		//redisurl
-		r, err = http.NewRequest("GET", url+"/redis/url", nil)
-		checkFatal(err)
-		r.Header.Add("Authorization", "Bearer "+token)
-		redisurl, err := ioutil.ReadAll(r.Body)
-		checkFatal(err)
-
-		newRedisPoolCerts(crt, key, cacrt, string(redisurl))
+		newRedisPoolCerts(crt, key, cacrt, string(redisurl), true)
 	}
 
 	if conf.Http == "" && conf.HttpsDomain == "" {
