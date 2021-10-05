@@ -27,8 +27,8 @@ type SfuConfig struct {
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 
 var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var clusterMode = pflag.Bool("cluster-mode", false, "non-standalone DeadSFU mode. Requires REDIS. See docs. env var: REDIS_URL must be set!")
-
+var clusterMode = pflag.Bool("cluster-mode", false, "non-standalone DeadSFU mode. Requires REDIS. See docs.")
+var clusterUrl = pflag.String("cluster-url", "", "url for cluster proxy server, eg: https://dead0.com")
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
 
 var httpsDnsProvider = pflag.StringP("https-dns-provider", "2", "", "One of ddns5, duckdns or cloudflare")
@@ -96,10 +96,6 @@ func oneTimeFlagsActions(conf *SfuConfig) {
 		go func() {
 			elog.Fatal(http.ListenAndServe(":6060", nil))
 		}()
-	}
-
-	if *clusterMode {
-		newRedisPool()
 	}
 
 	for _, v := range *debug {

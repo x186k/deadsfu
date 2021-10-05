@@ -42,8 +42,6 @@ import (
 
 	"github.com/x186k/ftlserver"
 
-	"github.com/cameronelliott/redislock"
-	redislockx "github.com/cameronelliott/redislock/examples/redigo/redisclient"
 	redigo "github.com/gomodule/redigo/redis"
 
 	_ "net/http/pprof"
@@ -52,11 +50,6 @@ import (
 var lastVideoRxTime time.Time
 
 var sendingIdleVid bool
-
-var (
-	redisPool   *redigo.Pool
-	redisLocker *redislock.Client
-)
 
 //go:embed html/*
 var htmlContent embed.FS
@@ -185,26 +178,6 @@ func validateEmbedFiles() {
 	}
 }
 
-func newRedisPool() {
-
-	url := os.Getenv("REDIS_URL")
-	if url == "" {
-		checkFatal(fmt.Errorf("REDIS_URL must be set for cluster mode"))
-	}
-
-	redisPool = &redigo.Pool{
-		MaxIdle:     3,
-		IdleTimeout: 5 * time.Second,
-		// Dial or DialContext must be set. When both are set, DialContext takes precedence over Dial.
-		DialContext: func(ctx context.Context) (redigo.Conn, error) {
-			return DialURLContext(ctx, url)
-		},
-	}
-
-	// threadsafe
-	redisLocker = redislock.New(redislockx.NewRedisLockClient(redisPool))
-}
-
 func init() {
 	validateEmbedFiles()
 	go logGoroutineCountToDebugLog()
@@ -215,6 +188,52 @@ func main() {
 
 	conf := parseFlags()
 	oneTimeFlagsActions(&conf) //if !strings.HasSuffix(os.Args[0], ".test") {
+
+	if *clusterMode {
+
+		url := *clusterUrl
+		token := os.Getenv("CLUSTER_TOKEN")
+
+		if url == "" {
+			checkFatal(fmt.Errorf("--cluster-url must be set for cluster mode"))
+		}
+		if !strings.HasPrefix(strings.ToLower(url), "https://") {
+			checkFatal(fmt.Errorf("--cluster-url value must start with https://"))
+		}
+		if token == "" {
+			checkFatal(fmt.Errorf("CLUSTER_TOKEN must be set for cluster mode"))
+		}
+
+		//crt
+		r, err := http.NewRequest("GET", url+"/redis/crt", nil)
+		checkFatal(err)
+		r.Header.Add("Authorization", "Bearer "+token)
+		crt, err := ioutil.ReadAll(r.Body)
+		checkFatal(err)
+
+		//key
+		r, err = http.NewRequest("GET", url+"/redis/key", nil)
+		checkFatal(err)
+		r.Header.Add("Authorization", "Bearer "+token)
+		key, err := ioutil.ReadAll(r.Body)
+		checkFatal(err)
+
+		//cacrt
+		r, err = http.NewRequest("GET", url+"/redis/cacrt", nil)
+		checkFatal(err)
+		r.Header.Add("Authorization", "Bearer "+token)
+		cacrt, err := ioutil.ReadAll(r.Body)
+		checkFatal(err)
+
+		//redisurl
+		r, err = http.NewRequest("GET", url+"/redis/url", nil)
+		checkFatal(err)
+		r.Header.Add("Authorization", "Bearer "+token)
+		redisurl, err := ioutil.ReadAll(r.Body)
+		checkFatal(err)
+
+		newRedisPoolCerts(crt, key, cacrt, string(redisurl))
+	}
 
 	if conf.Http == "" && conf.HttpsDomain == "" {
 		Usage()
