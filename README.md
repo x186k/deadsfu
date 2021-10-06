@@ -130,21 +130,19 @@ You can update by simply re-running the `curl` and `tar` commands again as in th
 
 There are two repos you need to compile from source: `deadsfu` and `deadsfu-binaries`.
 `deadsfu-binaries` must be nested inside `deadsfu` when compiling.
+If you add the `--recursive` flag seen below, you will get both
+repos checked out as needed for building.
+The `--recursive` flag tells Git to also checkout any [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules).
 
-You need a version of Go greater than 1.16, we recommend 1.16.5 or later.
+You need a version of Go greater than 1.16, we recommend 1.17 or later.
 
 Clone the main repo:
 ```bash
-git clone https://github.com/x186k/deadsfu.git
+git clone --recursive https://github.com/x186k/deadsfu
 ```
 Change dir:
 ```bash
 cd deadsfu
-```
-
-Clone the binaries repo:
-```bash
-git clone https://github.com/x186k/deadsfu-binaries.git
 ```
 
 Build with Go:
