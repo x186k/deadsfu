@@ -1,0 +1,3 @@
+[submodule "deadsfu-binaries"]
+	path = deadsfu-binaries
+	url = https://github.com/x186k/deadsfu-binaries

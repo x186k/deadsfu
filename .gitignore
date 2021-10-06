@@ -11,7 +11,7 @@ rtp.pcap
 website/site
 cover.out
 
-deadsfu-binaries
+
 deadsfu-out.pcap
 *.pprof
 dist/
