@@ -286,6 +286,78 @@ func main() {
 	println("profiling done, exit")
 }
 
+// sdpHandler
+// This allows answer/offer SDPs to be posted to /
+// and then routed to subHandler or pubHandler
+// it might make it simpler for new developers, they
+// can just post their SDPs to /, instead of /sub or /pub
+// BUT it might make debugging tricker, because
+// if they don't get their sendonly attributes on the
+// publisher-SDP correct, this code won't
+// route the request to the correct place.
+// **Do not integrate for that reason at this time.**
+//
+var _ = sdpHandler
+
+func sdpHandler(wrappedHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != "POST" || r.URL.Path != "/" {
+			wrappedHandler.ServeHTTP(w, r)
+			return
+		}
+
+		buf, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			teeErrorStderrHttp(w, err)
+			return
+		}
+
+		// https://stackoverflow.com/a/23077519/86375
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
+
+		// do my checking
+		{
+			str := string(buf)
+
+			sdpSignature := strings.HasPrefix(str, "v=0")
+			if sdpSignature {
+				pline()
+
+				rtcsd := &webrtc.SessionDescription{}
+
+				sd, err := rtcsd.Unmarshal()
+				if err != nil {
+					teeErrorStderrHttp(w, err)
+					return
+				}
+
+				sendonly := true
+
+				for _, v := range sd.MediaDescriptions {
+					_, ok := v.Attribute("sendonly")
+					sendonly = sendonly && ok
+				}
+
+				if sendonly {
+					pline()
+					pubHandler(w, r)
+					return
+				} else {
+					pline()
+					SubHandler(w, r)
+					return
+				}
+
+			}
+
+		}
+
+		wrappedHandler.ServeHTTP(w, r)
+
+	})
+}
+
 func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 	var err error
 
@@ -305,7 +377,12 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 			checkFatal(err)
 		}
 
-		mux.Handle("/", http.FileServer(http.FS(f)))
+		// sometimes 'smart' stuff doesn't help
+		// holdoff on auto-sdp routing for now.
+		//rootmux := sdpHandler(http.FileServer(http.FS(f)))
+		rootmux := http.FileServer(http.FS(f))
+
+		mux.Handle("/", rootmux)
 		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
 			x, err := getDefRouteIntfAddrIPv4()
 			if err == nil {
