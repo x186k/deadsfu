@@ -1612,20 +1612,22 @@ type myFtlServer struct {
 	channelid uint32
 }
 
+// TakePacket
+// if this returns false, it will tell server pkg to close connection
 func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) bool {
 	var err error
 
 	var p rtp.Packet
 
+	if len(pkt) < 12 {
+		x.badrtp++
+		return true //ignore and keep connection open
+	}
+
 	err = p.Unmarshal(pkt)
 	if err != nil {
 		x.badrtp++
-		if x.badrtp < 10 {
-			return true
-		} else {
-			log.Println("ftl/obs: too many RTP decode failures, closing")
-			return false
-		}
+		return true //ignore and keep connection open
 	}
 
 	switch p.Header.PayloadType {
