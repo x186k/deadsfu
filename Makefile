@@ -25,10 +25,10 @@ clonebinaries:
 dockerbuild:
 	test "$$(git describe --tags)" = "$(VER)"
 	# if no tag specified, it defaults to latest:, SO DONT ADD :$(VER)
-	docker build -t x186k/deadsfu:$(VER) --build-arg VERSION=$(VER) .
-	docker push x186k/deadsfu:$(VER)
-
-
+	docker build -t deadsfu --build-arg VERSION=$(VER) .
+	docker image tag deadsfu x186k/deadsfu:latest
+	docker image tag deadsfu x186k/deadsfu:$(VER)
+	docker image push --all-tags x186k/deadsfu
 
 	
 
