@@ -21,7 +21,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	github.com/x186k/ddns5libdns v0.0.0-20210712210115-f62ae7c09b3a
-	github.com/x186k/ftlserver v0.0.0-20210918213340-5919f48451f3
+	github.com/x186k/ftlserver v0.0.0-20211008231422-93a34c3b7195
 	go.uber.org/zap v1.17.0
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
 	golang.org/x/net v0.0.0-20210726213435-c6fcb2dbf985

@@ -1685,7 +1685,7 @@ func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 		inf.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
-		ftlserver.NewTcpSession(inf, dbg, tcpconn, findserver)
+		ftlserver.NewTcpSession(inf, dbg, tcpconn, findserver, *ftlUdpPort)
 		netconn.Close()
 	}
 	// unreachable
