@@ -27,7 +27,7 @@ type SfuConfig struct {
 // egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 
 var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var ftlUdpPort = pflag.Int("ftp-udp-port", 8084, "The UDP port to use for FTL UDP rx. Zero is valid. Zero for ephemeral port num")
+var ftlUdpPort = pflag.Int("ftl-udp-port", 8084, "The UDP port to use for FTL UDP rx. Zero is valid. Zero for ephemeral port num")
 var clusterMode = pflag.Bool("cluster-mode", false, "non-standalone DeadSFU mode. Requires REDIS. See docs.")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
