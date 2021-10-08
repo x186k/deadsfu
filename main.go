@@ -286,6 +286,39 @@ func main() {
 	println("profiling done, exit")
 }
 
+// if a user accidentially sends an SDP to something other than /pub or /sub
+// tell them! we are supposed to be the dead-simple sfu. lol
+func sdpInterceptor(wrappedHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != "POST" {
+			wrappedHandler.ServeHTTP(w, r)
+			return
+		}
+
+		buf, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			teeErrorStderrHttp(w, err)
+			return
+		}
+
+		// https://stackoverflow.com/a/23077519/86375
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
+
+		str := string(buf)
+
+		sdpSignature := strings.HasPrefix(str, "v=0")
+		if sdpSignature {
+			msg := fmt.Errorf("WebRTC SDPs should only be sent to /pub, or /sub, not: %s", r.URL.EscapedPath())
+			teeErrorStderrHttp(w, msg)
+			return
+		}
+
+		wrappedHandler.ServeHTTP(w, r)
+
+	})
+}
+
 // sdpHandler
 // This allows answer/offer SDPs to be posted to /
 // and then routed to subHandler or pubHandler
@@ -379,8 +412,10 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 
 		// sometimes 'smart' stuff doesn't help
 		// holdoff on auto-sdp routing for now.
-		//rootmux := sdpHandler(http.FileServer(http.FS(f)))
-		rootmux := http.FileServer(http.FS(f))
+		//rootmux := http.FileServer(http.FS(f))   // no sdp checking or interception
+		//rootmux := sdpHandler(http.FileServer(http.FS(f)))  //sdp auto router for /
+
+		rootmux := sdpInterceptor(http.FileServer(http.FS(f)))
 
 		mux.Handle("/", rootmux)
 		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
@@ -1757,6 +1792,8 @@ func isMysteryOBSFTL(p rtp.Packet) (ok bool) {
 	}
 	return true
 }
+
+var _ = clusterSniRedisRegister
 
 func clusterSniRedisRegister(ctx context.Context, domain string, myip net.IP, port int) {
 
