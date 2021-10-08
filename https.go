@@ -105,11 +105,8 @@ func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux
 	ln, err := net.Listen("tcp", ":"+port)
 	checkFatal(err)
 
-	//small race condition
 	if *clusterMode {
-		port := ln.(*net.TCPListener).Addr().(*net.TCPAddr).Port
-		privateip := getMyIPFromRedis(ctx)
-		go clusterSniRedisRegister(ctx, host, privateip, port)
+		checkFatal(fmt.Errorf("cluster mode not supported with --https-domain"))
 	}
 
 	httpsLn := tls.NewListener(ln, tlsConfig)
