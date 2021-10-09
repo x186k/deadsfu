@@ -131,12 +131,17 @@
     // xvid.srcObject = stream
     // let v=stream.getVideoTracks()[0]
     // let a=stream.getAudioTracks()[0]
-    // transmit(v,a)
+    // let pc = transmit(v,a)
+    // while (true) {
+    //   document.getElementById('rxtx').textContent = await getRxTxRate(pc)
+    //   await new Promise(r => setTimeout(r, 3000))
+    //  }
 
 
     /**
      * @param {MediaStreamTrack} video The video MST to send using WISH.
      * @param {MediaStreamTrack} audio The audio MST to send using WISH.
+     * @returns {RTCPeerConnection}
      */
     async function transmit(video, audio) {
       console.debug("--transmit5")
@@ -155,18 +160,6 @@
 
         pc.addTransceiver(video, { 'direction': 'sendonly' })
         pc.addTransceiver(audio, { 'direction': 'sendonly' })
-
-        // Older firefox technique for simulcast from Janus blog
-        // var sender = pc.getSenders().find(s => s.track.kind == "video");
-        // var parameters = sender.getParameters();
-        // if (!parameters)
-        //     parameters = {};
-        // parameters.encodings = [
-        //     { rid: "h", active: true, maxBitrate: 900000 },
-        //     { rid: "m", active: true, maxBitrate: 300000, scaleResolutionDownBy: 2 },
-        //     { rid: "l", active: true, maxBitrate: 100000, scaleResolutionDownBy: 4 }
-        // ];
-        // sender.setParameters(parameters);
 
         let desc = await pc.createOffer()
         await pc.setLocalDescription(desc)
