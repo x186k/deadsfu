@@ -96,28 +96,40 @@
 
 
 
-    // Wait for the page to load first
-    window.onload = function () {
-      var a = document.getElementById("gofullscreen")
-      a.onclick = function () {
-        let video = document.getElementById("video1")
-        if (video.requestFullscreen) {
-          video.requestFullscreen()
-        } else {
-          // Toggle fullscreen in Safari for iPad
+
+    var a = document.getElementById("gofullscreen")
+    a.onclick = function () {
+      let video = document.getElementById("video1")
+      if (video.requestFullscreen) {
+        video.requestFullscreen()
+      } else {
+        // Toggle fullscreen in Safari for iPad
+        // @ts-ignore
+        if (video.webkitEnterFullScreen) {
+          // @ts-ignore
           video.webkitEnterFullScreen()
         }
-        return false
       }
+      return false
+    }
 
+
+
+    async function myOnload() {
       const xstate = document.getElementById('xstate')
       const vidout = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-      const pc = receive(xstate, vidout)
+      const pc = await receive(xstate, vidout)
       document.title = "Receiving"
       while (true) {
         document.getElementById('rxtx').textContent = await getRxTxRate(pc)
         await new Promise(r => setTimeout(r, 3000))
       }
+    }
+
+
+    // Wait for the page to load first
+    window.onload = function () {
+      myOnload()
     }
 
 
@@ -149,7 +161,7 @@
     /**
      * @param {MediaStreamTrack} video The video MST to send using WISH.
      * @param {MediaStreamTrack} audio The audio MST to send using WISH.
-     * @returns {RTCPeerConnection}
+     * @returns {Promise<RTCPeerConnection>}
      */
     async function transmit(video, audio) {
       console.debug("--transmit5")
@@ -244,7 +256,7 @@
     /**
      * @param {HTMLElement} status - The status element .innerText gets updatew.
      * @param {HTMLVideoElement} vidout - The video element for playback
-     * @returns {RTCPeerConnection}
+     * @returns {Promise<RTCPeerConnection>}
      */
     async function receive(status, vidout) {
       console.debug("--receive x3")
