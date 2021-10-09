@@ -123,21 +123,28 @@
 
 
 
+    // prior to invoke transmit
+    // const gumopts = { video: { width: 1280, height: 720 }, audio: true }
+    // const stream = await navigator.mediaDevices.getUserMedia(gumopts)
+
+    // const xvid = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
+    // xvid.srcObject = stream
+    // let v=stream.getVideoTracks()[0]
+    // let a=stream.getAudioTracks()[0]
+    // transmit(v,a)
 
 
-    async function transmit() {
+    /**
+     * @param {MediaStreamTrack} video The video MST to send using WISH.
+     * @param {MediaStreamTrack} audio The audio MST to send using WISH.
+     */
+    async function transmit(video, audio) {
       console.debug("--transmit5")
       document.title = "Sending"
 
-      document.getElementById("video1").removeAttribute("poster")
-
 
       try {
-        const gumopts = { video: { width: 1280, height: 720 }, audio: true }
-        const stream = await navigator.mediaDevices.getUserMedia(gumopts)
 
-        const xvid = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-        xvid.srcObject = stream
         //   var t0 = performance.now()
         //console.debug("delay of " + (performance.now() - t0) + "ms")
         let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
@@ -146,42 +153,8 @@
         pc.onconnectionstatechange = e => xstate.textContent = pc.connectionState
         //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
 
-
-        //track.applyConstraints({ frameRate: { min: 30, max: 30 } });
-        let simulcast = true
-        if (simulcast) {
-          pc.addTransceiver(stream.getVideoTracks()[0], {
-            //cam sendrecv will not fix rids Ontrack bug
-            direction: 'sendonly',
-            streams: [stream],
-            sendEncodings: [
-              // for firefox order matters... first high resolution, then scaled resolutions...
-              {
-                rid: 'video2',
-                scaleResolutionDownBy: 4.0
-              },
-              {
-                rid: 'video1',
-                scaleResolutionDownBy: 2.0
-              },
-              {
-                rid: 'video0'
-              },
-            ],
-          });
-          //the original added three tx's here for the return streams
-          // for the sample
-          // they did not nave sendonly, but could have I believe
-          // leaving this transciver in, even though
-          // it is not needed fixes the 
-          // OnTrack callback issue
-          //pc.addTransceiver('video', { 'direction': 'sendonly' })
-          // pc.addTransceiver('video', {'direction': 'sendonly'})
-          // pc.addTransceiver('video', {'direction': 'sendonly'})
-        } else {
-          pc.addTransceiver(stream.getVideoTracks()[0], { 'direction': 'sendonly' })
-        }
-        pc.addTransceiver(stream.getAudioTracks()[0], { 'direction': 'sendonly' })
+        pc.addTransceiver(video, { 'direction': 'sendonly' })
+        pc.addTransceiver(audio, { 'direction': 'sendonly' })
 
         // Older firefox technique for simulcast from Janus blog
         // var sender = pc.getSenders().find(s => s.track.kind == "video");
@@ -272,8 +245,6 @@
     async function receive() {
       console.debug("--receive x3")
       document.title = "Receiving"
-
-      document.getElementById("video1").removeAttribute("poster")
 
 
       try {
