@@ -110,7 +110,8 @@
       }
 
       const xstate = document.getElementById('xstate')
-      receive(xstate)
+      const vidout = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
+      receive(xstate, vidout)
       document.title = "Receiving"
     }
     //The @ts-check statement enables jsdoc typechecking
@@ -240,9 +241,10 @@
 
     /**
      * @param {HTMLElement} status - The status element .innerText gets updatew.
+     * @param {HTMLVideoElement} vidout - The video element for playback
      * @returns {RTCPeerConnection}
      */
-    async function receive(status) {
+    async function receive(status, vidout) {
       console.debug("--receive x3")
 
 
@@ -286,10 +288,6 @@
           await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
         }
 
-
-
-        //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
-
         //must have addtransceiver to get m=video in sdp
         //addTransceiver() must be called before createOffer()
         pc.addTransceiver('video', { 'direction': 'recvonly' })
@@ -299,10 +297,10 @@
           let z = event.streams[0]
           console.debug('on track fired naudio', z.getAudioTracks().length)
           console.debug('on track fired nvideo', z.getVideoTracks().length)
-          const xvid = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-          xvid.srcObject = event.streams[0]
-          xvid.autoplay = true
-          xvid.controls = true
+
+          vidout.srcObject = event.streams[0]
+          vidout.autoplay = true
+          vidout.controls = true
           return false
         }
         // Go!
