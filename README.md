@@ -28,6 +28,7 @@
 - [Contributing](#contributing)
 - [Getting Latest Updates](#getting-latest-updates)
 - [Compile From Source](#compile-from-source)
+- [DeadSFU Thanks](#deadsfu-thanks)
 
 <!--
 todo, see also typesense
@@ -149,6 +150,19 @@ Build with Go:
 ```bash
 go build .
 ```
+
+## DeadSFU Thanks
+
+- [Sean Dubois](https://github.com/Sean-Der) Creator of Pion
+- [Luis Orlando](https://github.com/OrlandoCo) Pion help code
+- [Juliusz Chroboczek](https://github.com/jech) Pion help and code
+- [Matt Holt](https://github.com/mholt) Creator of Caddy
+- [Francis Lavoie](https://github.com/francislavoie) Caddy maintainer
+- [Alex Williams](https://github.com/llspalex) Louper founder, inspiration.
+- [Sayan Bhattacharya](https://github.com/Thunder80) Louper developer.
+- [Charles Surett](https://github.com/scj643) Early user.
+
+
 
 
 
