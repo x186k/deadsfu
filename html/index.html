@@ -187,11 +187,7 @@
         console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
 
-        while (true) {
-          document.getElementById('rxtx').textContent = await getRxTxRate(pc)
-          await new Promise(r => setTimeout(r, 3000))
-        }
-
+        return pc
       } catch (error) {
         console.error('Send Error:', error)
         //document.getElementById('errortext').textContent = error
