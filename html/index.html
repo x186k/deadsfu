@@ -111,8 +111,12 @@
 
       const xstate = document.getElementById('xstate')
       const vidout = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-      receive(xstate, vidout)
+      const pc = receive(xstate, vidout)
       document.title = "Receiving"
+      while (true) {
+        document.getElementById('rxtx').textContent = await getRxTxRate(pc)
+        await new Promise(r => setTimeout(r, 3000))
+      }
     }
     //The @ts-check statement enables jsdoc typechecking
     // https://stackoverflow.com/a/52076280/86375
@@ -306,45 +310,9 @@
         // Go!
         pc.restartIce()
 
-
-        // let desc = await pc.createOffer()
-        // await pc.setLocalDescription(desc)
-        // // XXXX consider wrapping with timeout promise
-        // const t0 = performance.now()
-        // await waitToCompleteIceGathering(pc)
-        // desc = pc.localDescription
-        // console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
-
-        // //console.debug('got all ice ms:', performance.now() - t0)
-
-        // console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
-        // let fetchopt =
-        // {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/sdp', },
-        //   body: desc.sdp
-        // }
-        // let resp = await fetch(url, fetchopt)
-        // let resptext = await resp.text()
-        // if (resp.status != 202) {
-        //   throw `SFU error: ${resptext} ${resp.status}`
-        //   // pc.close()
-        //   // return
-        // }
-        // console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
-        //;await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
-
         console.debug('n senders in getsenders()', pc.getSenders())
-        //NO NO
-        // pc.addTransceiver('audio', { 'direction': 'recvonly' })
-        // pc.addTransceiver('video', { 'direction': 'recvonly' })
 
-        while (true) {
-          document.getElementById('rxtx').textContent = await getRxTxRate(pc)
-          await new Promise(r => setTimeout(r, 3000))
-        }
-
-
+        return pc
       } catch (error) {
         console.error('Receive Error:', error)
         //document.getElementById('errortext').textContent = error
