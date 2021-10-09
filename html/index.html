@@ -90,6 +90,9 @@
 
   <script>
     //@ts-check  
+    //The @ts-check statement above enables jsdoc typechecking
+    // https://stackoverflow.com/a/52076280/86375
+    // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
 
 
 
@@ -116,10 +119,7 @@
         await new Promise(r => setTimeout(r, 3000))
       }
     }
-    //The @ts-check statement enables jsdoc typechecking
-    // https://stackoverflow.com/a/52076280/86375
-    // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
-    //@ts-check
+
 
     let suburl = location.origin + '/sub'        // output from sfu
     let puburl = location.origin + '/pub'          // input to sfu
