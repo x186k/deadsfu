@@ -40,7 +40,8 @@ var httpsUseDns01Challenge = pflag.BoolP("https-dns01-challenge", "5", false, "W
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
 
-var rtptx = pflag.String("rtp-send", "", "addr:port to send rtp, ie: '127.0.0.1:4444'")
+var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1:4444'")
+var rtprx = pflag.String("rtp-rx", "", "addr:port to receive rtp on. ie: ':5004'. payload96=h264 vid, 97=opus aud")
 var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlFromDiskFlag = pflag.Bool("html-from-disk", false, "do not use embed html, use files from disk")

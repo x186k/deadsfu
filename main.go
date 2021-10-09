@@ -193,6 +193,51 @@ func idleExitFunc() {
 	}
 }
 
+func rtpReceiver() {
+
+	var err error
+
+	pconn, err := net.ListenPacket("udp", *rtprx)
+	checkFatal(err)
+	defer pconn.Close()
+
+	c := pconn.(*net.UDPConn)
+
+	buf := make([]byte, 2000)
+
+	for {
+
+		var p rtp.Packet
+
+		n, err := c.Read(buf)
+		if err != nil {
+			continue // silent ignore
+		}
+
+		if len(buf) < 12 {
+			continue //silent ignore
+		}
+
+		b := make([]byte, n)
+		// this is necessary! pkt.raw/[]byte we chan-send gets modified
+		// and next iteration of this loop will overwrite 'buf'
+		copy(b, buf[:n])
+
+		err = p.Unmarshal(b)
+		if err != nil {
+			continue //silent ignore
+		}
+
+		switch p.Header.PayloadType {
+		case 96:
+			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
+		case 97:
+			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
+		}
+
+	}
+}
+
 func main() {
 	println("deadsfu Version " + Version)
 
@@ -244,6 +289,12 @@ func main() {
 		panic("no")
 	}
 
+	if *rtprx != "" {
+
+		go rtpReceiver()
+
+	}
+
 	if *ftlKey != "" {
 
 		ftludp, err := net.ListenPacket("udp", ":0")
@@ -280,7 +331,7 @@ func main() {
 			for {
 				err = ingressSemaphore.Acquire(context.Background(), 1)
 				checkFatal(err)
-				log.Println("dial: got sema, dialing upstream")
+				elog.Println("dial: Dialing upstream (got semaphore)")
 				dialUpstream(*dialIngressURL)
 			}
 		}()
