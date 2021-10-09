@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/rand"
 	"net"
+	"path"
 	"strconv"
 
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"runtime"
 
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -44,6 +46,7 @@ import (
 
 	redigo "github.com/gomodule/redigo/redis"
 
+	"net/http/httputil"
 	_ "net/http/pprof"
 )
 
@@ -93,7 +96,7 @@ type MsgSubscriberAddTrack struct {
 	txtrack *TxTrack
 }
 
-var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 10)
+var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
 //var rxidStateCh chan MsgGetRxidState = make(chan MsgGetRxidState)
@@ -353,7 +356,7 @@ func main() {
 
 // if a user accidentially sends an SDP to something other than /pub or /sub
 // tell them! we are supposed to be the dead-simple sfu. lol
-func sdpInterceptor(wrappedHandler http.Handler) http.Handler {
+func sdpWarning(wrappedHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != "POST" {
@@ -457,32 +460,57 @@ func sdpHandler(wrappedHandler http.Handler) http.Handler {
 }
 
 func setupMux(conf SfuConfig) (*http.ServeMux, error) {
-	var err error
 
 	mux := http.NewServeMux()
+	mux.HandleFunc(subPath, SubHandler)
+	dialingout := *dialIngressURL != ""
+	if !dialingout {
+		mux.HandleFunc(pubPath, pubHandler)
+	}
 
-	if !*disableHtml {
+	if *htmlSource == "" {
+		Usage()
+		os.Exit(-1)
+	}
 
-		var f fs.FS
+	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
+	httpsPrefix := strings.HasPrefix(*htmlSource, "https://")
 
-		if *htmlFromDiskFlag {
-			f = os.DirFS("html")
-		} else {
-			f, err = fs.Sub(htmlContent, "html")
-			if err != nil {
-				return nil, fmt.Errorf("fs.sub %w", err)
-			}
-			checkFatal(err)
+	if *htmlSource == "none" {
+		return mux, nil
+	} else if *htmlSource == "internal" {
+		f, err := fs.Sub(htmlContent, "html")
+		checkFatal(err)
+
+		rootmux := sdpWarning(http.FileServer(http.FS(f)))
+		mux.Handle("/", rootmux)
+
+	} else if httpPrefix || httpsPrefix {
+
+		u, err := url.Parse(*htmlSource)
+		checkFatal(err)
+		rp := httputil.NewSingleHostReverseProxy(u)
+		mux.Handle("/", rp)
+
+	} else {
+
+		s, err := os.Stat(*htmlSource)
+		checkFatal(err)
+		if !s.IsDir() {
+			checkFatal(fmt.Errorf("--html <path>, must refer to a directory when using filepath: %s", *htmlSource))
 		}
 
-		// sometimes 'smart' stuff doesn't help
-		// holdoff on auto-sdp routing for now.
-		//rootmux := http.FileServer(http.FS(f))   // no sdp checking or interception
-		//rootmux := sdpHandler(http.FileServer(http.FS(f)))  //sdp auto router for /
+		if _, err := os.Stat(path.Join(*htmlSource, "index.html")); os.IsNotExist(err) {
+			checkFatal(fmt.Errorf("--html <path>, must point to dir containing index.html: %s", *htmlSource))
+		}
 
-		rootmux := sdpInterceptor(http.FileServer(http.FS(f)))
-
+		f := os.DirFS(*htmlSource)
+		rootmux := sdpWarning(http.FileServer(http.FS(f)))
 		mux.Handle("/", rootmux)
+
+	}
+
+	if false {
 		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
 			x, err := getDefRouteIntfAddrIPv4()
 			if err == nil {
@@ -496,13 +524,6 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 			}
 		})
 
-	}
-	mux.HandleFunc(subPath, SubHandler)
-
-	dialingout := *dialIngressURL != ""
-
-	if !dialingout {
-		mux.HandleFunc(pubPath, pubHandler)
 	}
 
 	return mux, nil

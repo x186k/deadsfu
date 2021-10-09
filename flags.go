@@ -44,11 +44,10 @@ var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1
 var rtprx = pflag.String("rtp-rx", "", "addr:port to receive rtp on. ie: ':5004'. payload96=h264 vid, 97=opus aud")
 var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
-var htmlFromDiskFlag = pflag.Bool("html-from-disk", false, "do not use embed html, use files from disk")
+var htmlSource = pflag.String("html", "", "required. 'internal' suggested. HTML source: internal, none, <file-path>, <url>")
 var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
 var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :6060")
 var debug = pflag.StringSlice("debug", []string{}, "comma separated list of debug flags. use 'help' for details")
-var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
 var idleExitDuration = pflag.Duration("idle-exit-duration", time.Duration(0), `If there is no input video for duration, exit process/container. eg: '1h' one hour, '30m': 30 minutes`)
 
 var help = pflag.BoolP("help", "h", false, "Print the short help")
@@ -63,11 +62,12 @@ var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile f
 var Usage = func() {
 	x := pflag.NewFlagSet("xxx", pflag.ExitOnError)
 	x.AddFlag(pflag.CommandLine.Lookup("http"))
-	x.AddFlag(pflag.CommandLine.Lookup("https-domain"))
+	x.AddFlag(pflag.CommandLine.Lookup("html"))
 	x.AddFlag(pflag.CommandLine.Lookup("fullhelp"))
 	x.SortFlags = false
 	x.PrintDefaults()
-	fmt.Fprint(os.Stderr, "\nOne of --http or --https-domain is required\n\n")
+	fmt.Fprint(os.Stderr, "\nOne of --http or --https-domain is required.\n")
+	fmt.Fprint(os.Stderr, "Using '--http :8080 --html internal' is the suggested starting place.\n\n")
 }
 
 func parseFlags() SfuConfig {
