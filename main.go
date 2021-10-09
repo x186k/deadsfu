@@ -47,7 +47,7 @@ import (
 	_ "net/http/pprof"
 )
 
-var lastVideoRxTime time.Time
+var lastVideoRxTime time.Time = time.Now()
 
 var sendingIdleVid bool
 
@@ -183,11 +183,25 @@ func init() {
 	go logGoroutineCountToDebugLog()
 }
 
+func idleExitFunc() {
+	for {
+		if time.Since(lastVideoRxTime) > *idleExitDuration {
+			elog.Printf("Input video idle for %s, exiting", *idleExitDuration)
+			os.Exit(0)
+		}
+		time.Sleep(time.Second * 2)
+	}
+}
+
 func main() {
 	println("deadsfu Version " + Version)
 
 	conf := parseFlags()
 	oneTimeFlagsActions(&conf) //if !strings.HasSuffix(os.Args[0], ".test") {
+
+	if *idleExitDuration > time.Duration(0) {
+		go idleExitFunc()
+	}
 
 	if *clusterMode {
 

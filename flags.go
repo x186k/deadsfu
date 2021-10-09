@@ -48,6 +48,7 @@ var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on
 var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :6060")
 var debug = pflag.StringSlice("debug", []string{}, "comma separated list of debug flags. use 'help' for details")
 var disableHtml = pflag.Bool("disable-html", false, "do not serve any html files, only allow pub/sub API")
+var idleExitDuration = pflag.Duration("idle-exit-duration", time.Duration(0), `If there is no input video for duration, exit process/container. eg: '1h' one hour, '30m': 30 minutes`)
 
 var help = pflag.BoolP("help", "h", false, "Print the short help")
 var fullhelp = pflag.BoolP("fullhelp", "9", false, "Print the long help")
