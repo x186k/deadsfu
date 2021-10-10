@@ -24,7 +24,6 @@
 - [Install](#install)
 - [Quick Start: OBS / FTL ingress](#quick-start-obs--ftl-ingress)
 - [Quick Start: Browser Ingress](#quick-start-browser-ingress)
-- [Quick Start: Digital Ocean App](#quick-start-digital-ocean-app)
 - [Getting Support](#getting-support)
 - [Email Newsletter](#email-newsletter)
 - [Contributing](#contributing)
@@ -112,11 +111,11 @@ docker run --network host x186k/deadsfu /app/main --http :8080 --html internal -
 
 ## Quick Start: Browser Ingress
 
-#### Coming Soon
+#### Not Yet, use the Slack channel
 
-## Quick Start: Digital Ocean App
+<!-- ## Quick Start: Digital Ocean App
 
-[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/x186k/deadsfu/tree/main)
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/x186k/deadsfu/tree/main) -->
 
 
 ## Getting Support
