@@ -1,0 +1,8 @@
+spec:
+ name: DeadSFU
+ services:
+ - name: DeadSFU
+   git:
+     branch: main
+     repo_clone_url: https://github.com/x186k/deadsfu.git
+
