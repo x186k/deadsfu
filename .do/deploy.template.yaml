@@ -1,7 +1,7 @@
 spec:
- name: DeadSFU
+ name: deadsfu
  services:
- - name: DeadSFU
+ - name: deadsfu-svc
    git:
      branch: main
      repo_clone_url: https://github.com/x186k/deadsfu.git
