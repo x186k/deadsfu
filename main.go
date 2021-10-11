@@ -196,13 +196,15 @@ func idleExitFunc() {
 	}
 }
 
-func rtpReceiver() {
+func rtpReceiver(hostport string) {
 
 	var err error
 
-	pconn, err := net.ListenPacket("udp", *rtprx)
+	pconn, err := net.ListenPacket("udp", hostport)
 	checkFatal(err)
 	defer pconn.Close()
+
+	elog.Printf("RTP/UDP WAITING ON %s", pconn.LocalAddr().String())
 
 	c := pconn.(*net.UDPConn)
 
@@ -292,9 +294,14 @@ func main() {
 		panic("no")
 	}
 
-	if *rtprx != "" {
+	if len(*rtprx) > 0 {
 
-		go rtpReceiver()
+		//if (*rtprx)[0]=="help" {
+
+		for _, v := range *rtprx {
+
+			go rtpReceiver(v)
+		}
 
 	}
 

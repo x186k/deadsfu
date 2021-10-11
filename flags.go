@@ -41,7 +41,7 @@ var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the i
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
 
 var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1:4444'")
-var rtprx = pflag.String("rtp-rx", "", "addr:port to receive rtp on. ie: ':5004'. payload96=h264 vid, 97=opus aud")
+var rtprx = pflag.StringArray("rtp-rx", nil, "use :port or addr:port. eg: '--rtp-rx :5004 --rtp-rx :5006' payload 96 for h264, 97 for opus")
 var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlSource = pflag.String("html", "", "required. 'internal' suggested. HTML source: internal, none, <file-path>, <url>")
