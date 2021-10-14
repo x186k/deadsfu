@@ -37,10 +37,12 @@ async function myOnload() {
     document.title = "Receiving"
 
     const id = document.getElementById('rxtx')
-    let intervalID = setInterval(myCallback, 3000, id);
+    const timeout = 3000
+    let intervalID = setTimeout(myCallback, timeout, id)
 
     async function myCallback(id) {
         id.textContent = await getRxTxRate(pc)
+        setTimeout(myCallback, timeout, id)
     }
 
 
