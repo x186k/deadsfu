@@ -172,12 +172,8 @@ async function waitToCompleteIceGathering(pc, logPerformance) {
 }
 
 
-
-
-
-
 /**
- * @param {HTMLElement} status - The status element .innerText gets updatew.
+ * @param {HTMLElement} status - The status element .innerText gets update.
  * @param {HTMLVideoElement} vidout - The video element for playback
  * @returns {Promise<RTCPeerConnection>}
  */
@@ -201,6 +197,15 @@ async function receive(status, vidout) {
                 console.debug('restarting ice')
                 pc.restartIce()
             }
+        }
+
+
+        // @ts-ignore
+        if (startGetStatsShipping) {
+            // @ts-ignore
+            startGetStatsShipping(pc)
+        } else {
+            console.debug('startGetStatsShipping() not invoked')
         }
 
 
