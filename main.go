@@ -361,6 +361,17 @@ func main() {
 	println("profiling done, exit")
 }
 
+func addStatsCookie(wrappedHandler http.Handler, url string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		cookie1 := &http.Cookie{Name: "getstats-shipper-url", Value: url, HttpOnly: false}
+		http.SetCookie(w, cookie1)
+
+
+		wrappedHandler.ServeHTTP(w, r)
+	})
+}
+
 // if a user accidentially sends an SDP to something other than /pub or /sub
 // tell them! we are supposed to be the dead-simple sfu. lol
 func sdpWarning(wrappedHandler http.Handler) http.Handler {
@@ -483,21 +494,21 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
 	httpsPrefix := strings.HasPrefix(*htmlSource, "https://")
 
+	var rootmux http.Handler
+
 	if *htmlSource == "none" {
 		return mux, nil
 	} else if *htmlSource == "internal" {
 		f, err := fs.Sub(htmlContent, "html")
 		checkFatal(err)
 
-		rootmux := sdpWarning(http.FileServer(http.FS(f)))
-		mux.Handle("/", rootmux)
+		rootmux = sdpWarning(http.FileServer(http.FS(f)))
 
 	} else if httpPrefix || httpsPrefix {
 
 		u, err := url.Parse(*htmlSource)
 		checkFatal(err)
-		rp := httputil.NewSingleHostReverseProxy(u)
-		mux.Handle("/", rp)
+		rootmux = httputil.NewSingleHostReverseProxy(u)
 
 	} else {
 
@@ -512,10 +523,15 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 		}
 
 		f := os.DirFS(*htmlSource)
-		rootmux := sdpWarning(http.FileServer(http.FS(f)))
-		mux.Handle("/", rootmux)
+		rootmux = sdpWarning(http.FileServer(http.FS(f)))
 
 	}
+
+	if *getStatsLogging != "" {
+		rootmux = addStatsCookie(rootmux, *getStatsLogging)
+	}
+
+	mux.Handle("/", rootmux)
 
 	if false {
 		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
