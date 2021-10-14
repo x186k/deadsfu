@@ -35,10 +35,15 @@ async function myOnload() {
     const vidout = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
     const pc = await receive(xstate, vidout)
     document.title = "Receiving"
-    while (true) {
-        document.getElementById('rxtx').textContent = await getRxTxRate(pc)
-        await new Promise(r => setTimeout(r, 3000))
+
+    const id = document.getElementById('rxtx')
+    let intervalID = setInterval(myCallback, 3000, id);
+
+    async function myCallback(id) {
+        id.textContent = await getRxTxRate(pc)
     }
+
+
 }
 
 
@@ -93,7 +98,7 @@ async function transmit(video, audio) {
 
         // XXXX consider wrapping with timeout promise
         const t0 = performance.now()
-        await waitToCompleteIceGathering(pc,true)
+        await waitToCompleteIceGathering(pc, true)
         desc = pc.localDescription
         console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
 
@@ -201,7 +206,7 @@ async function receive(status, vidout) {
         pc.onnegotiationneeded = async () => {
             console.debug('onnegotiationneeded')
             await pc.setLocalDescription(await pc.createOffer())
-            await waitToCompleteIceGathering(pc,true)
+            await waitToCompleteIceGathering(pc, true)
             let ans = ''
             while (ans === '') {
                 try {
