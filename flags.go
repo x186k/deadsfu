@@ -57,7 +57,7 @@ var idleClipServerURL = pflag.String("idle-clip-server-url", "http://localhost:8
 var idleClipServerInput = pflag.String("idle-clip-server-input", "", "a .jpg, .png, .mov, etc to use for your Idle Clip")
 var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile for the Idle Clip")
 
-//
+var getStatsLogging = pflag.String("getstats-url", "", "The url of a server for getStats() logging")
 
 var Usage = func() {
 	x := pflag.NewFlagSet("xxx", pflag.ExitOnError)
