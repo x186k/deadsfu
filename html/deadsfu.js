@@ -255,6 +255,9 @@ async function receive(status, vidout) {
 
 var ratemap = new Map()
 
+/**
+ * @param {RTCPeerConnection} pc
+ */
 async function getRxTxRate(pc) {
     let rxrate = 0
     let txrate = 0
