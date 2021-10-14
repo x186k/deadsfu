@@ -267,6 +267,9 @@ async function getRxTxRate(pc) {
         }
 
         const results = await pc.getStats(null)
+
+        //console.log(JSON.stringify(Object.fromEntries(await pc.getStats(null))))
+
         results.forEach(report => {
             const now = report.timestamp
 
