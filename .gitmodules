@@ -1,3 +1,6 @@
 [submodule "deadsfu-binaries"]
 	path = deadsfu-binaries
 	url = https://github.com/x186k/deadsfu-binaries
+[submodule "getstats-shipper"]
+	path = getstats-shipper
+	url = https://github.com/x186k/getstats-shipper
