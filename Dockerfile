@@ -1,5 +1,5 @@
 
-FROM golang:1.16 as builder
+FROM golang:1.17.1 as builder
 WORKDIR /app
 COPY . .
 ARG TARGETOS
