@@ -54,7 +54,7 @@ var lastVideoRxTime time.Time = time.Now()
 
 var sendingIdleVid bool
 
-//go:embed html/*
+//go:embed html
 var htmlContent embed.FS
 
 //go:embed deadsfu-binaries/idle-clip.zip
