@@ -4,3 +4,6 @@
 [submodule "getstats-shipper"]
 	path = getstats-shipper
 	url = https://github.com/x186k/getstats-shipper
+[submodule "html/getstats-shipper"]
+	path = html/getstats-shipper
+	url = https://github.com/x186k/getstats-shipper
