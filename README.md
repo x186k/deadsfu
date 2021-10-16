@@ -21,7 +21,7 @@
 ## Quick Links  <!-- omit in toc -->
 
 - [Feature List](#feature-list)
-- [Install](#install)
+- [Quick Install](#quick-install)
 - [Quick Start: OBS / FTL ingress](#quick-start-obs--ftl-ingress)
 - [Quick Start: Browser Ingress](#quick-start-browser-ingress)
 - [Getting Support](#getting-support)
@@ -39,6 +39,7 @@ todo, see also typesense
 ## API Clients
 -->
 
+[1]: https://datatracker.ietf.org/doc/html/draft-ietf-WHIP-whip-00
 
 ## Feature List
 
@@ -48,21 +49,18 @@ todo, see also typesense
 - **Auto Scaling Compatible:** HTTP signalling is compatible with most cluster-autoscaling methods.
 - **OBS Broadcasting:** Send from OBS to DeadSFU for doing WebRTC broadcasting.
 - **Browser Viewer:** Browser viewer enables watching broadcasts.
-- **Simple Ingress HTTPS Signalling:** WISH compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
-- **Simple Egress HTTPS Signalling:** WISH-like: Send an Offer-SDP, get an Answer-SDP, and you're receiving!
-- **Multi Video Track Forwarding:** Ingress and egress of dozens or hundreds of input video tracks.
-- **Selectable Video Switching:** Receivers getting one video-track can switch to any ingress-track into SFU.
-- **Standard WebRTC Simulcast:** WebRTC simulcast ingress means SFU ingress takes 3x track-levels from browser.
+- **Simple Ingress HTTPS Signalling:** [WHIP][1] compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
+- **Simple Egress HTTPS Signalling:** WHIP-like: Send an Offer-SDP, get an Answer-SDP, and you're receiving!
 - **Designed For Fault Tolerance:** Single-peer-ingress design for practical large-scale fault-tolerant containerized broadcasting.
-- **Kubernetes capable:** Designed for Kubernetes broadcasting clusters.
+- **Kubernetes/Docker capable:** Designed for Kubernetes or Swarm broadcasting clusters.
 - **HTTP load balancer compatible:** Designed standard HTTP load balancer compatibility on egress.
 - **Dead-simple Install:** Use a one-liner curl & untar command to prepare to broadcast.
 - **No Runtime Dependencies:** DeadSFU is a single binary that you can run locally or in production with a single command.
 
-**Don't see a feature on this list?** Check the issue track to see if your feature is there, if not open a new issue. We use user input to make our roadmap, and we'd love to hear from you.
+**Don't see a feature on this list?** Check the issue track to see if your feature is there, if not open a new issue. We need your input to make our roadmap, and we'd love to hear from you.
 
 
-## Install
+## Quick Install 
 
 Linux Intel/AMD64
 ```bash
@@ -111,7 +109,7 @@ docker run --network host x186k/deadsfu /app/main --http :8080 --html internal -
 
 ## Quick Start: Browser Ingress
 
-#### Not Yet, use the Slack channel
+#### Not Yet, file an issue for help
 
 <!-- ## Quick Start: Digital Ocean App
 
@@ -138,13 +136,13 @@ If you have suggestions or ideas, please submit an issue or create a discussion.
 
 You can update by simply re-running the `curl` and `tar` commands again as in the install directions.
 
+For Docker, simply re-pull the latest image.
+
 ## Compile From Source
 
-There are two repos you need to compile from source: `deadsfu` and `deadsfu-binaries`.
-`deadsfu-binaries` must be nested inside `deadsfu` when compiling.
-If you add the `--recursive` flag seen below, you will get both
-repos checked out as needed for building.
-The `--recursive` flag tells Git to also checkout any [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules).
+The deadsfu repo includes git submodules.
+
+So, use the `--recursive` flag when checking out. [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules).
 
 You need a version of Go greater than 1.16, we recommend 1.17 or later.
 
@@ -172,6 +170,7 @@ go build .
 - [Alex Williams](https://github.com/llspalex) Louper founder, inspiration.
 - [Sayan Bhattacharya](https://github.com/Thunder80) Louper developer.
 - [Charles Surett](https://github.com/scj643) Early user.
+- [Alex Peder](https://artiflix.com/) Project supporter.
 
 
 
