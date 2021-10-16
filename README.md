@@ -39,7 +39,7 @@ todo, see also typesense
 ## API Clients
 -->
 
-[1]: https://datatracker.ietf.org/doc/html/draft-ietf-WHIP-whip-00
+[WHIP]: https://www.ietf.org/archive/id/draft-ietf-wish-whip-00.html
 
 ## Feature List
 
@@ -49,7 +49,7 @@ todo, see also typesense
 - **Auto Scaling Compatible:** HTTP signalling is compatible with most cluster-autoscaling methods.
 - **OBS Broadcasting:** Send from OBS to DeadSFU for doing WebRTC broadcasting.
 - **Browser Viewer:** Browser viewer enables watching broadcasts.
-- **Simple Ingress HTTPS Signalling:** [WHIP][1] compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
+- **Simple Ingress HTTPS Signalling:** [WHIP][WHIP] compatible: Send an Offer-SDP, get an Answer-SDP, and you're publishing!
 - **Simple Egress HTTPS Signalling:** WHIP-like: Send an Offer-SDP, get an Answer-SDP, and you're receiving!
 - **Designed For Fault Tolerance:** Single-peer-ingress design for practical large-scale fault-tolerant containerized broadcasting.
 - **Kubernetes/Docker capable:** Designed for Kubernetes or Swarm broadcasting clusters.
