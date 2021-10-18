@@ -99,12 +99,12 @@ Windows
 ```
 Docker Forwarded Ports (Mac,Win,Linux)
 ```bash
-docker run -p 127.0.0.1:8080:8080 -p 127.0.0.1:8084:8084/udp -p 127.0.0.1:8084:8084/tcp x186k/deadsfu /app/main --http :8080 --html internal --ftl-key 123-abc
+docker run --pull always -p 127.0.0.1:8080:8080 -p 127.0.0.1:8084:8084/udp -p 127.0.0.1:8084:8084/tcp x186k/deadsfu /app/main --http :8080 --html internal --ftl-key 123-abc
 ```
 
 Docker Host Networking Linux ONLY!
 ```bash
-docker run --network host x186k/deadsfu /app/main --http :8080 --html internal --ftl-key 123-abc
+docker run --pull always --network host x186k/deadsfu /app/main --http :8080 --html internal --ftl-key 123-abc
 ```
 
 ## Quick Start: Browser Ingress
