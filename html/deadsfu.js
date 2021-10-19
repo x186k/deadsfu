@@ -121,6 +121,10 @@ async function onnegotiationneeded(ev, url, callback) {
     console.debug('>onnegotiationneeded')
 
     const offer = await pc.createOffer()
+    // https://blog.mozilla.org/webrtc/perfect-negotiation-in-webrtc/
+    if (pc.signalingState != 'stable')
+        return
+    await pc.setLocalDescription(offer)
     await waitToCompleteIceGathering(pc, true)
 
 
