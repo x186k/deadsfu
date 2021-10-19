@@ -3,18 +3,97 @@
 // https://stackoverflow.com/a/52076280/86375
 // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
 
-let suburl = location.origin + '/sub'        // output from sfu
-let puburl = location.origin + '/pub'          // input to sfu
 
-// Wait for the page to load first
-window.onload = function () {
-    myOnload()
+/**
+ * JSDoc type for a callback.
+ *
+ * @callback displayConnectionState
+ * @param {string} message - The message to show to user.
+ */
+
+
+
+// Onload, launch send or receive WebRTC session, '?send' will
+// trigger sending
+window.onload = async function () {
+    const suburl = location.origin + '/sub'        // output from sfu
+    const puburl = location.origin + '/pub'          // input to sfu
+
+    const vidElement = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
+    const updatePageCallback = (/** @type {string} */ msg) => document.getElementById('xstate').innerText = msg
+    const searchParams = new URLSearchParams(window.location.search)
+
+
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+    pc.oniceconnectionstatechange = ev => console.debug(pc.iceConnectionState)
+    pc.onconnectionstatechange = ev => onconnectionstatechange(ev, updatePageCallback)
+
+
+    if (searchParams.has('send')) {
+
+        pc.onnegotiationneeded = ev => onnegotiationneeded(ev, '/pub', updatePageCallback)
+
+        /** @type {MediaStream} */
+        var cameraStream
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        } catch (error) {
+            alert('No camera found, please attach & reload page')
+            return
+        }
+
+        vidElement.srcObject = cameraStream
+        vidElement.play()
+
+        const vidTrack = cameraStream.getVideoTracks()[0]
+        const audTrack = cameraStream.getAudioTracks()[0]
+
+        pc.addTransceiver(vidTrack, { 'direction': 'sendonly' })
+        pc.addTransceiver(audTrack, { 'direction': 'sendonly' })
+
+        document.title = "Sending"
+
+    } else {
+        pc.onnegotiationneeded = ev => onnegotiationneeded(ev, '/sub', updatePageCallback)
+
+        pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
+        pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
+        pc.ontrack = ev => vidElement.srcObject = ev.streams[0]
+
+        document.title = "Receiving"
+
+    }
+
+    pc.restartIce()  // Start connecting!
+
+
+
+    // @ts-ignore
+    if (startGetStatsShipping) {
+        // @ts-ignore
+        startGetStatsShipping(pc)
+    } else {
+        console.debug('startGetStatsShipping() not invoked')
+    }
+
+
+    // declare func
+    async function myCallback(id) {
+        id.textContent = await getRxTxRate(pc)
+        setTimeout(myCallback, 3000, id)        // milliseconds
+    }
+
+    // initiate timeout update loop
+    myCallback(document.getElementById('rxtx'))
+
+
+    // enable full screen nav-bar button
+    document.getElementById("gofullscreen").onclick = fullScreen
 }
 
-// 
-var a = document.getElementById("gofullscreen")
-a.onclick = function () {
-    let video = document.getElementById("video1")
+
+function fullScreen() {
+    const video = document.getElementById("video1")
     if (video.requestFullscreen) {
         video.requestFullscreen()
     } else {
@@ -30,111 +109,73 @@ a.onclick = function () {
 
 
 
-async function myOnload() {
-    const xstate = document.getElementById('xstate')
-    const vidout = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-    const pc = await receive(xstate, vidout)
-    document.title = "Receiving"
+/**
+ * 
+ * @param {Event} ev 
+ * @param {string} url
+ * @param {displayConnectionState} callback - A callback to run.
+ */
+async function onnegotiationneeded(ev, url, callback) {
+    let pc = /** @type {RTCPeerConnection} */ (ev.target)
 
-    const id = document.getElementById('rxtx')
-    const timeout = 3000
-    let intervalID = setTimeout(myCallback, timeout, id)
+    console.debug('>onnegotiationneeded')
 
-    async function myCallback(id) {
-        id.textContent = await getRxTxRate(pc)
-        setTimeout(myCallback, timeout, id)
+    const offer = await pc.createOffer()
+    await waitToCompleteIceGathering(pc, true)
+
+
+    // retry loop
+    let ntry = 0
+    let ans = '' //check for v=0??
+    while (ans === '') {
+        try {
+            ans = await sendSignalling(url, pc.localDescription)
+        } catch (err) {
+            callback('retrying #' + ntry++)
+            console.log(err)
+            await (new Promise(r => setTimeout(r, 2000)))
+        }
     }
 
-
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
 }
-
-
-
-
-
-
-
-
-
-// prior to invoke transmit
-// const gumopts = { video: { width: 1280, height: 720 }, audio: true }
-// const stream = await navigator.mediaDevices.getUserMedia(gumopts)
-
-// const xvid = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-// xvid.srcObject = stream
-// let v=stream.getVideoTracks()[0]
-// let a=stream.getAudioTracks()[0]
-// let pc = transmit(v,a)
-// const xstate = document.getElementById('xstate')
-// pc.onconnectionstatechange = e => xstate.textContent = pc.connectionState
-// while (true) {
-//   document.getElementById('rxtx').textContent = await getRxTxRate(pc)
-//   await new Promise(r => setTimeout(r, 3000))
-//  }
 
 
 /**
- * @param {MediaStreamTrack} video The video MST to send using WISH.
- * @param {MediaStreamTrack} audio The audio MST to send using WISH.
- * @returns {Promise<RTCPeerConnection>}
+ * 
+ * @param {Event} ev 
+ * @param {displayConnectionState} callback - A callback to run.
  */
-async function transmit(video, audio) {
-    console.debug("--transmit5")
-    document.title = "Sending"
+function onconnectionstatechange(ev, callback) {
+    let pc = /** @type {RTCPeerConnection} */ (ev.target)
+
+    console.debug('>onconnectionstatechange:', pc.connectionState)
 
 
-    try {
+    /// XXX risky ????? cam  "perfect negotiation examples only show using "failed"
+    if (pc.connectionState === "disconnected") {
+        /* possibly reconfigure the connection in some way here */
+        /* then request ICE restart */
+        console.debug('restarting ice')
+        pc.restartIce()
+    }
 
-        //   var t0 = performance.now()
-        //console.debug("delay of " + (performance.now() - t0) + "ms")
-        let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-        pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
-
-        //pc.onicecandidate = event => { console.debug('ignore ice candidate') }
-
-        pc.addTransceiver(video, { 'direction': 'sendonly' })
-        pc.addTransceiver(audio, { 'direction': 'sendonly' })
-
-        let desc = await pc.createOffer()
-        await pc.setLocalDescription(desc)
-
-        // XXXX consider wrapping with timeout promise
-        const t0 = performance.now()
-        await waitToCompleteIceGathering(pc, true)
-        desc = pc.localDescription
-        console.debug('ice gather blocked for N ms:', Math.ceil(performance.now() - t0))
-
-        console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
-        let fetchopt =
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/sdp', },
-            body: desc.sdp
-        }
-        let resp = await fetch(puburl, fetchopt)
-        let resptext = await resp.text()
-        if (resp.status != 202) {
-            throw `SFU error: ${resptext} ${resp.status}`
-            // pc.close()
-            // return
-        }
-        console.debug('got N line answer:', resptext.split(/\r\n|\r|\n/).length)
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: resptext }))
-
-        return pc
-    } catch (error) {
-        console.error('Send Error:', error)
-        //document.getElementById('errortext').textContent = error
-        alert(error)
+    if (pc.connectionState === "failed") {
+        /* possibly reconfigure the connection in some way here */
+        /* then request ICE restart */
+        console.debug('restarting ice')
+        pc.restartIce()
     }
 }
+
 
 
 /**
  * @param {RTCSessionDescription} desc The session description.
+ * @param {string} url Where to do WHIP or WHAP
  * @returns {Promise<string>}
  */
-async function sendSignalling(desc) {
+async function sendSignalling(url, desc) {
     console.debug('sending N line offer:', desc.sdp.split(/\r\n|\r|\n/).length)
     let fetchopt =
     {
@@ -142,7 +183,7 @@ async function sendSignalling(desc) {
         headers: { 'Content-Type': 'application/sdp', },
         body: desc.sdp
     }
-    let resp = await fetch(suburl, fetchopt)
+    let resp = await fetch(url, fetchopt)
     let resptext = await resp.text()
     if (resp.status != 202) {
         throw `SFU error: ${resptext} ${resp.status}`
@@ -154,6 +195,10 @@ async function sendSignalling(desc) {
 }
 
 
+/**
+ * @param {RTCPeerConnection} pc
+ * @param {boolean} logPerformance
+ */
 async function waitToCompleteIceGathering(pc, logPerformance) {
     const t0 = performance.now()
 
@@ -161,7 +206,7 @@ async function waitToCompleteIceGathering(pc, logPerformance) {
         setTimeout(function () {
             resolve(pc.localDescription)
         }, 250)
-        pc.addEventListener('icegatheringstatechange', e => (e.target.iceGatheringState === 'complete') && resolve(pc.localDescription));
+        pc.addEventListener('icegatheringstatechange', ev => pc.iceGatheringState === 'complete' && resolve(pc.localDescription))
     })
 
     if (logPerformance === true) {
@@ -172,91 +217,14 @@ async function waitToCompleteIceGathering(pc, logPerformance) {
 }
 
 
-/**
- * @param {HTMLElement} status - The status element .innerText gets update.
- * @param {HTMLVideoElement} vidout - The video element for playback
- * @returns {Promise<RTCPeerConnection>}
- */
-async function receive(status, vidout) {
-    console.debug("--receive x3")
 
 
 
-    try {
-        const url = suburl
-
-        let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-        pc.oniceconnectionstatechange = e => console.debug(pc.iceConnectionState)
-
-        pc.onconnectionstatechange = e => {
-            console.debug('>onconnectionstatechange', pc.connectionState)
-            status.innerText = pc.connectionState
-            if (pc.connectionState === "failed") {
-                /* possibly reconfigure the connection in some way here */
-                /* then request ICE restart */
-                console.debug('restarting ice')
-                pc.restartIce()
-            }
-        }
 
 
-        // @ts-ignore
-        if (startGetStatsShipping) {
-            // @ts-ignore
-            startGetStatsShipping(pc)
-        } else {
-            console.debug('startGetStatsShipping() not invoked')
-        }
 
 
-        let ntry = 0
-        pc.onnegotiationneeded = async () => {
-            console.debug('onnegotiationneeded')
-            await pc.setLocalDescription(await pc.createOffer())
-            await waitToCompleteIceGathering(pc, true)
-            let ans = ''
-            while (ans === '') {
-                try {
-                    ans = await sendSignalling(pc.localDescription)
-                } catch (err) {
-                    console.log(err)
 
-                    status.innerText = ('retrying #' + ntry++)
-
-                    await (new Promise(r => setTimeout(r, 2000)))
-                }
-            }
-
-            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
-        }
-
-        //must have addtransceiver to get m=video in sdp
-        //addTransceiver() must be called before createOffer()
-        pc.addTransceiver('video', { 'direction': 'recvonly' })
-        pc.addTransceiver('audio', { 'direction': 'recvonly' })
-
-        pc.ontrack = function (event) {
-            let z = event.streams[0]
-            console.debug('on track fired naudio', z.getAudioTracks().length)
-            console.debug('on track fired nvideo', z.getVideoTracks().length)
-
-            vidout.srcObject = event.streams[0]
-            vidout.autoplay = true
-            vidout.controls = true
-            return false
-        }
-        // Go!
-        pc.restartIce()
-
-        console.debug('n senders in getsenders()', pc.getSenders())
-
-        return pc
-    } catch (error) {
-        console.error('Receive Error:', error)
-        //document.getElementById('errortext').textContent = error
-        alert(error)
-    }
-}
 
 var ratemap = new Map()
 
@@ -302,7 +270,7 @@ async function getRxTxRate(pc) {
                 if (ratemap.has(report.ssrc)) { //report.id may also be a good key
                     const bytesPrev = ratemap.get(report.ssrc).bytesPrev
                     const timestampPrev = ratemap.get(report.ssrc).timestampPrev
-                    const bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev);
+                    const bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev)
                     txrate += bitrate
                     //console.debug('tx speed', report.ssrc, report.type, report.mediaType, bitrate)
                 }
@@ -313,7 +281,7 @@ async function getRxTxRate(pc) {
                 if (ratemap.has(report.ssrc)) { //report.id may also be a good key
                     const bytesPrev = ratemap.get(report.ssrc).bytesPrev
                     const timestampPrev = ratemap.get(report.ssrc).timestampPrev
-                    const bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev);
+                    const bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev)
                     rxrate += bitrate
                     //console.debug('rx speed',report.ssrc, report.type, report.mediaType, bitrate)
                 }
@@ -322,7 +290,7 @@ async function getRxTxRate(pc) {
         })
 
     } catch (err) {
-        console.error(err);
+        console.error(err)
     }
     // we have kbps
     rxrate = Math.floor(rxrate)
