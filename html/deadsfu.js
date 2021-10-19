@@ -88,20 +88,25 @@ window.onload = async function () {
 
 
     // enable full screen nav-bar button
-    document.getElementById("gofullscreen").onclick = fullScreen
+
+    document.getElementById("gofullscreen").onclick = (ev) => fullScreen(vidElement)
+
 }
 
+/**
+ * 
+ * @param {HTMLVideoElement}  vidElement
+ */
+function fullScreen(vidElement) {
 
-function fullScreen() {
-    const video = document.getElementById("video1")
-    if (video.requestFullscreen) {
-        video.requestFullscreen()
+    if (vidElement.requestFullscreen) {
+        vidElement.requestFullscreen()
     } else {
         // Toggle fullscreen in Safari for iPad
         // @ts-ignore
-        if (video.webkitEnterFullScreen) {
+        if (vidElement.webkitEnterFullScreen) {
             // @ts-ignore
-            video.webkitEnterFullScreen()
+            vidElement.webkitEnterFullScreen()
         }
     }
     return false
@@ -116,44 +121,54 @@ function fullScreen() {
  * @param {displayConnectionState} callback - A callback to run.
  */
 async function onnegotiationneeded(ev, url, callback) {
+    let rnd = Math.floor(Math.random() * 1000)
     let pc = /** @type {RTCPeerConnection} */ (ev.target)
 
     console.debug('>onnegotiationneeded')
 
+    console.debug(rnd, 1, pc.connectionState, pc.signalingState, pc.iceGatheringState, pc.iceConnectionState)
+
     const offer = await pc.createOffer()
+
     // https://blog.mozilla.org/webrtc/perfect-negotiation-in-webrtc/
-    if (pc.signalingState != 'stable')
-        return
+    // if (pc.signalingState != 'stable')
+    //     return
+
     await pc.setLocalDescription(offer)
     await waitToCompleteIceGathering(pc, true)
 
 
     // retry loop
-  
+
     let ans = '' //check for v=0??
-    if (true) {
-        let ntry = 0
+    let ntry = 0
 
-        while (ans === '') {
-            console.debug('** sigsts ', pc.signalingState)
-            //@ts-ignore
-            if (pc.signalingState != 'have-local-offer')
-                return
+    while (ans === '') {
 
-            try {
-                ans = await sendSignalling(url, pc.localDescription)
-            } catch (err) {
-                callback('retrying #' + ntry++)
-                console.log(err)
-                await (new Promise(r => setTimeout(r, 2000)))
-            }
+        console.debug(rnd, 2, pc.connectionState, pc.signalingState, pc.iceGatheringState, pc.iceConnectionState)
+
+        // if (pc.connectionState == 'connected')
+        //     return
+
+        try {
+
+            ans = await sendSignalling(url, pc.localDescription)
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
+            return
+
+        } catch (err) {
+
+            callback('retrying #' + ntry++)
+            console.debug(err)
+            await (new Promise(r => setTimeout(r, 2000)))
+            pc.restartIce()
+
         }
-    } else {
-        ans = await sendSignalling(url, pc.localDescription)
     }
 
+    console.debug(rnd, 3, pc.connectionState, pc.signalingState, pc.iceGatheringState, pc.iceConnectionState)
 
-    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
+
 }
 
 
@@ -262,7 +277,7 @@ async function getRxTxRate(pc) {
 
         const results = await pc.getStats(null)
 
-        //console.log(JSON.stringify(Object.fromEntries(await pc.getStats(null))))
+        //console.debug_(JSON.stringify(Object.fromEntries(await pc.getStats(null))))
 
         results.forEach(report => {
             const now = report.timestamp
