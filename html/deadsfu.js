@@ -129,17 +129,29 @@ async function onnegotiationneeded(ev, url, callback) {
 
 
     // retry loop
-    let ntry = 0
+  
     let ans = '' //check for v=0??
-    while (ans === '') {
-        try {
-            ans = await sendSignalling(url, pc.localDescription)
-        } catch (err) {
-            callback('retrying #' + ntry++)
-            console.log(err)
-            await (new Promise(r => setTimeout(r, 2000)))
+    if (true) {
+        let ntry = 0
+
+        while (ans === '') {
+            console.debug('** sigsts ', pc.signalingState)
+            //@ts-ignore
+            if (pc.signalingState != 'have-local-offer')
+                return
+
+            try {
+                ans = await sendSignalling(url, pc.localDescription)
+            } catch (err) {
+                callback('retrying #' + ntry++)
+                console.log(err)
+                await (new Promise(r => setTimeout(r, 2000)))
+            }
         }
+    } else {
+        ans = await sendSignalling(url, pc.localDescription)
     }
+
 
     await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
 }
