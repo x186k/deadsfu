@@ -230,7 +230,6 @@ async function waitToCompleteIceGathering(pc, logPerformance) {
 
 
 
-var ratemap = new Map()
 
 /**
  * @param {RTCPeerConnection} pc
@@ -239,9 +238,15 @@ async function getRxTxRate(pc) {
     let rxrate = 0
     let txrate = 0
     try {
+
+        //@ts-ignore
+        let ratemap = pc.ratemap
         if (typeof ratemap === 'undefined') {
             ratemap = new Map()
         }
+        //@ts-ignore
+        pc.ratemap = ratemap
+
 
         const results = await pc.getStats(null)
 
