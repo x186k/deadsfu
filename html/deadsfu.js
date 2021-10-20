@@ -25,13 +25,15 @@ window.onload = async function () {
 
 
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-    pc.oniceconnectionstatechange = ev => console.debug(pc.iceConnectionState)
-    pc.onconnectionstatechange = ev => onconnectionstatechange(ev, updatePageCallback)
+    pc.oniceconnectionstatechange = ev => iceStateChange(ev, updatePageCallback)
+    //firefox does not support this right now 10/20/21
+    //pc.onconnectionstatechange = ev => iceStateChange(ev, updatePageCallback)
+    console.debug(777)
 
 
     if (searchParams.has('send')) {
 
-        pc.onnegotiationneeded = ev => onnegotiationneeded(ev, '/pub', updatePageCallback)
+        pc.onnegotiationneeded = ev => negotiate(ev, '/pub', updatePageCallback)
 
         /** @type {MediaStream} */
         var cameraStream
@@ -54,11 +56,18 @@ window.onload = async function () {
         document.title = "Sending"
 
     } else {
-        pc.onnegotiationneeded = ev => onnegotiationneeded(ev, '/sub', updatePageCallback)
+        pc.onnegotiationneeded = ev => negotiate(ev, '/sub', updatePageCallback)
 
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
-        pc.ontrack = ev => vidElement.srcObject = ev.streams[0]
+        pc.ontrack = function (event) {
+            vidElement.srcObject = event.streams[0]
+            vidElement.autoplay = true
+            vidElement.controls = true
+            console.log('**ontrack')
+            return false
+        }
+
 
         document.title = "Receiving"
 
@@ -119,56 +128,31 @@ function fullScreen(vidElement) {
  * @param {Event} ev 
  * @param {string} url
  * @param {displayConnectionState} callback - A callback to run.
+ * 
+ *     https://blog.mozilla.org/webrtc/perfect-negotiation-in-webrtc/
  */
-async function onnegotiationneeded(ev, url, callback) {
-    let rnd = Math.floor(Math.random() * 1000)
+
+
+async function negotiate(ev, url, callback) {
     let pc = /** @type {RTCPeerConnection} */ (ev.target)
 
     console.debug('>onnegotiationneeded')
 
-    console.debug(rnd, 1, pc.connectionState, pc.signalingState, pc.iceGatheringState, pc.iceConnectionState)
-
     const offer = await pc.createOffer()
-
-    // https://blog.mozilla.org/webrtc/perfect-negotiation-in-webrtc/
-    // if (pc.signalingState != 'stable')
-    //     return
-
     await pc.setLocalDescription(offer)
-    await waitToCompleteIceGathering(pc, true)
+    let ofr = await waitToCompleteIceGathering(pc, true)
 
-
-    // retry loop
-
-    let ans = '' //check for v=0??
     let ntry = 0
-
+    let ans = ''
     while (ans === '') {
-
-        console.debug(rnd, 2, pc.connectionState, pc.signalingState, pc.iceGatheringState, pc.iceConnectionState)
-
-        // if (pc.connectionState == 'connected')
-        //     return
-
         try {
-
-            ans = await sendSignalling(url, pc.localDescription)
+            ans = await sendSignalling(url, ofr)
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
-            return
-
-        } catch (err) {
-
+        } catch {
             callback('retrying #' + ntry++)
-            console.debug(err)
             await (new Promise(r => setTimeout(r, 2000)))
-            pc.restartIce()
-
         }
     }
-
-    console.debug(rnd, 3, pc.connectionState, pc.signalingState, pc.iceGatheringState, pc.iceConnectionState)
-
-
 }
 
 
@@ -177,24 +161,15 @@ async function onnegotiationneeded(ev, url, callback) {
  * @param {Event} ev 
  * @param {displayConnectionState} callback - A callback to run.
  */
-function onconnectionstatechange(ev, callback) {
+function iceStateChange(ev, callback) {
     let pc = /** @type {RTCPeerConnection} */ (ev.target)
 
-    console.debug('>onconnectionstatechange:', pc.connectionState)
+    console.debug('>iceConnectionState', pc.iceConnectionState)
 
+    callback(pc.iceConnectionState)
 
-    /// XXX risky ????? cam  "perfect negotiation examples only show using "failed"
-    if (pc.connectionState === "disconnected") {
-        /* possibly reconfigure the connection in some way here */
-        /* then request ICE restart */
-        console.debug('restarting ice')
-        pc.restartIce()
-    }
-
-    if (pc.connectionState === "failed") {
-        /* possibly reconfigure the connection in some way here */
-        /* then request ICE restart */
-        console.debug('restarting ice')
+    if (pc.iceConnectionState === "disconnected") {   //'failed' is also an option
+        console.debug('*** restarting ice')
         pc.restartIce()
     }
 }
@@ -237,7 +212,7 @@ async function waitToCompleteIceGathering(pc, logPerformance) {
         setTimeout(function () {
             resolve(pc.localDescription)
         }, 250)
-        pc.addEventListener('icegatheringstatechange', ev => pc.iceGatheringState === 'complete' && resolve(pc.localDescription))
+        pc.onicegatheringstatechange = ev => pc.iceGatheringState === 'complete' && resolve(pc.localDescription)
     })
 
     if (logPerformance === true) {
@@ -283,7 +258,7 @@ async function getRxTxRate(pc) {
             const now = report.timestamp
 
 
-            let xtraDebug = true
+            let xtraDebug = false
             if (xtraDebug) {
                 if (report.type === 'inbound-rtp' && report.kind === 'video') {
                     console.debug('frames: Nrx', report.framesReceived, 'Ndecode', report.framesDecoded, 'Nrx-Ndecode', report.framesReceived - report.framesDecoded)
