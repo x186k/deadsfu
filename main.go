@@ -361,12 +361,14 @@ func main() {
 	println("profiling done, exit")
 }
 
-func addStatsCookie(wrappedHandler http.Handler, url string) http.Handler {
+func addOrDeleteStatsCookie(wrappedHandler http.Handler, url string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		cookie1 := &http.Cookie{Name: "getstats-shipper-url", Value: url, HttpOnly: false}
-		http.SetCookie(w, cookie1)
+		// will be "" to delete
+		value := url
 
+		cookie1 := &http.Cookie{Name: "getstats-shipper-url", Value: value, HttpOnly: false}
+		http.SetCookie(w, cookie1)
 
 		wrappedHandler.ServeHTTP(w, r)
 	})
@@ -527,9 +529,7 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 
 	}
 
-	if *getStatsLogging != "" {
-		rootmux = addStatsCookie(rootmux, *getStatsLogging)
-	}
+	rootmux = addOrDeleteStatsCookie(rootmux, *getStatsLogging)
 
 	mux.Handle("/", rootmux)
 
