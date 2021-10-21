@@ -89,6 +89,8 @@ curl  https://github.com/x186k/deadsfu/releases/latest/download/deadsfu-windows-
 
 ## Quick Start: OBS / FTL ingress
 
+Remove the --ftl-key args if you are not using OBS/FTL.
+
 Linux/macOS
 ```bash
 ./deadsfu --http :8080 --html internal --ftl-key 123-abc
@@ -97,15 +99,21 @@ Windows
 ```
 .\\deadsfu --http :8080 --html internal --ftl-key 123-abc
 ```
+
+Docker Host Networking (recommended) Only Works on Linux
+```bash
+docker run --name deadsfu --pull always --network host x186k/deadsfu --http :8080 --html internal --ftl-key 123-abc
+```
+Host networking can ease WebRTC connecting in difficult environments.  The SFU can share the true host IP addresses.
+
 Docker Forwarded Ports (Mac,Win,Linux)
 ```bash
 docker run --name deadsfu --pull always -p 8080:8080 -p 8084:8084/udp -p 8084:8084/tcp x186k/deadsfu --http :8080 --html internal --ftl-key 123-abc
 ```
 
-Docker Host Networking Linux ONLY!
-```bash
-docker run --name deadsfu --pull always --network host x186k/deadsfu --http :8080 --html internal --ftl-key 123-abc
-```
+
+
+
 
 ## Quick Start: Browser Ingress
 
