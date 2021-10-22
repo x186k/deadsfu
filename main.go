@@ -130,20 +130,6 @@ type TxTrack struct {
 
 var txtracks []*TxTrack
 
-func checkFatal(err error) {
-	if err != nil {
-		_, fileName, fileLine, _ := runtime.Caller(1)
-		elog.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
-	}
-}
-
-var _ = pline
-
-func pline() {
-	_, fileName, fileLine, _ := runtime.Caller(1)
-	fmt.Println("pline:", filepath.Base(fileName), fileLine)
-}
-
 var Version = "version-unset"
 
 // var urlsFlag urlset
@@ -161,6 +147,8 @@ var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC|log.Lshortfile)
 var medialog = log.New(io.Discard, "", 0)
 var ddnslog = log.New(io.Discard, "", 0)
 
+var rtpoutConn *net.UDPConn
+
 func logGoroutineCountToDebugLog() {
 	n := -1
 	for {
@@ -173,7 +161,19 @@ func logGoroutineCountToDebugLog() {
 	}
 }
 
-var rtpoutConn *net.UDPConn
+func checkFatal(err error) {
+	if err != nil {
+		_, fileName, fileLine, _ := runtime.Caller(1)
+		elog.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
+	}
+}
+
+var _ = pline
+
+func pline() {
+	_, fileName, fileLine, _ := runtime.Caller(1)
+	fmt.Println("pline:", filepath.Base(fileName), fileLine)
+}
 
 func validateEmbedFiles() {
 	if _, err := htmlContent.ReadFile("html/index.html"); err != nil {
