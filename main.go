@@ -50,6 +50,25 @@ import (
 	_ "net/http/pprof"
 )
 
+// https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
+// msid:streamid trackid/appdata
+// per RFC appdata is "application-specific data", we use a/b/c for simulcast
+const (
+	mediaStreamId = "x186k"
+	videoMimeType = "video/h264"
+	audioMimeType = "audio/opus"
+	pubPath       = "/pub"
+	subPath       = "/sub" // 2nd slash important
+)
+
+const (
+	IdleVideo  TrackId = 0
+	Video      TrackId = iota
+	Audio      TrackId = iota
+	Data       TrackId = iota
+	NumTrackId         = iota
+)
+
 var lastVideoRxTime time.Time = time.Now()
 
 var sendingIdleVid bool
@@ -72,17 +91,6 @@ var myMetrics struct {
 	dialConnectionRefused uint64
 }
 
-// https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
-// msid:streamid trackid/appdata
-// per RFC appdata is "application-specific data", we use a/b/c for simulcast
-const (
-	mediaStreamId = "x186k"
-	videoMimeType = "video/h264"
-	audioMimeType = "audio/opus"
-	pubPath       = "/pub"
-	subPath       = "/sub" // 2nd slash important
-)
-
 var ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 var mediaDebugTickerChan = make(<-chan time.Time)
 var mediaDebug = false
@@ -99,7 +107,6 @@ type MsgSubscriberAddTrack struct {
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
-//var rxidStateCh chan MsgGetRxidState = make(chan MsgGetRxidState)
 
 // size optimized, not readability
 type RtpSplicer struct {
@@ -113,13 +120,7 @@ type RtpSplicer struct {
 
 type TrackId int32
 
-const (
-	IdleVideo  TrackId = 0
-	Video      TrackId = iota
-	Audio      TrackId = iota
-	Data       TrackId = iota
-	NumTrackId         = iota
-)
+
 
 // size optimized, not readability
 type TxTrack struct {
@@ -148,6 +149,8 @@ var medialog = log.New(io.Discard, "", 0)
 var ddnslog = log.New(io.Discard, "", 0)
 
 var rtpoutConn *net.UDPConn
+
+var inputSplicers = make([]RtpSplicer, NumTrackId)
 
 func logGoroutineCountToDebugLog() {
 	n := -1
@@ -1255,8 +1258,6 @@ func msgLoop() {
 		msgOnce()
 	}
 }
-
-var inputSplicers = make([]RtpSplicer, NumTrackId)
 
 func msgOnce() {
 
