@@ -7,3 +7,6 @@
 [submodule "whip-whap-js"]
 	path = whip-whap-js
 	url = https://github.com/x186k/whip-whap-js
+[submodule "html/whip-whap-js"]
+	path = html/whip-whap-js
+	url = https://github.com/x186k/whip-whap-js
