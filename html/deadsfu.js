@@ -4,31 +4,35 @@
 // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
 
 
+
+
+
 /**
  * JSDoc type for a callback.
  *
  * @callback displayConnectionState
  * @param {string} message - The message to show to user.
  */
-
-
-
 // Onload, launch send or receive WebRTC session, '?send' will
 // trigger sending
 window.onload = async function () {
 
-    const vidElement = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-    const updatePageCallback = (/** @type {string} */ msg) => document.getElementById('xstate').innerText = msg
 
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-    pc.oniceconnectionstatechange = ev => iceStateChange(ev, updatePageCallback)
-    //firefox does not support this right now 10/20/21
-    //pc.onconnectionstatechange = ev => iceStateChange(ev, updatePageCallback)
 
+    const xstate = document.getElementById('xstate')
+    //@ts-ignore  
+    pc.addEventListener('retry-counter', ev => xstate.innerText = 'retrying #' + ev.detail)
+    //firefox does not fire 'onconnectionstatechange' right now, so use ice...
+    pc.addEventListener('iceconnectionstatechange', ev => xstate.innerText = pc.iceConnectionState)
+    pc.addEventListener('iceconnectionstatechange', restartIceIfNeeded)
+
+
+    const vidElement = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
     const searchParams = new URLSearchParams(window.location.search)
     if (searchParams.has('send')) {
 
-        pc.onnegotiationneeded = ev => negotiate(ev, '/pub', updatePageCallback)
+        pc.onnegotiationneeded = ev => negotiate(ev, '/pub')
 
         /** @type {MediaStream} */
         var cameraStream
@@ -51,7 +55,7 @@ window.onload = async function () {
         document.title = "Sending"
 
     } else {
-        pc.onnegotiationneeded = ev => negotiate(ev, '/sub', updatePageCallback)
+        pc.onnegotiationneeded = ev => negotiate(ev, '/sub')
 
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
@@ -116,19 +120,14 @@ function fullScreen(vidElement) {
     return false
 }
 
-
-
 /**
  * 
  * @param {Event} ev 
  * @param {string} url
- * @param {displayConnectionState} callback - A callback to run.
  * 
  *     https://blog.mozilla.org/webrtc/perfect-negotiation-in-webrtc/
  */
-
-
-async function negotiate(ev, url, callback) {
+async function negotiate(ev, url) {
     let pc = /** @type {RTCPeerConnection} */ (ev.target)
 
     console.debug('>onnegotiationneeded')
@@ -144,27 +143,22 @@ async function negotiate(ev, url, callback) {
             ans = await sendSignalling(url, ofr)
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
         } catch {
-            if (callback && typeof callback === 'function') {
-                callback('retrying #' + ntry++)
-            }
-
+            ntry = ntry + 1
+            const event = new CustomEvent('retry-counter', { detail: ntry })
+            pc.dispatchEvent(event)
             await (new Promise(r => setTimeout(r, 2000)))
         }
     }
 }
 
 
+
+
 /**
- * 
- * @param {Event} ev 
- * @param {displayConnectionState} callback - A callback to run.
+ * @param {Event} event 
  */
-function iceStateChange(ev, callback) {
-    let pc = /** @type {RTCPeerConnection} */ (ev.target)
-
-    console.debug('>iceConnectionState', pc.iceConnectionState)
-
-    callback(pc.iceConnectionState)
+function restartIceIfNeeded(event) {
+    let pc = /** @type {RTCPeerConnection} */ (event.target)
 
     if (pc.iceConnectionState === "disconnected") {   //'failed' is also an option
         console.debug('*** restarting ice')
