@@ -16,21 +16,16 @@
 // Onload, launch send or receive WebRTC session, '?send' will
 // trigger sending
 window.onload = async function () {
-    const suburl = location.origin + '/sub'        // output from sfu
-    const puburl = location.origin + '/pub'          // input to sfu
 
     const vidElement = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
     const updatePageCallback = (/** @type {string} */ msg) => document.getElementById('xstate').innerText = msg
-    const searchParams = new URLSearchParams(window.location.search)
-
 
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
     pc.oniceconnectionstatechange = ev => iceStateChange(ev, updatePageCallback)
     //firefox does not support this right now 10/20/21
     //pc.onconnectionstatechange = ev => iceStateChange(ev, updatePageCallback)
-    console.debug(777)
 
-
+    const searchParams = new URLSearchParams(window.location.search)
     if (searchParams.has('send')) {
 
         pc.onnegotiationneeded = ev => negotiate(ev, '/pub', updatePageCallback)
