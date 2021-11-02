@@ -86,14 +86,14 @@ window.onload = async function () {
 
 
     // declare func
-    async function myCallback(id) {
+    async function rxtxTimeoutCallback(id) {
         let rates = await getRxTxRate(pc)
         id.textContent = `${rates.rxrate}/${rates.txrate} rx/tx kbps`
-        setTimeout(myCallback, 3000, id)        // milliseconds
+        setTimeout(rxtxTimeoutCallback, 3000, id)        // milliseconds
     }
 
     // initiate timeout update loop
-    myCallback(document.getElementById('rxtx'))
+    rxtxTimeoutCallback(document.getElementById('rxtx'))
 
 
     // enable full screen nav-bar button
