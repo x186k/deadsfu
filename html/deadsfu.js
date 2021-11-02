@@ -87,7 +87,8 @@ window.onload = async function () {
 
     // declare func
     async function myCallback(id) {
-        id.textContent = await getRxTxRate(pc)
+        let rates = await getRxTxRate(pc)
+        id.textContent = `${rates.rxrate}/${rates.txrate} rx/tx kbps`
         setTimeout(myCallback, 3000, id)        // milliseconds
     }
 
@@ -215,16 +216,6 @@ async function waitToCompleteIceGathering(pc, logPerformance) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
 /**
  * @param {RTCPeerConnection} pc
  */
@@ -299,6 +290,9 @@ async function getRxTxRate(pc) {
     rxrate = Math.floor(rxrate)
     txrate = Math.floor(txrate)
 
-    return `${rxrate}/${txrate} rx/tx kbps`
+    return {
+        rxrate,
+        txrate
+    }
 }
 
