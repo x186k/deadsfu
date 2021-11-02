@@ -144,7 +144,10 @@ async function negotiate(ev, url, callback) {
             ans = await sendSignalling(url, ofr)
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: ans }))
         } catch {
-            callback('retrying #' + ntry++)
+            if (callback && typeof callback === 'function') {
+                callback('retrying #' + ntry++)
+            }
+
             await (new Promise(r => setTimeout(r, 2000)))
         }
     }
