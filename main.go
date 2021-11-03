@@ -79,6 +79,9 @@ var htmlContent embed.FS
 //go:embed deadsfu-binaries/idle-clip.zip
 var idleClipZipBytes []byte
 
+//go:embed deadsfu-binaries/favicon_io/favicon.ico
+var favicon_ico []byte
+
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
 		{
@@ -107,7 +110,6 @@ type MsgSubscriberAddTrack struct {
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
-
 // size optimized, not readability
 type RtpSplicer struct {
 	lastUnixnanosNow int64
@@ -119,8 +121,6 @@ type RtpSplicer struct {
 }
 
 type TrackId int32
-
-
 
 // size optimized, not readability
 type TxTrack struct {
@@ -535,6 +535,11 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 	rootmux = addOrDeleteStatsCookie(rootmux, *getStatsLogging)
 
 	mux.Handle("/", rootmux)
+
+	mux.HandleFunc("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
+		readseek := bytes.NewReader(favicon_ico)
+		http.ServeContent(rw, r, "favicon.ico", time.Time{}, readseek)
+	})
 
 	if false {
 		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
