@@ -23,14 +23,14 @@ window.onload = async function () {
     pc.addEventListener('retry-counter', ev => xstate.innerText = 'retrying #' + ev.detail)
     //firefox does not fire 'onconnectionstatechange' right now, so use ice...
     pc.addEventListener('iceconnectionstatechange', ev => xstate.innerText = pc.iceConnectionState)
-    pc.addEventListener('iceconnectionstatechange', whipwhap.restartIceIfNeeded)
+    pc.addEventListener('iceconnectionstatechange', whipwhap.handleIceStateChange)
 
 
     const vidElement = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
     const searchParams = new URLSearchParams(window.location.search)
     if (searchParams.has('send')) {
 
-        pc.onnegotiationneeded = ev => whipwhap.negotiate(ev, '/pub')
+        pc.onnegotiationneeded = ev => whipwhap.handleNegotiationNeeded(ev, '/pub')
 
         /** @type {MediaStream} */
         var cameraStream
@@ -53,7 +53,7 @@ window.onload = async function () {
         document.title = "Sending"
 
     } else {
-        pc.onnegotiationneeded = ev => whipwhap.negotiate(ev, '/sub')
+        pc.onnegotiationneeded = ev => whipwhap.handleNegotiationNeeded(ev, '/sub')
 
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
@@ -87,7 +87,7 @@ window.onload = async function () {
 
     // declare func
     async function rxtxTimeoutCallback() {
-        let rates = await whipwhap.getRxTxRate(pc)
+        let rates = await whipwhap.helperGetRxTxRate(pc)
         rxtxSpan.textContent = `${rates.rxrate}/${rates.txrate} rx/tx kbps`
         setTimeout(rxtxTimeoutCallback, 3000)        // milliseconds
     }
