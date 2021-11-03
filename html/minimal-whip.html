@@ -18,7 +18,7 @@
             await pc.setLocalDescription(ofr)
             let opt = { method: 'POST', headers: { 'Content-Type': 'application/sdp', }, body: ofr.sdp }
             let rsp = await fetch(location.origin + '/pub', opt)
-            if (rsp.status != 202) { throw 'bad http code=' + rsp.status }
+            if (rsp.status != 201) { throw 'bad http code=' + rsp.status }
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: await rsp.text() }))
         }
         go()

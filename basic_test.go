@@ -138,7 +138,7 @@ func TestPubSub(t *testing.T) {
 	SubHandler(w, req) // not super clean, but \_(ツ)_/¯
 	resp := w.Result()
 	answerraw, _ := io.ReadAll(resp.Body)
-	assert.Equal(t, 202, resp.StatusCode)
+	assert.Equal(t, 201, resp.StatusCode)
 	assert.Equal(t, "application/sdp", resp.Header.Get("Content-Type"))
 	ans := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
 	assert.True(t, ValidateSDP(ans))
@@ -213,7 +213,7 @@ func startMultiTrackPublisher(t *testing.T) {
 	pubHandler(w, req) // not super clean, but \_(ツ)_/¯
 	resp := w.Result()
 	answerraw, _ := io.ReadAll(resp.Body)
-	assert.Equal(t, 202, resp.StatusCode)
+	assert.Equal(t, 201, resp.StatusCode)
 	assert.Equal(t, "application/sdp", resp.Header.Get("Content-Type"))
 	ans := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
 	assert.True(t, ValidateSDP(ans))

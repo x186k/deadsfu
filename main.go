@@ -665,7 +665,7 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 	answersd := createIngressPeerConnection(string(offer))
 
 	w.Header().Set("Content-Type", "application/sdp")
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(201)
 	_, err = w.Write([]byte(answersd.SDP))
 	checkFatal(err) // cam/if this write fails, then fail hard!
 
@@ -832,7 +832,7 @@ func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
 	checkFatal(err)
 
 	w.Header().Set("Content-Type", "application/sdp")
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(201)
 	_, err = w.Write([]byte(ansrtcsd.SDP))
 	if err != nil {
 		elog.Println(fmt.Errorf("sub sdp write failed:%w", err))
