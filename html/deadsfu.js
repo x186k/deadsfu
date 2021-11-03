@@ -4,11 +4,7 @@
 // http://demo.unified-streaming.com/players/dash.js-2.4.1/build/jsdoc/jsdoc_cheat-sheet.pdf
 
 
-
-
-import * as whipwhap from "./whip-whap-js/whip-whap-js.js";
-
-
+import * as whipwhap from "./whip-whap-js/whip-whap-js.js"
 
 
 // Onload, launch send or receive WebRTC session, adding '?send' or '&send' to url will
@@ -16,7 +12,7 @@ import * as whipwhap from "./whip-whap-js/whip-whap-js.js";
 window.onload = async function () {
 
 
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+    let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
 
     const xstate = document.getElementById('xstate')
     //@ts-ignore  
@@ -26,44 +22,38 @@ window.onload = async function () {
     pc.addEventListener('iceconnectionstatechange', whipwhap.handleIceStateChange)
 
 
-    const vidElement = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
-    const searchParams = new URLSearchParams(window.location.search)
+    let video1 = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
+    let searchParams = new URLSearchParams(window.location.search)
     if (searchParams.has('send')) {
 
-        pc.onnegotiationneeded = ev => whipwhap.handleNegotiationNeeded(ev, '/pub')
+        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, '/pub'))
 
         /** @type {MediaStream} */
-        var cameraStream
+        var gum
         try {
-            cameraStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+            gum = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
         } catch (error) {
             alert('No camera found, please attach & reload page')
             return
         }
 
-        vidElement.srcObject = cameraStream
-        vidElement.play()
+        video1.srcObject = gum
+        video1.play()
 
-        const vidTrack = cameraStream.getVideoTracks()[0]
-        const audTrack = cameraStream.getAudioTracks()[0]
-
-        pc.addTransceiver(vidTrack, { 'direction': 'sendonly' })
-        pc.addTransceiver(audTrack, { 'direction': 'sendonly' })
+        pc.addTransceiver(gum.getVideoTracks()[0], { 'direction': 'sendonly' })
+        pc.addTransceiver(gum.getAudioTracks()[0], { 'direction': 'sendonly' })
 
         document.title = "Sending"
 
     } else {
-        pc.onnegotiationneeded = ev => whipwhap.handleNegotiationNeeded(ev, '/sub')
+        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, '/sub'))
 
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
-        pc.ontrack = function (event) {
-            vidElement.srcObject = event.streams[0]
-            vidElement.autoplay = true
-            vidElement.controls = true
-            console.log('**ontrack')
-            return false
-        }
+
+        pc.ontrack = ev => video1.srcObject = ev.streams[0]
+
+
 
 
         document.title = "Receiving"
@@ -99,7 +89,7 @@ window.onload = async function () {
 
     // enable full screen nav-bar button
 
-    document.getElementById("gofullscreen").onclick = (ev) => fullScreen(vidElement)
+    document.getElementById("gofullscreen").onclick = (ev) => fullScreen(video1)
 
 }
 
