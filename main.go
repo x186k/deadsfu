@@ -678,7 +678,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST")
 		w.Header().Set("Access-Control-Max-Age", "86400")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(200) //200 from https://stackoverflow.com/a/46028619/86375
 
 		return true
 	}
