@@ -1026,6 +1026,7 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 
 func dialUpstream(dialurl string) {
 
+tryagain:
 	log.Println("dialUpstream url:", dialurl)
 
 	peerConnection := newPeerConnection()
@@ -1068,7 +1069,6 @@ func dialUpstream(dialurl string) {
 	// send offer, get answer
 
 	delay := time.Second
-tryagain:
 	log.Println("dialing", dialurl)
 	resp, err := http.Post(dialurl, "application/sdp", strings.NewReader(offer.SDP))
 
