@@ -70,7 +70,8 @@ window.onload = async function () {
 
     }
 
-    pc.restartIce()  // Start connecting!
+    // not needed!
+    //pc.restartIce()  // Start connecting!
 
 
 
