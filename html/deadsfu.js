@@ -15,8 +15,13 @@ window.onload = async function () {
     let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
 
     const xstate = document.getElementById('xstate')
-    //@ts-ignore  
-    pc.addEventListener('retry-counter', ev => xstate.innerText = 'retrying #' + ev.detail)
+
+    pc.addEventListener('downtime-msg', function (ev) {
+        //@ts-ignore  
+        let nsec = ev.detail.numsec; let status = ev.detail.status
+        let time = (new Date(nsec * 1000)).toISOString().substr(11, 8)
+        xstate.innerText = `downtime: ${time} httpcode: ${status}`
+    })
     //firefox does not fire 'onconnectionstatechange' right now, so use ice...
     pc.addEventListener('iceconnectionstatechange', ev => xstate.innerText = pc.iceConnectionState)
     pc.addEventListener('iceconnectionstatechange', whipwhap.handleIceStateChange)
