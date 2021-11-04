@@ -29,9 +29,10 @@ window.onload = async function () {
 
     let video1 = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
     let searchParams = new URLSearchParams(window.location.search)
+    let bearerToken = searchParams.get('access_token')
     if (searchParams.has('send')) {
 
-        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, '/pub'))
+        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, '/pub', bearerToken))
 
         /** @type {MediaStream} */
         var gum
@@ -51,7 +52,7 @@ window.onload = async function () {
         document.title = "Sending"
 
     } else {
-        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, '/sub'))
+        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, '/sub', bearerToken))
 
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
