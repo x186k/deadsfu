@@ -345,7 +345,7 @@ func main() {
 				err = ingressSemaphore.Acquire(context.Background(), 1)
 				checkFatal(err)
 				elog.Println("dial: Dialing upstream (got semaphore)")
-				dialUpstream(*dialIngressURL)
+				dialUpstream(*dialIngressURL, *bearerToken)
 			}
 		}()
 	}
@@ -465,11 +465,11 @@ func sdpHandler(wrappedHandler http.Handler) http.Handler {
 
 				if sendonly {
 					pline()
-					pubHandler(w, r)
+					commonPubSubHandler(pubHandler)
 					return
 				} else {
 					pline()
-					SubHandler(w, r)
+					commonPubSubHandler(subHandler)
 					return
 				}
 
@@ -485,10 +485,11 @@ func sdpHandler(wrappedHandler http.Handler) http.Handler {
 func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(subPath, SubHandler)
+
+	mux.Handle(subPath, commonPubSubHandler(subHandler))
 	dialingout := *dialIngressURL != ""
 	if !dialingout {
-		mux.HandleFunc(pubPath, pubHandler)
+		mux.Handle(pubPath, commonPubSubHandler(pubHandler))
 	}
 
 	if *htmlSource == "" {
@@ -614,28 +615,50 @@ func teeErrorStderrHttp(w http.ResponseWriter, err error) {
 	http.Error(w, m, http.StatusInternalServerError)
 }
 
+func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		log.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
+
+		if handlePreflight(r, w) {
+			return
+		}
+
+		requireStrictWISH := true
+		if requireStrictWISH {
+			if r.Header.Get("Content-Type") != "application/sdp" {
+				teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
+				return
+			}
+		}
+
+		if r.Method != "POST" {
+			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
+			return
+		}
+
+		if *bearerToken != "" {
+			token1 := r.URL.Query().Get("access_token")
+			token2 := r.Header.Get("Bearer")
+			token2 = strings.TrimPrefix(token2, "Bearer ") //if present, remove 'Bearer '
+
+			if *bearerToken != token1 && *bearerToken != token2 {
+				m := "invalid or no bearer token presented"
+				elog.Println(m)
+				http.Error(w, m, 401)
+				return
+			}
+
+		}
+
+		hfunc(w, r)
+
+	})
+}
+
 // sfu ingress setup
 func pubHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
-
-	log.Println("pubHandler request", req.URL.String(), req.Header.Get("Content-Type"))
-
-	if handlePreflight(req, w) {
-		return
-	}
-
-	requireStrictWISH := false
-	if requireStrictWISH {
-		if req.Header.Get("Content-Type") != "application/sdp" {
-			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
-			return
-		}
-	}
-
-	if req.Method != "POST" {
-		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
-		return
-	}
 
 	offer, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -691,7 +714,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 
 // sfu egress setup
 // 041521 Decided checkFatal() is the correct way to handle errors in this func.
-func SubHandler(w http.ResponseWriter, httpreq *http.Request) {
+func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	defer httpreq.Body.Close()
 	var err error
 
@@ -1024,7 +1047,7 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 	return p2
 }
 
-func dialUpstream(dialurl string) {
+func dialUpstream(dialurl string, token string) {
 
 tryagain:
 	log.Println("dialUpstream url:", dialurl)
@@ -1070,17 +1093,28 @@ tryagain:
 
 	delay := time.Second
 	log.Println("dialing", dialurl)
-	resp, err := http.Post(dialurl, "application/sdp", strings.NewReader(offer.SDP))
 
-	// yuck
-	// back-off redialer
+	req, err := http.NewRequest("POST", dialurl, strings.NewReader(offer.SDP))
+	checkFatal(err)
+
+	req.Header.Set("Content-Type", "application/sdp")
+
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+
+	// yuck, back-off redialer
 	if err != nil && strings.HasSuffix(strings.ToLower(err.Error()), "connection refused") {
 		log.Println("connection refused")
 		atomic.AddUint64(&myMetrics.dialConnectionRefused, 1)
 		time.Sleep(delay)
-		if delay <= time.Second*30 {
-			delay *= 2
-		}
+		// disable back-off redialer
+		// we want fast re-connects on up-stream failure
+		// if delay <= time.Second*30 {
+		// 	delay *= 2
+		// }
 		goto tryagain
 	}
 	checkFatal(err)
