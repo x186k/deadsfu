@@ -135,7 +135,7 @@ func TestPubSub(t *testing.T) {
 	req := httptest.NewRequest("POST", "http://ignored.com/sub", strings.NewReader(offer.SDP))
 	w := httptest.NewRecorder()
 	req.Header.Set("Content-Type", "application/sdp")
-	SubHandler(w, req) // not super clean, but \_(ツ)_/¯
+	subHandler(w, req) // not super clean, but \_(ツ)_/¯
 	resp := w.Result()
 	answerraw, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, 201, resp.StatusCode)
