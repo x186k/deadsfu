@@ -59,6 +59,14 @@ var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile f
 
 var getStatsLogging = pflag.String("getstats-url", "", "The url of a server for getStats() logging")
 
+const bearerHelp = `
+Bearer Authentication. Like a password. Required on HTTP/S requests.
+Provide via URL: https://base.url?access_token=<secret>
+Provide via headers: 'Authorization: Bearer <secret>'
+`
+
+var bearerToken = pflag.StringP("bearer-token", "b", "", bearerHelp)
+
 var Usage = func() {
 	x := pflag.NewFlagSet("xxx", pflag.ExitOnError)
 	x.AddFlag(pflag.CommandLine.Lookup("http"))
