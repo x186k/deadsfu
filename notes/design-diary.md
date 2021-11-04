@@ -350,3 +350,32 @@ maybe --my-ipaddr <address> stunserver or local or public
 screen flow text:
 DeadSFU: Use --idle-screen to replace this screen
 No Input Present
+
+# 11/3/21 Bearer tokens
+
+places where bearer tokens can be used:
+-  "/*"   (html)
+-  "/pub"  WHIP
+-  "/sub"   WHAP
+-  dialUpstream() func
+
+Questions:
+Q/Should html require bearer token? 
+A/YES, for the HTML to auth correctly to /pub or /sub
+, it will need the bearer token, so without HTML support of
+bearer tokens, you cannot rx/tx the sfu, so yes:
+HTML support is needed. via access_token=xxxx
+
+
+
+Q/Should dialUpstream send bearer token?:
+A/Since it is doing WHAP, yes!
+
+Q/Should dialUpstream use same token to chain to parent as 'this' SFU uses for access?
+A/Yes, for now.
+
+Q/Should whip & whap use same bearer token? 
+A/ yes, for now.
+
+Q/What happens when token is missing or doesn't match?
+A 401 is returned 
