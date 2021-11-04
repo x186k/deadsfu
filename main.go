@@ -638,18 +638,36 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 		}
 
 		if *bearerToken != "" {
-			token1 := r.URL.Query().Get("access_token")
-			token2 := r.Header.Get("Bearer")
-			token2 = strings.TrimPrefix(token2, "Bearer ") //if present, remove 'Bearer '
-
-			if *bearerToken != token1 && *bearerToken != token2 {
-				m := "invalid or no bearer token presented"
+			tok := ""
+			tok = r.URL.Query().Get("access_token")
+			if tok != "" {
+				if tok == *bearerToken {
+					goto goodToken
+				}
+				m := "access_token query param found, with invalid bearer token."
 				elog.Println(m)
 				http.Error(w, m, 401)
 				return
 			}
 
+			tok = r.Header.Get("Authorization")
+			if strings.HasPrefix(tok, "Bearer ") {
+				tok = strings.TrimPrefix(tok, "Bearer ")
+				if tok == *bearerToken {
+					goto goodToken
+				}
+				m := "Authorization: header found, with invalid bearer token."
+				elog.Println(m)
+				http.Error(w, m, 401)
+				return
+			}
+
+			m := "bearer token required, but not provided."
+			elog.Println(m)
+			http.Error(w, m, 401)
+			return
 		}
+	goodToken:
 
 		hfunc(w, r)
 
