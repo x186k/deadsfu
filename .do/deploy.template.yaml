@@ -1,6 +1,4 @@
-alerts:
-- rule: DEPLOYMENT_FAILED
-- rule: DOMAIN_FAILED
+
 name: deadsfu
 region: nyc
 services:
