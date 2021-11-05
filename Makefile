@@ -34,8 +34,10 @@ PLATFORMS := linux/amd64 windows/amd64 darwin/amd64 darwin/arm64 linux/arm64
 temp = $(subst /, ,$@)
 os = $(word 1, $(temp))
 arch = $(word 2, $(temp))
-binname = dist/deadsfu-$(os)-$(arch)
-bintarname = $(binname).tar.gz
+ext = $(if $(findstring windows,$(os)),.exe)
+
+binname = deadsfu$(ext)
+bintarname = dist/deadsfu-$(os)-$(arch).tar.gz
 goflags = -ldflags "-X main.Version=$(VER)"
 
 binbuild: cleardist $(PLATFORMS)
