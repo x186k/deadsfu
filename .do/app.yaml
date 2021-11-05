@@ -1,9 +1,18 @@
-name: sample-dockerfile
+alerts:
+- rule: DEPLOYMENT_FAILED
+- rule: DOMAIN_FAILED
+name: deadsfu
+region: nyc
 services:
-  - name: deadsfu-app
-    image:
-      registry_type: "DOCKER_HUB"
-      registry: "docker.io"
-      repository: "x186k/deadsfu"
-
-
+- http_port: 8080
+  image:
+    registry: x186k
+    registry_type: DOCKER_HUB
+    repository: deadsfu
+    tag: latest
+  instance_count: 1
+  instance_size_slug: basic-xs
+  name: x-186-k-deadsfu
+  routes:
+  - path: /
+  source_dir: /

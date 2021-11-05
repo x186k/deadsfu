@@ -1,15 +1,7 @@
-name: deadsfu
-
-services:
-- http_port: 8080
-  image:
-    registry: x186k
-    registry_type: DOCKER_HUB
-    repository: deadsfu
-    tag: latest
-  instance_count: 1
-  instance_size_slug: basic-xs
-  name: x-186-k-deadsfu
-  routes:
-  - path: /
-  source_dir: /
+spec:
+ name: deadsfu
+ services:
+ - name: deadsfu
+   git:
+     branch: main
+     repo_clone_url: https://github.com/x186k/deadsfu.git
