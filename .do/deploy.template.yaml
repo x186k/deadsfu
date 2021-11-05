@@ -1,6 +1,5 @@
-
 name: deadsfu
-region: nyc
+
 services:
 - http_port: 8080
   image:
@@ -10,8 +9,7 @@ services:
     tag: latest
   instance_count: 1
   instance_size_slug: basic-xs
-  name: deadsfu
+  name: x-186-k-deadsfu
   routes:
   - path: /
   source_dir: /
-
