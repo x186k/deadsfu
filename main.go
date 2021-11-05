@@ -294,7 +294,6 @@ func main() {
 
 	if conf.HttpsDomain != "" {
 		go startHttpsListener(ctx, conf.HttpsDomain, mux)
-		panic("no")
 	}
 
 	if len(*rtprx) > 0 {
