@@ -95,6 +95,14 @@ type TxTrack struct {
 	txid    TrackId
 }
 
+type myFtlServer struct {
+	badrtp    int
+	badssrc   int
+	audiossrc uint32
+	videossrc uint32
+	channelid uint32
+}
+
 var Version = "version-unset"
 
 //go:embed html
@@ -114,28 +122,14 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
-var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
-
-var txtracks []*TxTrack
-
-// var urlsFlag urlset
-// const urlsFlagName = "urls"
-// const urlsFlagUsage = "One or more urls for HTTP, HTTPS. Use commas to seperate."
-
-// Docker,systemd have Stdin from null, so there is no explicit prompt for ACME terms.
-// Just like Caddy under Docker and Caddy under Systemd
-
-// var logPacketIn = log.New(os.Stdout, "I ", log.Lmicroseconds|log.LUTC)
-// var logPacketOut = log.New(os.Stdout, "O ", log.Lmicroseconds|log.LUTC)
-
-// This should allow us to use checkFatal() more, and checkFatal() less
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC|log.Lshortfile)
 var ddnslog = log.New(io.Discard, "", 0)
-
 var rtpoutConn *net.UDPConn
 
-var inputSplicers = make([]RtpSplicer, NumTrackId)
+var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
+var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
+var txtracks []*TxTrack
+
 
 func logGoroutineCountToDebugLog() {
 	n := -1
@@ -1262,6 +1256,7 @@ func (x TrackId) String() string {
 func egressGoroutine() {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
+	var inputSplicers = make([]RtpSplicer, NumTrackId)
 
 	for {
 
@@ -1816,14 +1811,6 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 	}
 
 	return nil, ""
-}
-
-type myFtlServer struct {
-	badrtp    int
-	badssrc   int
-	audiossrc uint32
-	videossrc uint32
-	channelid uint32
 }
 
 // TakePacket
