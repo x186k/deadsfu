@@ -991,18 +991,13 @@ tryagain:
 		log.Println("dial ICE Connection State has changed", icecs.String())
 	})
 
-	//XXXX
-
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
 	_, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
 	checkFatal(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
 	checkFatal(err)
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
-	checkFatal(err)
-	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
-	checkFatal(err)
+
 
 	// Create an offer to send to the other process
 	offer, err := peerConnection.CreateOffer(nil)
