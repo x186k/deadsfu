@@ -30,7 +30,6 @@ import (
 	"github.com/caddyserver/certmagic"
 
 	"github.com/pkg/profile"
-	"golang.org/x/sync/semaphore"
 
 	//"net/http/httputil"
 
@@ -115,7 +114,6 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-var ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 var mediaDebugTickerChan = make(<-chan time.Time)
 var mediaDebug = false
 
@@ -315,8 +313,6 @@ func main() {
 		elog.Printf("Publisher Ingress API URL: none (using dial)")
 		go func() {
 			for {
-				err = ingressSemaphore.Acquire(context.Background(), 1)
-				checkFatal(err)
 				elog.Println("dial: Dialing upstream (got semaphore)")
 				dialUpstream(*dialIngressURL, *bearerToken)
 			}
@@ -660,18 +656,6 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		// cam
 		// handle this error, although it is of low value [probability,frequency]
 		teeErrorStderrHttp(w, err)
-		return
-	}
-
-	// it takes 5 seconds to drop peerconnection on page reload
-	// so, if a new connection comes in, we wait upto seven seconds to get the
-	// semaphore
-	ctx, cancel := context.WithTimeout(req.Context(), 7*time.Second)
-	defer cancel() // releases resources if slowOperation completes before timeout elapses)
-
-	err = ingressSemaphore.Acquire(ctx, 1)
-	if err != nil {
-		teeErrorStderrHttp(w, errors.New("ingress busy"))
 		return
 	}
 
@@ -1495,7 +1479,7 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 		case webrtc.PeerConnectionStateDisconnected:
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
-			ingressSemaphore.Release(1)
+			//ingressSemaphore.Release(1)
 		}
 	})
 }
