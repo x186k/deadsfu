@@ -218,11 +218,6 @@ func main() {
 	conf := parseFlags()
 	oneTimeFlagsActions(&conf) //if !strings.HasSuffix(os.Args[0], ".test") {
 
-	if *clusterMode {
-		newRedisPoolCerts(nil, nil, nil, false)
-		checkRedis()
-	}
-
 	if conf.Http == "" && conf.HttpsDomain == "" {
 		Usage()
 		os.Exit(-1)
@@ -1722,54 +1717,4 @@ func isMysteryOBSFTL(p rtp.Packet) (ok bool) {
 		}
 	}
 	return true
-}
-
-var _ = clusterSniRedisRegister
-
-func clusterSniRedisRegister(ctx context.Context, domain string, myip net.IP, port int) {
-
-	const lockperiod = time.Duration(2 * time.Second)
-
-	px := strconv.Itoa(int(lockperiod / time.Millisecond))
-
-	/*
-		there is a race here, but it is okay.
-		if the sfu diseappears, but the proxy still finds it in redis,
-		the https request will fail.
-	*/
-
-	host, _, err := net.SplitHostPort(domain)
-	checkFatal(err)
-
-	key1 := "domain:" + host + ":lock"
-	key2 := "domain:" + host + ":addrport"
-	addrport := fmt.Sprintf("%s:%d", myip, port)
-
-	rconn, err := redisPool.GetContext(ctx)
-	checkFatal(err)
-	defer rconn.Close()
-
-	lock, err := redisLocker.Obtain(key1, lockperiod, nil)
-	checkFatal(err)
-	defer func() { _ = lock.Release() }()
-
-	for {
-
-		select {
-		case <-ctx.Done():
-			checkFatal(ctx.Err()) //XXX
-
-		case <-time.NewTimer(lockperiod / 2).C:
-
-		}
-		err = lock.Refresh(lockperiod, nil)
-		checkFatal(err)
-
-		rr, err := rconn.Do("set", key2, addrport, "px", px)
-		checkFatal(err)
-		if rr != "OK" {
-			checkFatal(fmt.Errorf("Redis not OK: %s", rr))
-		}
-	}
-
 }
