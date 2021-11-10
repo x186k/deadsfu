@@ -128,8 +128,6 @@ var rtpoutConn *net.UDPConn
 
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
-var txtracks []*TxTrack
-
 
 func logGoroutineCountToDebugLog() {
 	n := -1
@@ -1257,6 +1255,7 @@ func egressGoroutine() {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
 	var inputSplicers = make([]RtpSplicer, NumTrackId)
+	var txtracks []*TxTrack
 
 	for {
 
