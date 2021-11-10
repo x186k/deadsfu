@@ -69,6 +69,36 @@ const (
 	NumTrackId         = iota
 )
 
+type MsgRxPacket struct {
+	rxid        TrackId
+	rxClockRate uint32
+	packet      *rtp.Packet
+}
+type MsgSubscriberAddTrack struct {
+	txtrack *TxTrack
+}
+// size optimized, not readability
+type RtpSplicer struct {
+	lastUnixnanosNow int64
+	lastSSRC         uint32
+	lastTS           uint32
+	tsOffset         uint32
+	lastSN           uint16
+	snOffset         uint16
+}
+
+type TrackId int32
+
+// size optimized, not readability
+type TxTrack struct {
+	track   *webrtc.TrackLocalStaticRTP
+	splicer *RtpSplicer
+	txid    TrackId
+}
+
+
+var Version = "version-unset"
+
 var lastVideoRxTime time.Time = time.Now()
 
 var sendingIdleVid bool
@@ -98,40 +128,11 @@ var ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 var mediaDebugTickerChan = make(<-chan time.Time)
 var mediaDebug = false
 
-type MsgRxPacket struct {
-	rxid        TrackId
-	rxClockRate uint32
-	packet      *rtp.Packet
-}
-type MsgSubscriberAddTrack struct {
-	txtrack *TxTrack
-}
-
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
-// size optimized, not readability
-type RtpSplicer struct {
-	lastUnixnanosNow int64
-	lastSSRC         uint32
-	lastTS           uint32
-	tsOffset         uint32
-	lastSN           uint16
-	snOffset         uint16
-}
-
-type TrackId int32
-
-// size optimized, not readability
-type TxTrack struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer *RtpSplicer
-	txid    TrackId
-}
-
 var txtracks []*TxTrack
 
-var Version = "version-unset"
 
 // var urlsFlag urlset
 // const urlsFlagName = "urls"
@@ -257,11 +258,8 @@ func main() {
 	}
 
 	if *clusterMode {
-
 		newRedisPoolCerts(nil, nil, nil, false)
-
 		checkRedis()
-
 	}
 
 	if conf.Http == "" && conf.HttpsDomain == "" {
