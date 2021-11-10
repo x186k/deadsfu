@@ -190,16 +190,6 @@ func init() {
 	go logGoroutineCountToDebugLog()
 }
 
-func idleExitFunc() {
-	for {
-		if time.Since(lastVideoRxTime) > *idleExitDuration {
-			elog.Printf("Input video idle for %s, exiting", *idleExitDuration)
-			os.Exit(0)
-		}
-		time.Sleep(time.Second * 2)
-	}
-}
-
 func rtpReceiver(hostport string) {
 
 	var err error
