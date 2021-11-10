@@ -560,12 +560,9 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 			return
 		}
 
-		requireStrictWISH := true
-		if requireStrictWISH {
-			if r.Header.Get("Content-Type") != "application/sdp" {
-				teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /pub"))
-				return
-			}
+		if r.Header.Get("Content-Type") != "application/sdp" {
+			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required"))
+			return
 		}
 
 		if r.Method != "POST" {
@@ -673,12 +670,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 		return
 	}
 
-	requireStrictWISH := false
-	if requireStrictWISH {
-		if httpreq.Header.Get("Content-Type") != "application/sdp" {
-			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required on /sub when not ?channel=..."))
-			return
-		}
+	if httpreq.Header.Get("Content-Type") != "application/sdp" {
+		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required"))
+		return
 	}
 
 	// offer from browser
@@ -997,7 +991,6 @@ tryagain:
 	checkFatal(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
 	checkFatal(err)
-
 
 	// Create an offer to send to the other process
 	offer, err := peerConnection.CreateOffer(nil)
