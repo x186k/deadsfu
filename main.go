@@ -114,9 +114,6 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-var mediaDebugTickerChan = make(<-chan time.Time)
-var mediaDebug = false
-
 var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
@@ -134,7 +131,6 @@ var txtracks []*TxTrack
 
 // This should allow us to use checkFatal() more, and checkFatal() less
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC|log.Lshortfile)
-var medialog = log.New(io.Discard, "", 0)
 var ddnslog = log.New(io.Discard, "", 0)
 
 var rtpoutConn *net.UDPConn
@@ -1013,9 +1009,6 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 			p.SequenceNumber = newseqno
 			newseqno++
 			p2 = append(p2, p)
-			if mediaDebug {
-				medialog.Printf("idle pkt %d %#v", p.Payload[0], p.Header)
-			}
 		}
 
 	}
@@ -1362,15 +1355,6 @@ func egressGoroutine() {
 
 			txtracks = append(txtracks, m.txtrack)
 
-		case <-mediaDebugTickerChan:
-
-			medialog.Println("sendingIdleVid", sendingIdleVid)
-
-			for i, v := range txtracks {
-				medialog.Println("tx#", i, "ssrc", v.splicer.lastSSRC)
-			}
-			medialog.Println()
-
 		}
 	}
 }
@@ -1640,10 +1624,6 @@ func readRTPFromZip(buf []byte) []rtp.Packet {
 
 		rc.Close()
 
-	}
-
-	if mediaDebug {
-		medialog.Printf("Read %d idle-clip packets", len(pkts))
 	}
 
 	return pkts

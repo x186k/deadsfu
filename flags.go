@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/caddyserver/certmagic"
 	"github.com/libdns/cloudflare"
@@ -114,10 +113,6 @@ func oneTimeFlagsActions(conf *SfuConfig) {
 		switch v {
 		case "":
 			// do nothing
-		case "media":
-			mediaDebugTickerChan = time.NewTicker(4 * time.Second).C
-			mediaDebug = true
-			medialog = log.New(os.Stdout, "M ", log.Lmicroseconds|log.LUTC)
 		case "main":
 			log.SetFlags(log.Lmicroseconds | log.LUTC)
 			log.SetPrefix("D ")
