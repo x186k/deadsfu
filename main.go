@@ -907,35 +907,31 @@ func idleLoopPlayer() {
 
 	for {
 
-		//send sps pps every 20
-		for i := 0; i < 20; i++ {
+		for _, pkt := range pkts {
 
-			for _, pkt := range pkts {
+			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
+			tsdelta := pkt.Timestamp - pkts[0].Timestamp
 
-				// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
-				tsdelta := pkt.Timestamp - pkts[0].Timestamp
+			tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
 
-				tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
+			when := basetime.Add(tsdeltaDur)
 
-				when := basetime.Add(tsdeltaDur)
+			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
 
-				time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
+			pkt.SequenceNumber = seqno
+			seqno++
+			pkt.Timestamp = tsdelta + tstotal
 
-				pkt.SequenceNumber = seqno
-				seqno++
-				pkt.Timestamp = tsdelta + tstotal
-
-				copy := pkt // critical!, we must make a copy!
-				rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
-
-			}
-
-			tstotal += totalDur90
-			basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
-
-			time.Sleep(time.Until(basetime))
+			copy := pkt // critical!, we must make a copy!
+			rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
 
 		}
+
+		tstotal += totalDur90
+		basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
+
+		time.Sleep(time.Until(basetime))
+
 	}
 }
 
