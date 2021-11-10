@@ -57,7 +57,13 @@ window.onload = async function () {
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
 
-        pc.ontrack = ev => video1.srcObject = ev.streams[0]
+        pc.ontrack = ev => {
+            video1.srcObject = ev.streams[0]
+            // want to remove these someday 11.7.21 cam
+            // video1.autoplay = true
+            // video1.controls = true
+            // return false
+        }
 
 
 
