@@ -918,16 +918,6 @@ func idleLoopPlayer() {
 
 	for {
 
-		// sps.SequenceNumber = seqno
-		// seqno++
-		// sps.Timestamp = tstotal
-		// rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &sps, rxClockRate: 90000}
-
-		// pps.SequenceNumber = seqno
-		// seqno++
-		// pps.Timestamp = tstotal
-		// rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &pps, rxClockRate: 90000}
-
 		//send sps pps every 20
 		for i := 0; i < 20; i++ {
 
@@ -1271,10 +1261,10 @@ func egressGoroutine() {
 			}
 
 			if sendingIdleVid && mainVidPkt {
-				return
+				continue
 			}
 			if !sendingIdleVid && idlePkt {
-				return
+				continue
 			}
 
 			var txtype TrackId
