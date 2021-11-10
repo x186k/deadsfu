@@ -25,7 +25,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -77,6 +76,7 @@ type MsgRxPacket struct {
 type MsgSubscriberAddTrack struct {
 	txtrack *TxTrack
 }
+
 // size optimized, not readability
 type RtpSplicer struct {
 	lastUnixnanosNow int64
@@ -96,12 +96,7 @@ type TxTrack struct {
 	txid    TrackId
 }
 
-
 var Version = "version-unset"
-
-var lastVideoRxTime time.Time = time.Now()
-
-var sendingIdleVid bool
 
 //go:embed html
 var htmlContent embed.FS
@@ -120,10 +115,6 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-var myMetrics struct {
-	dialConnectionRefused uint64
-}
-
 var ingressSemaphore = semaphore.NewWeighted(int64(1)) // concurrent okay
 var mediaDebugTickerChan = make(<-chan time.Time)
 var mediaDebug = false
@@ -132,7 +123,6 @@ var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
 var txtracks []*TxTrack
-
 
 // var urlsFlag urlset
 // const urlsFlagName = "urls"
@@ -243,10 +233,6 @@ func main() {
 	conf := parseFlags()
 	oneTimeFlagsActions(&conf) //if !strings.HasSuffix(os.Args[0], ".test") {
 
-	if *idleExitDuration > time.Duration(0) {
-		go idleExitFunc()
-	}
-
 	if *clusterMode {
 		newRedisPoolCerts(nil, nil, nil, false)
 		checkRedis()
@@ -258,7 +244,7 @@ func main() {
 	}
 
 	go idleLoopPlayer()
-	go msgLoop()
+	go egressGoroutine()
 
 	mux, err := setupMux(conf)
 	checkFatal(err)
@@ -474,8 +460,8 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	mux.Handle(subPath, commonPubSubHandler(subHandler))
-	dialingout := *dialIngressURL != ""
-	if !dialingout {
+
+	if *dialIngressURL == "" {
 		mux.Handle(pubPath, commonPubSubHandler(pubHandler))
 	}
 
@@ -665,6 +651,10 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 func pubHandler(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 
+	if *dialIngressURL != "" {
+		panic("no")
+	}
+
 	offer, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		// cam
@@ -685,10 +675,6 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// if !ingressSemaphore.TryAcquire(1) {
-	// 	teeErrorStderrHttp(w, errors.New("ingress busy"))
-	// 	return
-	// }
 	// inside here will panic if something prevents success/by design
 	answersd := createIngressPeerConnection(string(offer))
 
@@ -1113,7 +1099,6 @@ tryagain:
 	// yuck, back-off redialer
 	if err != nil && strings.HasSuffix(strings.ToLower(err.Error()), "connection refused") {
 		log.Println("connection refused")
-		atomic.AddUint64(&myMetrics.dialConnectionRefused, 1)
 		time.Sleep(delay)
 		// disable back-off redialer
 		// we want fast re-connects on up-stream failure
@@ -1297,113 +1282,112 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func msgLoop() {
+func egressGoroutine() {
+	var lastVideoRxTime time.Time = time.Now()
+	var sendingIdleVid bool
+
 	for {
-		msgOnce()
-	}
-}
 
-func msgOnce() {
+		select {
 
-	select {
+		case m := <-rxMediaCh:
 
-	case m := <-rxMediaCh:
+			idlePkt := m.rxid == IdleVideo
 
-		idlePkt := m.rxid == IdleVideo
+			mainVidPkt := m.rxid == Video
 
-		mainVidPkt := m.rxid == Video
+			if idlePkt {
+				rxActive := time.Since(lastVideoRxTime) <= time.Second
 
-		if idlePkt {
-			rxActive := time.Since(lastVideoRxTime) <= time.Second
+				if !rxActive && !sendingIdleVid {
+					iskeyframe := isH264Keyframe(m.packet.Payload)
+					if iskeyframe {
+						sendingIdleVid = true
+						elog.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
+					}
+				}
 
-			if !rxActive && !sendingIdleVid {
-				iskeyframe := isH264Keyframe(m.packet.Payload)
-				if iskeyframe {
-					sendingIdleVid = true
-					elog.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
+			} else if mainVidPkt {
+
+				lastVideoRxTime = time.Now()
+
+				if sendingIdleVid {
+					iskeyframe := isH264Keyframe(m.packet.Payload)
+					if iskeyframe {
+						sendingIdleVid = false
+						elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
+					}
 				}
 			}
 
-		} else if mainVidPkt {
+			if sendingIdleVid && mainVidPkt {
+				return
+			}
+			if !sendingIdleVid && idlePkt {
+				return
+			}
 
-			lastVideoRxTime = time.Now()
+			var txtype TrackId
 
-			if sendingIdleVid {
-				iskeyframe := isH264Keyframe(m.packet.Payload)
-				if iskeyframe {
-					sendingIdleVid = false
-					elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
+			//keep in mind pion ignores both payloadtype, ssrc when you use write()
+			switch m.rxid {
+			case Audio:
+				txtype = Audio
+				m.packet.PayloadType = 80 // ignored by Pion
+			case Video:
+				fallthrough
+			case IdleVideo:
+				txtype = Video
+				m.packet.PayloadType = 100 // ignored by Pion
+			}
+
+			pkt := *m.packet // make copy
+			SpliceRTP(txtype, &inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
+
+			if txtype == Audio && rtpoutConn != nil {
+				//ptmp := pkt //copy
+				rtpbuf, err := pkt.Marshal()
+				checkFatal(err)
+				_, _ = rtpoutConn.Write(rtpbuf)
+			}
+
+			for i, tr := range txtracks {
+
+				ismatch := txtype == tr.txid
+				//println(i,ismatch,txtype)
+				if !ismatch {
+					continue
 				}
-			}
-		}
+				//pline()
 
-		if sendingIdleVid && mainVidPkt {
-			return
-		}
-		if !sendingIdleVid && idlePkt {
-			return
-		}
+				err := tr.track.WriteRTP(&pkt)
+				//println(pkt.SequenceNumber,pkt.Timestamp)
+				if err == io.ErrClosedPipe {
+					log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
 
-		var txtype TrackId
+					// slice tricks non-order preserving delete
+					txtracks[i] = txtracks[len(txtracks)-1]
+					txtracks[len(txtracks)-1] = nil
+					txtracks = txtracks[:len(txtracks)-1]
 
-		//keep in mind pion ignores both payloadtype, ssrc when you use write()
-		switch m.rxid {
-		case Audio:
-			txtype = Audio
-			m.packet.PayloadType = 80 // ignored by Pion
-		case Video:
-			fallthrough
-		case IdleVideo:
-			txtype = Video
-			m.packet.PayloadType = 100 // ignored by Pion
-		}
-
-		pkt := *m.packet // make copy
-		SpliceRTP(txtype, &inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
-
-		if txtype == Audio && rtpoutConn != nil {
-			//ptmp := pkt //copy
-			rtpbuf, err := pkt.Marshal()
-			checkFatal(err)
-			_, _ = rtpoutConn.Write(rtpbuf)
-		}
-
-		for i, tr := range txtracks {
-
-			ismatch := txtype == tr.txid
-			//println(i,ismatch,txtype)
-			if !ismatch {
-				continue
-			}
-			//pline()
-
-			err := tr.track.WriteRTP(&pkt)
-			//println(pkt.SequenceNumber,pkt.Timestamp)
-			if err == io.ErrClosedPipe {
-				log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
-
-				// slice tricks non-order preserving delete
-				txtracks[i] = txtracks[len(txtracks)-1]
-				txtracks[len(txtracks)-1] = nil
-				txtracks = txtracks[:len(txtracks)-1]
+				}
 
 			}
 
+		case m := <-subAddTrackCh:
+
+			txtracks = append(txtracks, m.txtrack)
+
+		case <-mediaDebugTickerChan:
+
+			medialog.Println("sendingIdleVid", sendingIdleVid)
+
+			for i, v := range txtracks {
+				medialog.Println("tx#", i, "ssrc", v.splicer.lastSSRC)
+			}
+			medialog.Println()
+
 		}
-
-	case m := <-subAddTrackCh:
-
-		txtracks = append(txtracks, m.txtrack)
-
-	case <-mediaDebugTickerChan:
-
-		medialog.Println("sendingIdleVid", sendingIdleVid)
-
-		for i, v := range txtracks {
-			medialog.Println("tx#", i, "ssrc", v.splicer.lastSSRC)
-		}
-		medialog.Println()
-
 	}
 }
 
