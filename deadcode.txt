@@ -336,3 +336,33 @@ func (s *RtpSplicer) SpliceRTPOld(o *rtp.Packet, src RtpSource, now time.Time, r
 // 		s.tsFrequencyDelta[i] = FrequencyPair{delta: delta, count: 0}
 // 	}
 // }
+
+
+
+func getMyIPFromRedis(ctx context.Context) net.IP {
+	rconn, err := redisPool.GetContext(ctx)
+	checkFatal(err)
+	defer rconn.Close()
+
+	line, err := redigo.String(rconn.Do("client", "info"))
+	checkFatal(err)
+
+	hostport := ""
+	redisid := int64(0)
+
+	n, err := fmt.Sscanf(line, "id=%d addr=%s ", &redisid, &hostport)
+	checkFatal(err)
+
+	if n != 2 {
+		checkFatal(fmt.Errorf("unable to get IP from redis clientline:%v", line))
+	}
+
+	host, _, err := net.SplitHostPort(hostport)
+	checkFatal(err)
+
+	ipaddr := net.ParseIP(host)
+	if ipaddr == nil {
+		checkFatal(fmt.Errorf("unable to get ip address from redis: %s", line))
+	}
+	return ipaddr
+}

@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"errors"
 	"math/rand"
 	"net"
 	"path"
@@ -42,7 +41,7 @@ import (
 
 	"github.com/x186k/ftlserver"
 
-	redigo "github.com/gomodule/redigo/redis"
+	//redigo "github.com/gomodule/redigo/redis"
 
 	"net/http/httputil"
 	_ "net/http/pprof"
@@ -269,27 +268,7 @@ func main() {
 
 	if *ftlKey != "" {
 
-		ftludp, err := net.ListenPacket("udp", ":0")
-		checkFatal(err)
-		defer ftludp.Close()
-		ftlport := ftludp.(*net.UDPConn).LocalAddr().(*net.UDPAddr).Port
-
-		if *clusterMode {
-
-			privateip := getMyIPFromRedis(ctx)
-
-			go clusterFtlReceive(ctx, ftludp) //recieve udp loop
-
-			go func() {
-				clusterFtlRedisRegister(privateip, ftlport) // register with redis loop
-				panic("no")
-			}()
-
-		} else {
-
-			go startFtlListener(elog, log.Default())
-
-		}
+		go startFtlListener(elog, log.Default())
 
 	}
 
@@ -1647,120 +1626,6 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 
 }
 
-func parseFtlKey() (uint32, string, string, error) {
-	ftlsplit := strings.Split(*ftlKey, "-")
-	if len(ftlsplit) != 2 {
-		return 0, "", "", fmt.Errorf("fatal: bad stream key in --ftl-key")
-	}
-	chanidStr := ftlsplit[0]
-	hmackey := ftlsplit[1]
-	chanid64, err := strconv.ParseInt(chanidStr, 10, 64)
-	if err != nil {
-		return 0, "", "", fmt.Errorf("fatal: bad stream key in --ftl-key")
-	}
-
-	return uint32(chanid64), chanidStr, hmackey, nil
-}
-
-// do two things:
-// create udp socket, and receive rtp on it
-// create tcp socket, and dial and register with proxy on it
-func clusterFtlReceive(ctx context.Context, udpconn net.PacketConn) {
-	var err error
-
-	chanid, _, _, err := parseFtlKey()
-	checkFatal(err)
-
-	// don't use 8084, so we can test everything on the same box
-
-	elog.Println("rtp rx addr", udpconn.LocalAddr())
-
-	lastudp := time.Now()
-	buf := make([]byte, 2000)
-
-	// OBS always sends the same ssrc, I think
-	// but we want to change the ssrc we OBS reconnects so the splicer works.
-	audiossrc := uint32(rand.Int63())
-	videossrc := uint32(rand.Int63())
-	badssrc := 0
-	//connected := false
-	active := false
-	for {
-		select {
-		case <-ctx.Done():
-			return // returning not to leak the goroutine
-		default:
-		}
-
-		err = udpconn.SetReadDeadline(time.Now().Add(time.Second))
-		checkFatal(err)
-		n, _, err := udpconn.ReadFrom(buf)
-		if errors.Is(err, os.ErrDeadlineExceeded) {
-
-			if active && time.Since(lastudp) > time.Second*3/2 { // 1.5 second
-				elog.Println("FTL RTPRX: UDP PKTS *NOT* FLOWING")
-				active = false
-			}
-
-			continue
-		} else if err != nil {
-			checkFatal(fmt.Errorf("FTL RTPRX: UDP FAIL, EXITING: %w", err))
-		}
-
-		lastudp = time.Now()
-
-		if !active {
-			active = true
-			elog.Println("FTL RTPRX: UDP PKTS ARE FLOWING")
-		}
-
-		// There may benefits to issuing linux connect() call
-		// but we are not doing it right now
-		// udpconn, err = net.DialUDP("udp", laddr, readaddr)
-
-		if n < 12 {
-			continue
-		}
-
-		var p rtp.Packet
-
-		b := make([]byte, n)
-		copy(b, buf[:n])
-
-		err = p.Unmarshal(b)
-		checkFatal(err)
-
-		switch p.Header.PayloadType {
-		case 200:
-			log.Println("got ftl sender report")
-		case 96:
-			if p.SSRC != chanid+1 {
-				badssrc++
-				continue
-			}
-			p.SSRC = videossrc // each FTL session should have different SSRC for downstream splicer
-			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
-		case 97:
-			// check for the starter packets that confuse chrome, and toss them: len(pkt)==1404
-			if ok := isMysteryOBSFTL(p); !ok {
-				break
-			}
-
-			if p.SSRC != chanid {
-				badssrc++
-				continue
-			}
-			p.SSRC = audiossrc // each FTL session should have different SSRC for downstream splicer
-			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
-		}
-		if badssrc > 0 && badssrc%100 == 10 {
-			elog.Println("Bad SSRC media received :(  count:", badssrc)
-		}
-	}
-	//unreachable
-	//return
-}
-
 func startFtlListener(inf *log.Logger, dbg *log.Logger) {
 
 	config := &net.ListenConfig{}
@@ -1929,87 +1794,4 @@ func clusterSniRedisRegister(ctx context.Context, domain string, myip net.IP, po
 		}
 	}
 
-}
-
-func clusterFtlRedisRegister(privateip net.IP, port int) {
-
-	const lockperiod = time.Duration(2 * time.Second)
-	px := strconv.Itoa(int(lockperiod / time.Millisecond))
-
-	/*
-		there is a race here, but it is okay.
-		the ftl-proxy might see an SFU in redis, after the SFU disappears
-		but, the packets comming from the the proxy should get Icmp bounced
-		causing unix.ECONNREFUSED error back to the proxy.
-		The proxy will see these and give up eventually.
-		look for unix.ECONNREFUSED in the proxy.
-	*/
-
-	_, chanidstr, hmackey, err := parseFtlKey()
-	checkFatal(err)
-
-	key1 := "ftl:" + chanidstr + ":lock"
-	key2 := "ftl:" + chanidstr + ":addrport"
-	key3 := "ftl:" + chanidstr + ":hmackey"
-	addrport := fmt.Sprintf("%s:%d", privateip, port)
-
-	rconn, err := redisPool.GetContext(context.Background())
-	checkFatal(err)
-	defer rconn.Close()
-
-	lock, err := redisLocker.Obtain(key1, lockperiod, nil)
-	checkFatal(err)
-	defer func() { _ = lock.Release() }()
-
-	for {
-
-		<-time.NewTimer(lockperiod / 2).C
-
-		err = lock.Refresh(lockperiod, nil)
-		checkFatal(err)
-
-		rr, err := rconn.Do("set", key2, addrport, "px", px)
-		checkFatal(err)
-		if rr != "OK" {
-			checkFatal(fmt.Errorf("Redis not OK: %s", rr))
-		}
-
-		rr, err = rconn.Do("set", key3, hmackey, "px", px)
-		checkFatal(err)
-		if rr != "OK" {
-			checkFatal(fmt.Errorf("Redis not OK: %s", rr))
-		}
-
-	}
-
-	// unreachable
-	// return
-}
-
-func getMyIPFromRedis(ctx context.Context) net.IP {
-	rconn, err := redisPool.GetContext(ctx)
-	checkFatal(err)
-	defer rconn.Close()
-
-	line, err := redigo.String(rconn.Do("client", "info"))
-	checkFatal(err)
-
-	hostport := ""
-	redisid := int64(0)
-
-	n, err := fmt.Sscanf(line, "id=%d addr=%s ", &redisid, &hostport)
-	checkFatal(err)
-
-	if n != 2 {
-		checkFatal(fmt.Errorf("unable to get IP from redis clientline:%v", line))
-	}
-
-	host, _, err := net.SplitHostPort(hostport)
-	checkFatal(err)
-
-	ipaddr := net.ParseIP(host)
-	if ipaddr == nil {
-		checkFatal(fmt.Errorf("unable to get ip address from redis: %s", line))
-	}
-	return ipaddr
 }
