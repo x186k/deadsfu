@@ -11,6 +11,7 @@ import (
 	"net"
 	"path"
 	"strconv"
+	"sync"
 
 	"fmt"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/pkg/profile"
 
@@ -102,6 +104,16 @@ type myFtlServer struct {
 	channelid uint32
 	rxMediaCh chan MsgRxPacket
 }
+
+//the link between publishers and subscribers
+// mostly the channel on which a /pub puts media for a /sub to send out
+type pubSubLink struct {
+	pubSema  *semaphore.Weighted // is a publisher already using '/foobar' ??
+	sharedCh chan MsgRxPacket    // where publisher sends media for '/foobar'
+}
+
+var pubSubMap = make(map[string]*pubSubLink)
+var pubSubMapMutex sync.Mutex
 
 var Version = "version-unset"
 
@@ -230,14 +242,11 @@ func main() {
 		os.Exit(-1)
 	}
 
-	var newPCCh = make(chan MsgNewPCReq)
-	go peerConnMakerGr(newPCCh)
-
 	var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
 	go idleLoopPlayer(rxMediaCh)
 	go ingressGoroutine(rxMediaCh)
 
-	mux, err := setupMux(conf, newPCCh)
+	mux, err := setupMux(conf)
 	checkFatal(err)
 
 	if conf.Http != "" {
@@ -354,7 +363,7 @@ func sdpWarning(wrappedHandler http.Handler) http.Handler {
 	})
 }
 
-func setupMux(conf SfuConfig, newPCCh chan MsgNewPCReq) (*http.ServeMux, error) {
+func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
 
@@ -362,7 +371,7 @@ func setupMux(conf SfuConfig, newPCCh chan MsgNewPCReq) (*http.ServeMux, error) 
 
 	if *dialIngressURL == "" {
 		mux.Handle(pubPath, commonPubSubHandler(func(rw http.ResponseWriter, r *http.Request) {
-			pubHandler(rw, r, newPCCh)
+			pubHandler(rw, r)
 		}))
 	}
 
@@ -538,95 +547,67 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 	})
 }
 
-type MsgNewPCReq struct {
-	url string
-	sdp []byte
-	ch  chan MsgPCResult
-}
-
-type MsgPCResult struct {
-	sdp []byte
-	err error
-}
-
-func peerConnMakerGr(newPCCh chan MsgNewPCReq) {
-
-	mm := make(map[string]chan MsgRxPacket)
-
-	for m := range newPCCh {
-
-		println(881)
-
-		_, ok := mm[m.url]
-		if !ok {
-			mm[m.url] = make(chan MsgRxPacket, 1000)
-
-			// inside here will panic if something prevents success/by design
-			answersd, err := createIngressPeerConnection(string(m.sdp), mm[m.url])
-			if err != nil {
-				m.ch <- MsgPCResult{err: err}
-			} else {
-				println(333)
-				m.ch <- MsgPCResult{sdp: []byte(answersd.SDP)}
-				println(3342)
-			}
-
-		} else {
-			m.ch <- MsgPCResult{err: fmt.Errorf("Publisher already active for url:%s", m.url)}
-			continue
-		}
-
-	}
-}
-
 // sfu ingress setup
-func pubHandler(w http.ResponseWriter, req *http.Request, newPCCh chan MsgNewPCReq) {
-	defer req.Body.Close()
+func pubHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 
 	if *dialIngressURL != "" {
 		panic("no")
 	}
 
-	offer, err := ioutil.ReadAll(req.Body)
+	offer, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		elog.Println(err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if !strings.HasPrefix(string(offer), "v=") {
 		err := fmt.Errorf("invalid SDP message")
 		elog.Println(err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	ch := make(chan MsgPCResult)
+	key := r.URL.Path
+	link := getPubSubLink(key)
 
-	// send to singlePeerConnMaker
-	newPCCh <- MsgNewPCReq{
-		url: req.URL.Path,
-		sdp: offer,
-		ch:  ch,
-	}
-
-	println(990)
-	peerConnResult := <-ch
-	println(991)
-	if peerConnResult.err != nil {
-		elog.Println(peerConnResult.err.Error())
-		http.Error(w, peerConnResult.err.Error(), http.StatusInternalServerError)
+	if !link.pubSema.TryAcquire(1) {
+		err := fmt.Errorf("Rejected: The URL path %s already has a publisher", key)
+		elog.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
-	} else if peerConnResult.sdp != nil {
-		w.Header().Set("Content-Type", "application/sdp")
-		w.WriteHeader(201)
-		_, err = w.Write(peerConnResult.sdp)
-		checkFatal(err) // cam/if this write fails, then fail hard!
-		//NOTE, Do NOT ever use http.error to return SDPs
-	} else {
-		panic("no")
 	}
 
+	//aquired!
+
+	answersd, err := createIngressPeerConnection(string(offer), link)
+	if err != nil {
+		elog.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/sdp")
+	rw.WriteHeader(201)
+	_, err = rw.Write([]byte(answersd.SDP))
+	checkFatal(err) // cam/if this write fails, then fail hard!
+	//NOTE, Do NOT ever use http.error to return SDPs
+
+}
+
+func getPubSubLink(key string) *pubSubLink {
+	pubSubMapMutex.Lock()
+	link, found := pubSubMap[key]
+	if !found {
+		link = &pubSubLink{
+			pubSema:  semaphore.NewWeighted(int64(1)),
+			sharedCh: make(chan MsgRxPacket),
+		}
+		pubSubMap[key] = link
+	}
+	pubSubMapMutex.Unlock()
+	return link
 }
 
 func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
@@ -938,6 +919,11 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 
 func dialUpstream(dialurl string, token string, rxMediaCh chan MsgRxPacket) {
 
+	u, err := url.Parse(dialurl)
+	checkFatal(err)
+
+	link := getPubSubLink(u.Path)
+
 tryagain:
 	log.Println("dialUpstream url:", dialurl)
 
@@ -953,7 +939,7 @@ tryagain:
 
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
-	_, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
 	checkFatal(err)
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
 	checkFatal(err)
@@ -973,7 +959,7 @@ tryagain:
 	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
 	//<-webrtc.GatheringCompletePromise(peerConnection)
 
-	setupIngressStateHandler(peerConnection)
+	setupIngressStateHandler(peerConnection, link)
 
 	// send offer, get answer
 
@@ -1303,7 +1289,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngressPeerConnection(offersdp string, rxMediaCh chan MsgRxPacket) (*webrtc.SessionDescription, error) {
+func createIngressPeerConnection(offersdp string, link *pubSubLink) (*webrtc.SessionDescription, error) {
 
 	log.Println("createIngressPeerConnection")
 
@@ -1316,7 +1302,7 @@ func createIngressPeerConnection(offersdp string, rxMediaCh chan MsgRxPacket) (*
 	peerConnection := newPeerConnection()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, rxMediaCh)
+		ingressOnTrack(peerConnection, track, receiver, link.sharedCh)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1370,13 +1356,13 @@ func createIngressPeerConnection(offersdp string, rxMediaCh chan MsgRxPacket) (*
 		return nil, fmt.Errorf("logSdpReport() fail %w", err)
 	}
 
-	setupIngressStateHandler(peerConnection)
+	setupIngressStateHandler(peerConnection, link)
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	return peerConnection.LocalDescription(), nil
 }
 
-func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
+func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *pubSubLink) {
 
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		log.Println("ingress Connection State has changed", cs.String())
@@ -1387,7 +1373,7 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
 		case webrtc.PeerConnectionStateDisconnected:
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
-			//ingressSemaphore.Release(1)
+			link.pubSema.Release(1)
 		}
 	})
 }
