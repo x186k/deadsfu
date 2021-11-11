@@ -56,8 +56,8 @@ const (
 	mediaStreamId = "x186k"
 	videoMimeType = "video/h264"
 	audioMimeType = "audio/opus"
-	whipPath       = "/whip"
-	whapPath       = "/whap" // 2nd slash important
+	whipPath      = "/whip"
+	whapPath      = "/whap" // 2nd slash important
 )
 
 const (
@@ -569,11 +569,11 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := r.URL.Path
-	link := getPubSubLink(key)
+	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
+	link := getPubSubLink(roomname)
 
 	if !link.pubSema.TryAcquire(1) {
-		err := fmt.Errorf("Rejected: The URL path %s already has a publisher", key)
+		err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
 		elog.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
@@ -922,7 +922,8 @@ func dialUpstream(dialurl string, token string, rxMediaCh chan MsgRxPacket) {
 	u, err := url.Parse(dialurl)
 	checkFatal(err)
 
-	link := getPubSubLink(u.Path)
+	roomname := u.Query().Get("room") // "" is permitted, most common room name!
+	link := getPubSubLink(roomname)
 
 tryagain:
 	log.Println("dialUpstream url:", dialurl)
