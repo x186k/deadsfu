@@ -613,14 +613,16 @@ func pubHandler(w http.ResponseWriter, req *http.Request) {
 
 	offer, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		// cam
-		// handle this error, although it is of low value [probability,frequency]
 		teeErrorStderrHttp(w, err)
 		return
 	}
 
 	// inside here will panic if something prevents success/by design
-	answersd := createIngressPeerConnection(string(offer))
+	answersd, err := createIngressPeerConnection(string(offer))
+	if err != nil {
+		teeErrorStderrHttp(w, err)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/sdp")
 	w.WriteHeader(201)
@@ -710,11 +712,6 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	checkFatal(err)
 
 	logTransceivers("offer-added", peerConnection)
-
-	// sdsdp, err := offer.Unmarshal()
-	// checkFatal(err)
-	// videoTrackCount := numVideoMediaDesc(sdsdp)
-	// log.Println("videoTrackCount", videoTrackCount)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkFatal(err)
@@ -816,7 +813,7 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
-		return fmt.Errorf("sdp failed to unmarshal")
+		return fmt.Errorf("rtcsd.Unmarshal() fail:%w", err)
 	}
 	log.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
 	return nil
@@ -1306,9 +1303,8 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
+func createIngressPeerConnection(offersdp string) (*webrtc.SessionDescription, error) {
 
-	var err error
 	log.Println("createIngressPeerConnection")
 
 	// Set the remote SessionDescription
@@ -1344,30 +1340,40 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	// }
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
-	err = logSdpReport("publisher", offer)
-	checkFatal(err)
+	err := logSdpReport("publisher", offer)
+	if err != nil {
+		return nil, fmt.Errorf("logSdpReport() fail %w", err)
+	}
 
 	err = peerConnection.SetRemoteDescription(offer)
-	checkFatal(err)
+	if err != nil {
+		return nil, fmt.Errorf("pc.SetRemoteDescription() fail %w", err)
+	}
 
 	// Create answer
 	sessdesc, err := peerConnection.CreateAnswer(nil)
-	checkFatal(err)
+	if err != nil {
+		return nil, fmt.Errorf("pc.CreateAnswer() fail %w", err)
+	}
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	err = peerConnection.SetLocalDescription(sessdesc)
-	checkFatal(err)
+	if err != nil {
+		return nil, fmt.Errorf("pc.SetLocalDescription() fail %w", err)
+	}
 
 	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
 	//<-webrtc.GatheringCompletePromise(peerConnection)
 
 	err = logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
-	checkFatal(err)
+	if err != nil {
+		return nil, fmt.Errorf("logSdpReport() fail %w", err)
+	}
 
 	setupIngressStateHandler(peerConnection)
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
-	return peerConnection.LocalDescription()
+	return peerConnection.LocalDescription(), nil
 }
 
 func setupIngressStateHandler(peerConnection *webrtc.PeerConnection) {
