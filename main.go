@@ -551,17 +551,18 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 
 		log.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
 
+		//could be OPTIONS
 		if handlePreflight(r, w) {
-			return
-		}
-
-		if r.Header.Get("Content-Type") != "application/sdp" {
-			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required"))
 			return
 		}
 
 		if r.Method != "POST" {
 			teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
+			return
+		}
+
+		if r.Header.Get("Content-Type") != "application/sdp" {
+			teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required"))
 			return
 		}
 
