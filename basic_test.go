@@ -210,7 +210,7 @@ func startMultiTrackPublisher(t *testing.T) {
 	req := httptest.NewRequest("POST", "http://ignored.com/pub", strings.NewReader(offer.SDP))
 	w := httptest.NewRecorder()
 	req.Header.Set("Content-Type", "application/sdp")
-	pubHandler(w, req) // not super clean, but \_(ツ)_/¯
+	//pubHandler(w, req) // not super clean, but \_(ツ)_/¯
 	resp := w.Result()
 	answerraw, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, 201, resp.StatusCode)
