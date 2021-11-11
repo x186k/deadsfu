@@ -224,7 +224,7 @@ func main() {
 	}
 
 	go idleLoopPlayer()
-	go egressGoroutine()
+	go ingressGoroutine()
 
 	mux, err := setupMux(conf)
 	checkFatal(err)
@@ -750,20 +750,12 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	sessdesc, err := peerConnection.CreateAnswer(nil)
 	checkFatal(err)
 
-	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
-
-	// Sets the LocalDescription, and starts our UDP listeners
+	// Sets the LocalDescription, and starts our UDP listeners, starts ICE
 	err = peerConnection.SetLocalDescription(sessdesc)
 	checkFatal(err)
 
-	t0 := time.Now()
-	// Block until ICE Gathering is complete, disabling trickle ICE
-	// we do this because we only can exchange one signaling message
-	// in a production application you should exchange ICE Candidates via OnICECandidate
-	<-gatherComplete
-
-	log.Println("ICE gather time is ", time.Since(t0).String())
+	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
+	//<-webrtc.GatheringCompletePromise(peerConnection)
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	ansrtcsd := peerConnection.LocalDescription()
@@ -981,6 +973,9 @@ tryagain:
 	err = peerConnection.SetLocalDescription(offer)
 	checkFatal(err)
 
+	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
+	//<-webrtc.GatheringCompletePromise(peerConnection)
+
 	setupIngressStateHandler(peerConnection)
 
 	// send offer, get answer
@@ -1185,7 +1180,7 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func egressGoroutine() {
+func ingressGoroutine() {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
 	var inputSplicers = make([]RtpSplicer, NumTrackId)
@@ -1359,17 +1354,12 @@ func createIngressPeerConnection(offersdp string) *webrtc.SessionDescription {
 	sessdesc, err := peerConnection.CreateAnswer(nil)
 	checkFatal(err)
 
-	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
-
 	// Sets the LocalDescription, and starts our UDP listeners
 	err = peerConnection.SetLocalDescription(sessdesc)
 	checkFatal(err)
 
-	// Block until ICE Gathering is complete, disabling trickle ICE
-	// we do this because we only can exchange one signaling message
-	// in a production application you should exchange ICE Candidates via OnICECandidate
-	<-gatherComplete
+	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
+	//<-webrtc.GatheringCompletePromise(peerConnection)
 
 	err = logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
 	checkFatal(err)
