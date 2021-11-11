@@ -472,3 +472,21 @@ ch := make(chan MsgPCResult)
 	} else {
 		panic("no")
 	}
+
+
+
+	if false {
+		mux.HandleFunc("/ipv4", func(rw http.ResponseWriter, r *http.Request) {
+			x, err := getDefRouteIntfAddrIPv4()
+			if err == nil {
+				_, _ = rw.Write([]byte(x.String()))
+			}
+		})
+		mux.HandleFunc("/ipv6", func(rw http.ResponseWriter, r *http.Request) {
+			x, err := getDefRouteIntfAddrIPv6()
+			if err == nil {
+				_, _ = rw.Write([]byte(x.String()))
+			}
+		})
+
+	}
