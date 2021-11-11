@@ -654,22 +654,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 
 	log.Println("subHandler request", httpreq.URL.String())
 
-	if handlePreflight(httpreq, w) {
-		return
-	}
-
 	// rx offer, tx answer
-
-	if httpreq.Method != "POST" {
-		teeErrorStderrHttp(w, fmt.Errorf("only POST allowed"))
-		return
-	}
-
-	if httpreq.Header.Get("Content-Type") != "application/sdp" {
-		teeErrorStderrHttp(w, fmt.Errorf("Content-Type==application/sdp required"))
-		return
-	}
-
 	// offer from browser
 	offersdpbytes, err := ioutil.ReadAll(httpreq.Body)
 	if err != nil {
