@@ -56,8 +56,8 @@ const (
 	mediaStreamId = "x186k"
 	videoMimeType = "video/h264"
 	audioMimeType = "audio/opus"
-	pubPath       = "/pub"
-	subPath       = "/sub" // 2nd slash important
+	whipPath       = "/whip"
+	whapPath       = "/whap" // 2nd slash important
 )
 
 const (
@@ -367,10 +367,10 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
 
-	mux.Handle(subPath, commonPubSubHandler(subHandler))
+	mux.Handle(whapPath, commonPubSubHandler(subHandler))
 
 	if *dialIngressURL == "" {
-		mux.Handle(pubPath, commonPubSubHandler(func(rw http.ResponseWriter, r *http.Request) {
+		mux.Handle(whipPath, commonPubSubHandler(func(rw http.ResponseWriter, r *http.Request) {
 			pubHandler(rw, r)
 		}))
 	}
