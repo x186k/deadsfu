@@ -366,3 +366,81 @@ func getMyIPFromRedis(ctx context.Context) net.IP {
 	}
 	return ipaddr
 }
+
+
+// sdpHandler
+// This allows answer/offer SDPs to be posted to /
+// and then routed to subHandler or pubHandler
+// it might make it simpler for new developers, they
+// can just post their SDPs to /, instead of /sub or /pub
+// BUT it might make debugging tricker, because
+// if they don't get their sendonly attributes on the
+// publisher-SDP correct, this code won't
+// route the request to the correct place.
+// **Do not integrate for that reason at this time.**
+//
+var _ = sdpHandler
+
+func sdpHandler(wrappedHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != "POST" || r.URL.Path != "/" {
+			wrappedHandler.ServeHTTP(w, r)
+			return
+		}
+
+		buf, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			teeErrorStderrHttp(w, err)
+			return
+		}
+
+		// https://stackoverflow.com/a/23077519/86375
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
+
+		// do my checking
+		{
+			str := string(buf)
+
+			sdpSignature := strings.HasPrefix(str, "v=0")
+			if sdpSignature {
+				pline()
+
+				rtcsd := &webrtc.SessionDescription{}
+
+				sd, err := rtcsd.Unmarshal()
+				if err != nil {
+					teeErrorStderrHttp(w, err)
+					return
+				}
+
+				sendonly := true
+
+				for _, v := range sd.MediaDescriptions {
+					_, ok := v.Attribute("sendonly")
+					sendonly = sendonly && ok
+				}
+
+				if sendonly {
+					pline()
+					commonPubSubHandler(pubHandler)
+					return
+				} else {
+					pline()
+					commonPubSubHandler(subHandler)
+					return
+				}
+
+			}
+
+		}
+
+		wrappedHandler.ServeHTTP(w, r)
+
+	})
+}
+
+func mstime() string {
+	const timeformatutc = "2006-01-02T15:04:05.000Z07:00"
+	return time.Now().UTC().Format(timeformatutc)
+}
