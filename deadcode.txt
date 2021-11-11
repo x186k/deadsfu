@@ -444,3 +444,31 @@ func mstime() string {
 	const timeformatutc = "2006-01-02T15:04:05.000Z07:00"
 	return time.Now().UTC().Format(timeformatutc)
 }
+
+
+
+ch := make(chan MsgPCResult)
+
+	// send to singlePeerConnMaker
+	newPCCh <- MsgNewPCReq{
+		url: req.URL.Path,
+		sdp: offer,
+		ch:  ch,
+	}
+
+	println(990)
+	peerConnResult := <-ch
+	println(991)
+	if peerConnResult.err != nil {
+		elog.Println(peerConnResult.err.Error())
+		http.Error(w, peerConnResult.err.Error(), http.StatusInternalServerError)
+		return
+	} else if peerConnResult.sdp != nil {
+		w.Header().Set("Content-Type", "application/sdp")
+		w.WriteHeader(201)
+		_, err = w.Write(peerConnResult.sdp)
+		checkFatal(err) // cam/if this write fails, then fail hard!
+		//NOTE, Do NOT ever use http.error to return SDPs
+	} else {
+		panic("no")
+	}
