@@ -315,7 +315,7 @@ func main() {
 	println("profiling done, exit")
 }
 
-func addOrDeleteStatsCookie(wrappedHandler http.Handler, url string) http.Handler {
+func handleSetCookieStatsShipper(next http.Handler, url string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// will be "" to delete
@@ -324,17 +324,17 @@ func addOrDeleteStatsCookie(wrappedHandler http.Handler, url string) http.Handle
 		cookie1 := &http.Cookie{Name: "getstats-shipper-url", Value: value, HttpOnly: false}
 		http.SetCookie(w, cookie1)
 
-		wrappedHandler.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 	})
 }
 
 // if a user accidentially sends an SDP to something other than /pub or /sub
 // tell them! we are supposed to be the dead-simple sfu. lol
-func sdpWarning(wrappedHandler http.Handler) http.Handler {
+func handleSDPWarning(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != "POST" {
-			wrappedHandler.ServeHTTP(w, r)
+			next.ServeHTTP(w, r)
 			return
 		}
 
@@ -358,7 +358,7 @@ func sdpWarning(wrappedHandler http.Handler) http.Handler {
 			return
 		}
 
-		wrappedHandler.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 
 	})
 }
@@ -391,7 +391,7 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 		f, err := fs.Sub(htmlContent, "html")
 		checkFatal(err)
 
-		rootmux = sdpWarning(http.FileServer(http.FS(f)))
+		rootmux = handleSDPWarning(http.FileServer(http.FS(f)))
 
 	} else if httpPrefix || httpsPrefix {
 
@@ -412,11 +412,11 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 		}
 
 		f := os.DirFS(*htmlSource)
-		rootmux = sdpWarning(http.FileServer(http.FS(f)))
+		rootmux = handleSDPWarning(http.FileServer(http.FS(f)))
 
 	}
 
-	rootmux = addOrDeleteStatsCookie(rootmux, *getStatsLogging)
+	rootmux = handleSetCookieStatsShipper(rootmux, *getStatsLogging)
 
 	mux.Handle("/", rootmux)
 
