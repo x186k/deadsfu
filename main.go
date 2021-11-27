@@ -367,12 +367,12 @@ func setupMux(conf SfuConfig) (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
 
+	// handle: /whap
 	mux.Handle(whapPath, commonPubSubHandler(subHandler))
 
+	// handle: /whip if configured to do so
 	if *dialIngressURL == "" {
-		mux.Handle(whipPath, commonPubSubHandler(func(rw http.ResponseWriter, r *http.Request) {
-			pubHandler(rw, r)
-		}))
+		mux.Handle(whipPath, commonPubSubHandler(pubHandler))
 	}
 
 	if *htmlSource == "" {
