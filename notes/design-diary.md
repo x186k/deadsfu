@@ -379,3 +379,8 @@ A/ yes, for now.
 
 Q/What happens when token is missing or doesn't match?
 A 401 is returned 
+
+
+##  11/27/21 URL guide created
+
+See the url-guide.md to understand the URL options
