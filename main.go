@@ -578,9 +578,6 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	// if roomname == "" {
-	// 	// no error!
-	// }
 	link := getPubSubLink(roomname)
 
 	if !link.pubSema.TryAcquire(1) {
