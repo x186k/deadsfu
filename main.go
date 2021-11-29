@@ -109,8 +109,9 @@ type myFtlServer struct {
 //the link between publishers and subscribers
 // mostly the channel on which a /pub puts media for a /sub to send out
 type pubSubLink struct {
-	pubSema  *semaphore.Weighted // is a publisher already using '/foobar' ??
-	sharedCh chan MsgRxPacket    // where publisher sends media for '/foobar'
+	pubSema       *semaphore.Weighted // is a publisher already using '/foobar' ??
+	sharedCh      chan MsgRxPacket    // where publisher sends media for '/foobar'
+	subAddTrackCh chan MsgSubscriberAddTrack
 }
 
 var pubSubMap = make(map[string]*pubSubLink)
@@ -138,8 +139,6 @@ var peerConnectionConfig = webrtc.Configuration{
 var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC|log.Lshortfile)
 var ddnslog = log.New(io.Discard, "", 0)
 var rtpoutConn *net.UDPConn
-
-var subAddTrackCh chan MsgSubscriberAddTrack = make(chan MsgSubscriberAddTrack, 10)
 
 func logGoroutineCountToDebugLog() {
 	n := -1
@@ -245,11 +244,6 @@ func main() {
 		os.Exit(-1)
 	}
 
-	var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
-	xxx
-	go idleLoopPlayer(rxMediaCh)
-	go ingressGoroutine(rxMediaCh)
-
 	mux, err := setupMux(conf)
 	checkFatal(err)
 
@@ -278,9 +272,11 @@ func main() {
 
 		//if (*rtprx)[0]=="help" {
 
+		link := getPubSubLink("")
+
 		for _, v := range *rtprx {
 
-			go rtpReceiver(v, rxMediaCh)
+			go rtpReceiver(v, link.sharedCh)
 		}
 
 	}
@@ -296,11 +292,14 @@ func main() {
 	//the user can specify zero for port, and Linux/etc will choose a port
 
 	if *dialIngressURL != "" {
-		elog.Printf("Publisher Ingress API URL: none (using dial)")
+		u, err := url.Parse(*dialIngressURL)
+		checkFatal(err)
+
+		link := getPubSubLink(u.Path)
 		go func() {
 			for {
 				elog.Println("dial: Dialing upstream (got semaphore)")
-				dialUpstream(*dialIngressURL, *bearerToken, rxMediaCh)
+				dialUpstream(*dialIngressURL, *bearerToken, link.sharedCh)
 			}
 		}()
 	}
@@ -615,10 +614,14 @@ func getPubSubLink(key string) *pubSubLink {
 	link, found := pubSubMap[key]
 	if !found {
 		link = &pubSubLink{
-			pubSema:  semaphore.NewWeighted(int64(1)),
-			sharedCh: make(chan MsgRxPacket),
+			pubSema:       semaphore.NewWeighted(int64(1)),
+			sharedCh:      make(chan MsgRxPacket, 100),
+			subAddTrackCh: make(chan MsgSubscriberAddTrack, 10),
 		}
 		pubSubMap[key] = link
+
+		go idleLoopPlayer(link)
+		go ingressGoroutine(link)
 	}
 	pubSubMapMutex.Unlock()
 	return link
@@ -708,6 +711,9 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	logTransceivers("offer-added", peerConnection)
 
+	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
+	link := getPubSubLink(roomname)
+
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkFatal(err)
 	rtpSender, err := peerConnection.AddTrack(track)
@@ -715,7 +721,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	go processRTCP(rtpSender)
 
 	// blocking is okay
-	subAddTrackCh <- MsgSubscriberAddTrack{
+	link.subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
 			track:   track,
 			splicer: &RtpSplicer{},
@@ -730,7 +736,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	go processRTCP(rtpSender2)
 
 	// blocking is okay
-	subAddTrackCh <- MsgSubscriberAddTrack{
+	link.subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
 			track:   track,
 			splicer: &RtpSplicer{},
@@ -816,7 +822,7 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	return nil
 }
 
-func idleLoopPlayer(rxMediaCh chan MsgRxPacket) {
+func idleLoopPlayer(link *pubSubLink) {
 
 	var pkts []rtp.Packet
 
@@ -896,7 +902,7 @@ func idleLoopPlayer(rxMediaCh chan MsgRxPacket) {
 
 			copy := pkt // critical!, we must make a copy!
 			//blocking is okay
-			rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
+			link.sharedCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
 
 		}
 
@@ -1182,7 +1188,7 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func ingressGoroutine(rxMediaCh chan MsgRxPacket) {
+func ingressGoroutine(link *pubSubLink) {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
 	var inputSplicers = make([]RtpSplicer, NumTrackId)
@@ -1193,7 +1199,7 @@ func ingressGoroutine(rxMediaCh chan MsgRxPacket) {
 		// should block, no default case
 		select {
 
-		case m := <-rxMediaCh:
+		case m := <-link.sharedCh:
 
 			idlePkt := m.rxid == IdleVideo
 
@@ -1277,7 +1283,7 @@ func ingressGoroutine(rxMediaCh chan MsgRxPacket) {
 
 			}
 
-		case m := <-subAddTrackCh:
+		case m := <-link.subAddTrackCh:
 
 			txtracks = append(txtracks, m.txtrack)
 
