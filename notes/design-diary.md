@@ -383,4 +383,12 @@ A 401 is returned
 
 ##  11/27/21 URL guide created
 
-See the url-guide.md to understand the URL options
+
+
+## 11/29/21 Where should PeerConnection creation happen?
+
+- currently PC creation happens on the http handler goroutine
+- maybe it should happen on the 'room' message handler goroutine
+
+*for now leave this as-is, but keep in mind, we may want to change some day*
+for example, if we wanted to rate-limit Peerconn creation, this would be a good change

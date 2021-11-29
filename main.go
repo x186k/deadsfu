@@ -108,14 +108,14 @@ type myFtlServer struct {
 
 //the link between publishers and subscribers
 // mostly the channel on which a /pub puts media for a /sub to send out
-type pubSubLink struct {
-	pubSema       *semaphore.Weighted // is a publisher already using '/foobar' ??
-	sharedCh      chan MsgRxPacket    // where publisher sends media for '/foobar'
-	subAddTrackCh chan MsgSubscriberAddTrack
+type roomState struct {
+	pubSema    *semaphore.Weighted // is a publisher already using '/foobar' ??
+	mediaCh    chan MsgRxPacket    // where publisher sends media for '/foobar'
+	newTrackCh chan MsgSubscriberAddTrack
 }
 
-var pubSubMap = make(map[string]*pubSubLink)
-var pubSubMapMutex sync.Mutex
+var roomMap = make(map[string]*roomState)
+var roomMapMutex sync.Mutex
 
 var Version = "version-unset"
 
@@ -272,11 +272,11 @@ func main() {
 
 		//if (*rtprx)[0]=="help" {
 
-		link := getPubSubLink("")
+		link := getRoomState("")
 
 		for _, v := range *rtprx {
 
-			go rtpReceiver(v, link.sharedCh)
+			go rtpReceiver(v, link.mediaCh)
 		}
 
 	}
@@ -295,11 +295,11 @@ func main() {
 		u, err := url.Parse(*dialIngressURL)
 		checkFatal(err)
 
-		link := getPubSubLink(u.Path)
+		link := getRoomState(u.Path)
 		go func() {
 			for {
 				elog.Println("dial: Dialing upstream (got semaphore)")
-				dialUpstream(*dialIngressURL, *bearerToken, link.sharedCh)
+				dialUpstream(*dialIngressURL, *bearerToken, link.mediaCh)
 			}
 		}()
 	}
@@ -578,7 +578,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getPubSubLink(roomname)
+	link := getRoomState(roomname)
 
 	if !link.pubSema.TryAcquire(1) {
 		err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
@@ -604,26 +604,26 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func getPubSubLink(key string) *pubSubLink {
+func getRoomState(key string) *roomState {
 
 	if !strings.HasPrefix("/", key) {
 		key = "/" + key
 	}
 
-	pubSubMapMutex.Lock()
-	link, found := pubSubMap[key]
+	roomMapMutex.Lock()
+	link, found := roomMap[key]
 	if !found {
-		link = &pubSubLink{
-			pubSema:       semaphore.NewWeighted(int64(1)),
-			sharedCh:      make(chan MsgRxPacket, 100),
-			subAddTrackCh: make(chan MsgSubscriberAddTrack, 10),
+		link = &roomState{
+			pubSema:    semaphore.NewWeighted(int64(1)),
+			mediaCh:    make(chan MsgRxPacket, 100),
+			newTrackCh: make(chan MsgSubscriberAddTrack, 10),
 		}
-		pubSubMap[key] = link
+		roomMap[key] = link
 
 		go idleLoopPlayer(link)
 		go ingressGoroutine(link)
 	}
-	pubSubMapMutex.Unlock()
+	roomMapMutex.Unlock()
 	return link
 }
 
@@ -712,7 +712,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	logTransceivers("offer-added", peerConnection)
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getPubSubLink(roomname)
+	link := getRoomState(roomname)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkFatal(err)
@@ -721,7 +721,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	go processRTCP(rtpSender)
 
 	// blocking is okay
-	link.subAddTrackCh <- MsgSubscriberAddTrack{
+	link.newTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
 			track:   track,
 			splicer: &RtpSplicer{},
@@ -736,7 +736,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	go processRTCP(rtpSender2)
 
 	// blocking is okay
-	link.subAddTrackCh <- MsgSubscriberAddTrack{
+	link.newTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
 			track:   track,
 			splicer: &RtpSplicer{},
@@ -822,7 +822,7 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	return nil
 }
 
-func idleLoopPlayer(link *pubSubLink) {
+func idleLoopPlayer(link *roomState) {
 
 	var pkts []rtp.Packet
 
@@ -902,7 +902,7 @@ func idleLoopPlayer(link *pubSubLink) {
 
 			copy := pkt // critical!, we must make a copy!
 			//blocking is okay
-			link.sharedCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
+			link.mediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
 
 		}
 
@@ -946,7 +946,7 @@ func dialUpstream(dialurl string, token string, rxMediaCh chan MsgRxPacket) {
 	checkFatal(err)
 
 	roomname := u.Query().Get("room") // "" is permitted, most common room name!
-	link := getPubSubLink(roomname)
+	link := getRoomState(roomname)
 
 tryagain:
 	log.Println("dialUpstream url:", dialurl)
@@ -1188,7 +1188,7 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func ingressGoroutine(link *pubSubLink) {
+func ingressGoroutine(link *roomState) {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
 	var inputSplicers = make([]RtpSplicer, NumTrackId)
@@ -1199,7 +1199,7 @@ func ingressGoroutine(link *pubSubLink) {
 		// should block, no default case
 		select {
 
-		case m := <-link.sharedCh:
+		case m := <-link.mediaCh:
 
 			idlePkt := m.rxid == IdleVideo
 
@@ -1283,7 +1283,7 @@ func ingressGoroutine(link *pubSubLink) {
 
 			}
 
-		case m := <-link.subAddTrackCh:
+		case m := <-link.newTrackCh:
 
 			txtracks = append(txtracks, m.txtrack)
 
@@ -1315,7 +1315,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngressPeerConnection(offersdp string, link *pubSubLink) (*webrtc.SessionDescription, error) {
+func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.SessionDescription, error) {
 
 	log.Println("createIngressPeerConnection")
 
@@ -1328,7 +1328,7 @@ func createIngressPeerConnection(offersdp string, link *pubSubLink) (*webrtc.Ses
 	peerConnection := newPeerConnection()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.sharedCh)
+		ingressOnTrack(peerConnection, track, receiver, link.mediaCh)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1388,7 +1388,7 @@ func createIngressPeerConnection(offersdp string, link *pubSubLink) (*webrtc.Ses
 	return peerConnection.LocalDescription(), nil
 }
 
-func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *pubSubLink) {
+func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *roomState) {
 
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		log.Println("ingress Connection State has changed", cs.String())
