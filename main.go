@@ -224,8 +224,10 @@ func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
 
 		switch p.Header.PayloadType {
 		case 96:
+			// blocking is okay
 			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 		case 97:
+			// blocking is okay
 			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 		}
 
@@ -709,6 +711,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	checkFatal(err)
 	go processRTCP(rtpSender)
 
+	// blocking is okay
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
 			track:   track,
@@ -723,6 +726,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	checkFatal(err)
 	go processRTCP(rtpSender2)
 
+	// blocking is okay
 	subAddTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
 			track:   track,
@@ -888,6 +892,7 @@ func idleLoopPlayer(rxMediaCh chan MsgRxPacket) {
 			pkt.Timestamp = tsdelta + tstotal
 
 			copy := pkt // critical!, we must make a copy!
+			//blocking is okay
 			rxMediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
 
 		}
@@ -1153,6 +1158,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uin
 		}
 		checkFatal(err)
 
+		// blocking is okay
 		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p, rxClockRate: clockrate}
 	}
 }
@@ -1181,6 +1187,7 @@ func ingressGoroutine(rxMediaCh chan MsgRxPacket) {
 
 	for {
 
+		// should block, no default case
 		select {
 
 		case m := <-rxMediaCh:
@@ -1651,6 +1658,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 			break
 		}
 		p.SSRC = x.videossrc // each FTL session should have different SSRC for downstream splicer
+		// blocking is okay
 		x.rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
 
 	case 97:
@@ -1665,6 +1673,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 			break
 		}
 		p.SSRC = x.audiossrc // each FTL session should have different SSRC for downstream splicer
+		// blocking is okay
 		x.rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 	}
 	if x.badssrc > 0 && x.badssrc%100 == 10 {
