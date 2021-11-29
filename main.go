@@ -246,6 +246,7 @@ func main() {
 	}
 
 	var rxMediaCh chan MsgRxPacket = make(chan MsgRxPacket, 1000)
+	xxx
 	go idleLoopPlayer(rxMediaCh)
 	go ingressGoroutine(rxMediaCh)
 
@@ -637,18 +638,18 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 
 // sfu egress setup
 // 041521 Decided checkFatal() is the correct way to handle errors in this func.
-func subHandler(w http.ResponseWriter, httpreq *http.Request) {
-	defer httpreq.Body.Close()
+func subHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	var err error
 
-	log.Println("subHandler request", httpreq.URL.String())
+	log.Println("subHandler request", r.URL.String())
 
 	// rx offer, tx answer
 	// offer from browser
-	offersdpbytes, err := ioutil.ReadAll(httpreq.Body)
+	offersdpbytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		elog.Println(err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -690,7 +691,7 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	if !ValidateSDP(offer) {
 		err := fmt.Errorf("invalid offer SDP received")
 		elog.Println(err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -751,9 +752,9 @@ func subHandler(w http.ResponseWriter, httpreq *http.Request) {
 	err = logSdpReport("sub-answer", *ansrtcsd)
 	checkFatal(err)
 
-	w.Header().Set("Content-Type", "application/sdp")
-	w.WriteHeader(201)
-	_, err = w.Write([]byte(ansrtcsd.SDP))
+	rw.Header().Set("Content-Type", "application/sdp")
+	rw.WriteHeader(201)
+	_, err = rw.Write([]byte(ansrtcsd.SDP))
 	if err != nil {
 		elog.Println(fmt.Errorf("sub sdp write failed:%w", err))
 		return
