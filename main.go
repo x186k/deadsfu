@@ -606,6 +606,11 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func getPubSubLink(key string) *pubSubLink {
+
+	if !strings.HasPrefix("/", key) {
+		key = "/" + key
+	}
+
 	pubSubMapMutex.Lock()
 	link, found := pubSubMap[key]
 	if !found {
