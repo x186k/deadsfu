@@ -112,6 +112,7 @@ type roomState struct {
 	pubSema    *semaphore.Weighted // is a publisher already using '/foobar' ??
 	mediaCh    chan MsgRxPacket    // where publisher sends media for '/foobar'
 	newTrackCh chan MsgSubscriberAddTrack
+	done       chan bool
 }
 
 var roomMap = make(map[string]*roomState)
@@ -617,11 +618,12 @@ func getRoomState(key string) *roomState {
 			pubSema:    semaphore.NewWeighted(int64(1)),
 			mediaCh:    make(chan MsgRxPacket, 100),
 			newTrackCh: make(chan MsgSubscriberAddTrack, 10),
+			done:       make(chan bool),
 		}
 		roomMap[key] = link
 
-		go idleLoopPlayer(link)
-		go ingressGoroutine(link)
+		go idleMediaGeneratorGr(link)
+		go mediaFanOutGr(link)
 	}
 	roomMapMutex.Unlock()
 	return link
@@ -666,6 +668,9 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	peerConnection := newPeerConnection()
 
 	logTransceivers("new-pc", peerConnection)
+
+	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
+	link := getRoomState(roomname)
 
 	// NO!
 	// peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {...}
@@ -724,9 +729,6 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	checkFatal(err)
 
 	logTransceivers("offer-added", peerConnection)
-
-	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getRoomState(roomname)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	checkFatal(err)
@@ -836,7 +838,7 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	return nil
 }
 
-func idleLoopPlayer(link *roomState) {
+func idleMediaGeneratorGr(link *roomState) {
 
 	var pkts []rtp.Packet
 
@@ -924,6 +926,12 @@ func idleLoopPlayer(link *roomState) {
 		basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
 
 		time.Sleep(time.Until(basetime))
+
+		select {
+		case <-link.done:
+			return
+		default:
+		}
 
 	}
 }
@@ -1202,7 +1210,7 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func ingressGoroutine(link *roomState) {
+func mediaFanOutGr(link *roomState) {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
 	var inputSplicers = make([]RtpSplicer, NumTrackId)
@@ -1212,6 +1220,9 @@ func ingressGoroutine(link *roomState) {
 
 		// should block, no default case
 		select {
+
+		case <-link.done: // this room is done?
+			return
 
 		case m := <-link.mediaCh:
 
