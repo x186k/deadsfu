@@ -687,10 +687,24 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		case webrtc.PeerConnectionStateDisconnected:
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
-			//we do not delete txid from txidMap, you can't reuse the numbers/slots
-			//we hope that since it is closed and unreferenced it will just disappear,
-			// (from the heap), but I have my doubts
-			// XXX
+			// this would be the time/place to check if there are now zero subscribers on a room
+			// if that is the new case, then we would send 'done' msg to shutdown goroutines.
+			// but! this is racey will other subHandler() goroutines which have
+			// already aquired a 'room *roomState' pointer.
+			// there are two solutions:
+			// A. Move '*roomState' creates, sends, and deletes to single GR via chans/msgs
+			// B. Mutex '*roomState' creation, and deletion to single GR via chans/msgs
+			// B. Once a room is created, never shutdown it's goroutines, nor remove it's state
+
+			// XXX 11/30/21 diary: we are not going to remove/end state+GRs for empty rooms
+			// link.numsubs -= 1
+			// if link.numsubs == 0 {
+			// 	close(link.done)
+			// 	roomMapMutex.Lock()
+			// 	delete(roomMap, roomname)
+			// 	roomMapMutex.Unlock()
+			// }
+
 		}
 	})
 
