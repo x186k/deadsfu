@@ -392,3 +392,24 @@ A 401 is returned
 
 *for now leave this as-is, but keep in mind, we may want to change some day*
 for example, if we wanted to rate-limit Peerconn creation, this would be a good change
+
+## 11/29/21 shutdown of 'go ingressGoroutine()' and 'go idleLoopPlayer()'
+
+When a room drops to zero subscribers, one could:
+1. remove the roomState from the map
+2. close a 'done' channel to terminate these two goroutines
+   
+## 11/29/21, room creation and room deletion challenges
+
+Room deletion when the number of subscribers presents challeneges to implement, and think about also.
+- it is difficult to think about what race conditions do/don't exist when combining multithreaded room-creation and room-deletion.
+- even if I do/can think-through the various senarios about multi-GR room create/delete and how that works in conjunction with the publisher semaphore, *it's just too complex !!*
+- *always simplify when possible*
+
+*THUS: all RoomState creation/removal should happen on a single GR*
+
+## 11/30/21 Deferring: switching Peerconn creation/cleanup to a single GR
+## 11/30/21 Decision: we are not going to remove/end state+GRs for empty rooms for now.
+
+It would be really nice to have Pub/Sub/Dial peerconn creation happen on a single GR,
+and would make empty room GR shutdown cleaner, but 
