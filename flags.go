@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -45,7 +46,6 @@ var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostnam
 var htmlSource = pflag.String("html", "", "required. 'internal' suggested. HTML source: internal, none, <file-path>, <url>")
 var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
 var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :6060")
-var debugFlag = pflag.StringSlice("debug", []string{}, "comma separated list of debug flags. use 'help' for details")
 
 //var idleExitDuration = pflag.Duration("idle-exit-duration", time.Duration(0), `If there is no input video for duration, exit process/container. eg: '1h' one hour, '30m': 30 minutes`)
 
@@ -81,6 +81,17 @@ func parseFlags() SfuConfig {
 
 	var conf SfuConfig
 
+	// setup the pflag.Var() flags
+	const xmsg = "enable debug logging for this area"
+
+	flag.Var(&dbgMedia, "debug-media", xmsg)
+	flag.Var(&dbgHttps, "debug-https", xmsg)
+	flag.Var(&dbgIceCandidates, "debug-ice-candidates", xmsg)
+	flag.Var(&dbgMain, "debug-main", xmsg)
+	flag.Var(&dbgFtl, "debug-ftl", xmsg)
+	flag.Var(&dbgDdns, "debug-ddns", xmsg)
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+
 	pflag.StringVar(&conf.Http, "http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 	pflag.StringVarP(&conf.HttpsDomain, "https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
 
@@ -106,24 +117,6 @@ func oneTimeFlagsActions(conf *SfuConfig) {
 		go func() {
 			log.Fatal(http.ListenAndServe(":6060", nil))
 		}()
-	}
-	const logflags = log.Lmicroseconds | log.LUTC | log.Lshortfile
-
-	for _, v := range *debugFlag {
-		switch v {
-		case "media":
-			dbgMedia = FastLogger{enabled: true, Logger: log.New(os.Stdout, "MEDIA ", logflags)}
-		case "main":
-			dbgMain = log.New(os.Stdout, "D ", logflags)
-		case "ftl":
-			dbgFtl = log.New(os.Stdout, "FTL ", logflags)
-		case "ddns":
-			dbgDdns = log.New(os.Stdout, "DDNS ", logflags)
-		case "help":
-			fallthrough
-		default:
-			log.Fatal("--z-debug options: media, main, ftl, ddns, help")
-		}
 	}
 
 	if *rtptx != "" {

@@ -144,13 +144,13 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		if IsPrivate(v) {
 			pubpriv = "Private"
 		}
-		httpsLog.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
+		dbgHttps.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
 
 		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
-		httpsLog.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
+		dbgHttps.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
@@ -159,7 +159,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		localDNSIP, err := net.ResolveIPAddr(network, fqdn)
 		checkFatal(err)
 
-		httpsLog.Println("net.ResolveIPAddr", network, fqdn, localDNSIP.String())
+		dbgHttps.Println("net.ResolveIPAddr", network, fqdn, localDNSIP.String())
 
 		if !localDNSIP.IP.Equal(v) {
 			checkFatal(fmt.Errorf("Inconsistent DNS, please use another name"))
@@ -316,7 +316,7 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 
 	contextDialer, ok := dialer.(proxy.ContextDialer)
 	if !ok {
-		httpsLog.Println("cannot deref dialer")
+		dbgHttps.Println("cannot deref dialer")
 		//not fatal
 		return
 	}
@@ -351,9 +351,9 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 		// unexpected issue with proxy, but we stay silent
 		// unless debugging is on
 		// maybe Cam didn't pay proxy bill
-		httpsLog.Println("unexpected proxy behavior")
+		dbgHttps.Println("unexpected proxy behavior")
 		for xx := err; xx != nil; xx = errors.Unwrap(xx) {
-			httpsLog.Printf("%#v\n", xx)
+			dbgHttps.Printf("%#v\n", xx)
 		}
 
 		return

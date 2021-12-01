@@ -137,27 +137,45 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-/* logging notes
-log.Println(...) - helper funcs which output to 'standard' logger
-
-Philosophy:
-Use the 'standard' logger for end-user IN
-*/
-
-//var elog = log.New(os.Stderr, "E ", log.Lmicroseconds | log.LUTC | log.Lshortfile)
-var dbgMedia = FastLogger{log.New(io.Discard, "", 0), false}
-var httpsLog = log.New(io.Discard, "", 0)
-var dbgMain = log.New(io.Discard, "", 0)
-var dbgFtl = log.New(io.Discard, "", 0)
-var dbgDdns = log.New(io.Discard, "", 0)
 var rtpoutConn *net.UDPConn
 
+// logging notes
+// use:
+// log.Println(...)  for info messages that should be seen without enabling any debugging
+
+var dbgMedia = FastLogger{"media ", log.New(io.Discard, "", 0), false}
+var dbgHttps = FastLogger{"https ", log.New(io.Discard, "", 0), false}
+var dbgIceCandidates = FastLogger{"candidates ", log.New(io.Discard, "", 0), false}
+var dbgMain = FastLogger{"D ", log.New(io.Discard, "", 0), false}
+var dbgFtl = FastLogger{"ftl ", log.New(io.Discard, "", 0), false}
+var dbgDdns = FastLogger{"ddns ", log.New(io.Discard, "", 0), false}
+
 // note: log.Logger contains a mutex, which means log.Logger should not be copied around
+// so use a pointer to log.logger
 // https://eli.thegreenplace.net/2018/beware-of-copying-mutexes-in-go/
 
 type FastLogger struct {
+	prefix string
 	*log.Logger
 	enabled bool // this is the WHOLE point of this struct, it allows fast logging checks
+}
+
+func (v *FastLogger) IsBoolFlag() bool {
+	return true
+}
+
+func (v *FastLogger) String() string {
+	return "XOK"
+}
+
+func (v *FastLogger) Type() string {
+	return "bool"
+}
+
+func (v *FastLogger) Set(s string) error {
+	v.Logger = log.New(os.Stdout, v.prefix, log.Lmicroseconds|log.LUTC|log.Lshortfile)
+	v.enabled = true
+	return nil
 }
 
 func logGoroutineCountToDebugLog() {
@@ -1653,7 +1671,7 @@ func startFtlListener() {
 		dbgFtl.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
-		ftlserver.NewTcpSession(log.Default(), dbgFtl, tcpconn, findserver, *ftlUdpPort)
+		ftlserver.NewTcpSession(log.Default(), dbgFtl.Logger, tcpconn, findserver, *ftlUdpPort)
 		netconn.Close()
 	}
 	// unreachable
