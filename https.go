@@ -63,18 +63,18 @@ func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux
 		switch s {
 		// called at time of challenge passing
 		case "cert_obtained":
-			// elog.Println("Let's Encrypt Certificate Aquired")
+			// log.Println("Let's Encrypt Certificate Aquired")
 			// called every run where cert is found in cache including when the challenge passes
 			// since the followed gets called for both obained and found in cache, we use that
 		case "cached_managed_cert":
 			close(httpsHasCertificate)
-			elog.Println("HTTPS READY: Certificate Acquired")
+			log.Println("HTTPS READY: Certificate Acquired")
 		case "tls_handshake_started":
 			//silent
 		case "tls_handshake_completed":
 			//silent
 		default:
-			elog.Println("certmagic event:", s) //, i)
+			log.Println("certmagic event:", s) //, i)
 		}
 	}
 
@@ -108,7 +108,7 @@ func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux
 	httpsLn := tls.NewListener(ln, tlsConfig)
 	checkFatal(err)
 
-	elog.Println("SFU HTTPS IS READY ON", ln.Addr())
+	log.Println("SFU HTTPS IS READY ON", ln.Addr())
 
 	// err = http.Serve(httpsLn, mux)
 	// checkFatal(err)
@@ -144,22 +144,22 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		if IsPrivate(v) {
 			pubpriv = "Private"
 		}
-		log.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
+		httpsLog.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
 
 		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
-		log.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
+		httpsLog.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
-		elog.Printf("IPAddr %v DNS registered as %v", v, fqdn)
+		log.Printf("IPAddr %v DNS registered as %v", v, fqdn)
 
 		localDNSIP, err := net.ResolveIPAddr(network, fqdn)
 		checkFatal(err)
 
-		log.Println("net.ResolveIPAddr", network, fqdn, localDNSIP.String())
+		httpsLog.Println("net.ResolveIPAddr", network, fqdn, localDNSIP.String())
 
 		if !localDNSIP.IP.Equal(v) {
 			checkFatal(fmt.Errorf("Inconsistent DNS, please use another name"))
@@ -244,10 +244,10 @@ func reportHttpsReadyness(ready chan bool) {
 
 			n := int(t1.Sub(t0).Seconds())
 
-			elog.Printf("HTTPS NOT READY: Waited %d seconds.", n)
+			log.Printf("HTTPS NOT READY: Waited %d seconds.", n)
 
 			if n >= 30 {
-				elog.Printf("No HTTPS certificate: Stopping status messages. Will update if aquired.")
+				log.Printf("No HTTPS certificate: Stopping status messages. Will update if aquired.")
 				return
 			}
 
@@ -267,7 +267,7 @@ func reportOpenPort(hostport, network string) {
 	}
 
 	if IsPrivate(tcpaddr.IP) {
-		elog.Printf("IPAddr %v IS PRIVATE IP, not Internet reachable. RFC 1918, 4193", tcpaddr.IP.String())
+		log.Printf("IPAddr %v IS PRIVATE IP, not Internet reachable. RFC 1918, 4193", tcpaddr.IP.String())
 		return
 	}
 
@@ -280,9 +280,9 @@ func reportOpenPort(hostport, network string) {
 	}
 
 	if iamopen {
-		elog.Printf("IPAddr %v port:%v IS OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
+		log.Printf("IPAddr %v port:%v IS OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
 	} else {
-		elog.Printf("IPAddr %v port:%v IS NOT OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
+		log.Printf("IPAddr %v port:%v IS NOT OPEN from Internet", tcpaddr.IP.String(), tcpaddr.Port)
 	}
 }
 
@@ -316,7 +316,7 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 
 	contextDialer, ok := dialer.(proxy.ContextDialer)
 	if !ok {
-		log.Println("cannot deref dialer")
+		httpsLog.Println("cannot deref dialer")
 		//not fatal
 		return
 	}
@@ -351,9 +351,9 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 		// unexpected issue with proxy, but we stay silent
 		// unless debugging is on
 		// maybe Cam didn't pay proxy bill
-		log.Println("unexpected proxy behavior")
+		httpsLog.Println("unexpected proxy behavior")
 		for xx := err; xx != nil; xx = errors.Unwrap(xx) {
-			log.Printf("%#v\n", xx)
+			httpsLog.Printf("%#v\n", xx)
 		}
 
 		return

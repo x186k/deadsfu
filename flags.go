@@ -45,7 +45,7 @@ var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostnam
 var htmlSource = pflag.String("html", "", "required. 'internal' suggested. HTML source: internal, none, <file-path>, <url>")
 var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
 var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :6060")
-var debug = pflag.StringSlice("debug", []string{}, "comma separated list of debug flags. use 'help' for details")
+var debugFlag = pflag.StringSlice("debug", []string{}, "comma separated list of debug flags. use 'help' for details")
 
 //var idleExitDuration = pflag.Duration("idle-exit-duration", time.Duration(0), `If there is no input video for duration, exit process/container. eg: '1h' one hour, '30m': 30 minutes`)
 
@@ -104,24 +104,23 @@ func oneTimeFlagsActions(conf *SfuConfig) {
 
 	if *pprofFlag {
 		go func() {
-			elog.Fatal(http.ListenAndServe(":6060", nil))
+			log.Fatal(http.ListenAndServe(":6060", nil))
 		}()
 	}
+	const logflags = log.Lmicroseconds | log.LUTC | log.Lshortfile
 
-	for _, v := range *debug {
+	for _, v := range *debugFlag {
 		switch v {
-		case "":
-			// do nothing
+		case "media":
+			medialog = FastLogger{enabled: true, Logger: log.New(os.Stdout, "M ", logflags)}
 		case "main":
-			log.SetFlags(log.Lmicroseconds | log.LUTC)
-			log.SetPrefix("D ")
-			log.SetOutput(os.Stdout)
+			dbglog = log.New(os.Stdout, "D ", logflags)
 		case "ddns":
-			ddnslog = log.New(os.Stdout, "X ", log.Lmicroseconds|log.LUTC)
+			ddnslog = log.New(os.Stdout, "DDNS ", logflags)
 		case "help":
 			fallthrough
 		default:
-			elog.Fatal("--z-debug sub-flags are: main, help, media")
+			log.Fatal("--z-debug sub-flags are: main, help, media")
 		}
 	}
 

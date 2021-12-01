@@ -137,16 +137,35 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-var elog = log.New(os.Stderr, "E ", log.Lmicroseconds|log.LUTC|log.Lshortfile)
+/* logging notes
+log.Println(...) - helper funcs which output to 'standard' logger
+
+Philosophy:
+Use the 'standard' logger for end-user IN
+*/
+
+//var elog = log.New(os.Stderr, "E ", log.Lmicroseconds | log.LUTC | log.Lshortfile)
+var medialog = FastLogger{log.New(io.Discard, "", 0), false}
+var httpsLog = log.New(io.Discard, "", 0)
+var dbglog = log.New(io.Discard, "", 0)
+var logFtl = log.New(io.Discard, "", 0)
 var ddnslog = log.New(io.Discard, "", 0)
 var rtpoutConn *net.UDPConn
+
+// note: log.Logger contains a mutex, which means log.Logger should not be copied around
+// https://eli.thegreenplace.net/2018/beware-of-copying-mutexes-in-go/
+
+type FastLogger struct {
+	*log.Logger
+	enabled bool // this is the WHOLE point of this struct, it allows fast logging checks
+}
 
 func logGoroutineCountToDebugLog() {
 	n := -1
 	for {
 		nn := runtime.NumGoroutine()
 		if nn != n {
-			log.Println("NumGoroutine", nn)
+			dbglog.Println("NumGoroutine", nn)
 			n = nn
 		}
 		time.Sleep(2 * time.Second)
@@ -156,7 +175,7 @@ func logGoroutineCountToDebugLog() {
 func checkFatal(err error) {
 	if err != nil {
 		_, fileName, fileLine, _ := runtime.Caller(1)
-		elog.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
+		log.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
 	}
 }
 
@@ -193,7 +212,7 @@ func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
 	checkFatal(err)
 	defer pconn.Close()
 
-	elog.Printf("RTP/UDP WAITING ON %s", pconn.LocalAddr().String())
+	log.Printf("RTP/UDP WAITING ON %s", pconn.LocalAddr().String())
 
 	c := pconn.(*net.UDPConn)
 
@@ -256,7 +275,7 @@ func main() {
 			mux2 = certmagic.DefaultACME.HTTPChallengeHandler(mux)
 		}
 		server := &http.Server{Handler: mux2}
-		elog.Println("SFU HTTP IS READY ON", ln.Addr())
+		log.Println("SFU HTTP IS READY ON", ln.Addr())
 
 		go func() {
 			checkFatal(server.Serve(ln))
@@ -284,7 +303,7 @@ func main() {
 
 	if *ftlKey != "" {
 
-		go startFtlListener(elog, log.Default())
+		go startFtlListener()
 
 	}
 
@@ -299,7 +318,7 @@ func main() {
 		link := getRoomState(u.Path)
 		go func() {
 			for {
-				elog.Println("dial: Dialing upstream (got semaphore)")
+				log.Println("dial: Dialing upstream (got semaphore)")
 				dialUpstream(*dialIngressURL, *bearerToken, link.mediaCh)
 			}
 		}()
@@ -344,7 +363,7 @@ func handleSDPWarning(next http.Handler) http.Handler {
 
 		buf, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			elog.Println(err.Error())
+			log.Println(err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -357,7 +376,7 @@ func handleSDPWarning(next http.Handler) http.Handler {
 		sdpSignature := strings.HasPrefix(str, "v=0")
 		if sdpSignature {
 			err := fmt.Errorf("WebRTC SDPs should only be sent to /pub, or /sub, not: %s", r.URL.EscapedPath())
-			elog.Println(err.Error())
+			log.Println(err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -498,7 +517,7 @@ func newPeerConnection() *webrtc.PeerConnection {
 func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		log.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
+		dbglog.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
 
 		//could be OPTIONS
 		if handlePreflight(r, w) {
@@ -507,14 +526,14 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 
 		if r.Method != "POST" {
 			err := fmt.Errorf("only POST allowed")
-			elog.Println(err.Error())
+			log.Println(err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if r.Header.Get("Content-Type") != "application/sdp" {
 			err := fmt.Errorf("Content-Type application/sdp required")
-			elog.Println(err.Error())
+			log.Println(err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -527,7 +546,7 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 					goto goodToken
 				}
 				m := "access_token query param found, with invalid bearer token."
-				elog.Println(m)
+				log.Println(m)
 				http.Error(w, m, 401)
 				return
 			}
@@ -539,13 +558,13 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 					goto goodToken
 				}
 				m := "Authorization: header found, with invalid bearer token."
-				elog.Println(m)
+				log.Println(m)
 				http.Error(w, m, 401)
 				return
 			}
 
 			m := "bearer token required, but not provided."
-			elog.Println(m)
+			log.Println(m)
 			http.Error(w, m, 401)
 			return
 		}
@@ -566,14 +585,14 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 	offer, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		elog.Println(err.Error())
+		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if !strings.HasPrefix(string(offer), "v=") {
 		err := fmt.Errorf("invalid SDP message")
-		elog.Println(err.Error())
+		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -583,7 +602,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 	if !link.pubSema.TryAcquire(1) {
 		err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
-		elog.Println(err.Error())
+		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -592,7 +611,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 	answersd, err := createIngressPeerConnection(string(offer), link)
 	if err != nil {
-		elog.Println(err.Error())
+		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -652,19 +671,19 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var err error
 
-	log.Println("subHandler request", r.URL.String())
+	dbglog.Println("subHandler request", r.URL.String())
 
 	// rx offer, tx answer
 	// offer from browser
 	offersdpbytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		elog.Println(err.Error())
+		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Create a new PeerConnection
-	log.Println("created PC")
+	dbglog.Println("created PC")
 	peerConnection := newPeerConnection()
 
 	logTransceivers("new-pc", peerConnection)
@@ -680,11 +699,11 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	// so there is no OnTrack handler
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		log.Println("sub ICE Connection State has changed", icecs.String())
+		dbglog.Println("sub ICE Connection State has changed", icecs.String())
 	})
 	// XXX is this switch case necessary?, will the pc eventually reach Closed after Failed or Disconnected
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		log.Printf("subscriber 0x%p newstate: %s", peerConnection, cs.String())
+		dbglog.Printf("subscriber 0x%p newstate: %s", peerConnection, cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 		case webrtc.PeerConnectionStateFailed:
@@ -717,7 +736,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	if !ValidateSDP(offer) {
 		err := fmt.Errorf("invalid offer SDP received")
-		elog.Println(err.Error())
+		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -783,7 +802,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(201)
 	_, err = rw.Write([]byte(ansrtcsd.SDP))
 	if err != nil {
-		elog.Println(fmt.Errorf("sub sdp write failed:%w", err))
+		log.Println(fmt.Errorf("sub sdp write failed:%w", err))
 		return
 	}
 
@@ -791,18 +810,18 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 func logTransceivers(tag string, pc *webrtc.PeerConnection) {
 	if len(pc.GetTransceivers()) == 0 {
-		log.Printf("%v transceivers is empty", tag)
+		dbglog.Printf("%v transceivers is empty", tag)
 	}
 	for i, v := range pc.GetTransceivers() {
 		rx := v.Receiver()
 		tx := v.Sender()
-		log.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
+		dbglog.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
 
 		if rx != nil && len(rx.GetParameters().Codecs) > 0 {
-			log.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
+			dbglog.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
 		}
 		if tx != nil && len(tx.GetParameters().Codecs) > 0 {
-			log.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
+			dbglog.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
 		}
 	}
 }
@@ -826,15 +845,15 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 		return fmt.Errorf("Invalid sdp, no v=0 startline:%s", rtcsd.SDP[:len])
 	}
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
-	log.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
+	dbglog.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
-	log.Println("fullsdp", wherefrom, rtcsd.SDP)
+	dbglog.Println("fullsdp", wherefrom, rtcsd.SDP)
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
 		return fmt.Errorf("rtcsd.Unmarshal() fail:%w", err)
 	}
-	log.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
+	dbglog.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
 	return nil
 }
 
@@ -868,7 +887,7 @@ func idleMediaGeneratorGr(link *roomState) {
 		body, err := ioutil.ReadAll(resp.Body)
 		checkFatal(err)
 		pkts = readRTPFromZip(body)
-		elog.Println(len(pkts), "encoded rtp packets retrieved from", *idleClipServerURL)
+		log.Println(len(pkts), "encoded rtp packets retrieved from", *idleClipServerURL)
 
 	} else if *idleClipZipfile != "" {
 		buf, err := ioutil.ReadFile(*idleClipZipfile)
@@ -971,7 +990,7 @@ func dialUpstream(dialurl string, token string, rxMediaCh chan MsgRxPacket) {
 	link := getRoomState(roomname)
 
 tryagain:
-	log.Println("dialUpstream url:", dialurl)
+	dbglog.Println("dialUpstream url:", dialurl)
 
 	peerConnection := newPeerConnection()
 
@@ -980,7 +999,7 @@ tryagain:
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		log.Println("dial ICE Connection State has changed", icecs.String())
+		dbglog.Println("dial ICE Connection State has changed", icecs.String())
 	})
 
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
@@ -1010,7 +1029,7 @@ tryagain:
 	// send offer, get answer
 
 	delay := time.Second
-	log.Println("dialing", dialurl)
+	dbglog.Println("dialing", dialurl)
 
 	req, err := http.NewRequest("POST", dialurl, strings.NewReader(offer.SDP))
 	checkFatal(err)
@@ -1025,7 +1044,7 @@ tryagain:
 
 	// yuck, back-off redialer
 	if err != nil && strings.HasSuffix(strings.ToLower(err.Error()), "connection refused") {
-		log.Println("connection refused")
+		dbglog.Println("connection refused")
 		time.Sleep(delay)
 		// disable back-off redialer
 		// we want fast re-connects on up-stream failure
@@ -1037,7 +1056,7 @@ tryagain:
 	checkFatal(err)
 	defer resp.Body.Close()
 
-	log.Println("dial connected")
+	dbglog.Println("dial connected")
 
 	answerraw, err := ioutil.ReadAll(resp.Body)
 	checkFatal(err) //cam
@@ -1098,7 +1117,7 @@ func text2pcapLog(log *log.Logger, inbuf []byte) {
 	}
 	b.WriteString("!text2pcap")
 
-	log.Print(b.String())
+	dbglog.Print(b.String())
 }
 
 // logPacket writes text2pcap compatible lines
@@ -1125,14 +1144,14 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	_ = receiver //silence warnings
 
 	mimetype := track.Codec().MimeType
-	log.Println("OnTrack codec:", mimetype)
+	dbglog.Println("OnTrack codec:", mimetype)
 
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
-		log.Println("OnTrack audio", mimetype)
+		dbglog.Println("OnTrack audio", mimetype)
 
 		inboundTrackReader(track, Audio, track.Codec().ClockRate, rxMediaCh)
 		//here on error
-		log.Printf("audio reader %p exited", track)
+		dbglog.Printf("audio reader %p exited", track)
 		return
 	}
 
@@ -1143,9 +1162,9 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
 	}
 
-	log.Println("OnTrack RID():", track.RID())
-	log.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
-	log.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
+	dbglog.Println("OnTrack RID():", track.RID())
+	dbglog.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
+	dbglog.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
 
 	go func() {
 		var err error
@@ -1176,7 +1195,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	// one per track (OnTrack above)
 	inboundTrackReader(track, Video, track.Codec().ClockRate, rxMediaCh)
 	//here on error
-	log.Printf("video reader %p exited", track)
+	dbglog.Printf("video reader %p exited", track)
 
 }
 
@@ -1237,7 +1256,7 @@ func mediaFanOutGr(link *roomState) {
 					iskeyframe := isH264Keyframe(m.packet.Payload)
 					if iskeyframe {
 						sendingIdleVid = true
-						elog.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
+						log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
 					}
 				}
 
@@ -1249,7 +1268,7 @@ func mediaFanOutGr(link *roomState) {
 					iskeyframe := isH264Keyframe(m.packet.Payload)
 					if iskeyframe {
 						sendingIdleVid = false
-						elog.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
+						log.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
 					}
 				}
 			}
@@ -1297,7 +1316,7 @@ func mediaFanOutGr(link *roomState) {
 				err := tr.track.WriteRTP(&pkt)
 				//println(pkt.SequenceNumber,pkt.Timestamp)
 				if err == io.ErrClosedPipe {
-					log.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
+					dbglog.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
 
 					// slice tricks non-order preserving delete
 					txtracks[i] = txtracks[len(txtracks)-1]
@@ -1342,7 +1361,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 //
 func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.SessionDescription, error) {
 
-	log.Println("createIngressPeerConnection")
+	dbglog.Println("createIngressPeerConnection")
 
 	// Set the remote SessionDescription
 
@@ -1357,7 +1376,7 @@ func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.Sess
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		log.Println("ingress ICE Connection State has changed", icecs.String())
+		dbglog.Println("ingress ICE Connection State has changed", icecs.String())
 	})
 
 	// XXX 1 5 20 cam
@@ -1371,7 +1390,7 @@ func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.Sess
 
 	// we dont have, wont have any senders for the ingress.
 	// it is just a receiver
-	// log.Println("num senders", len(peerConnection.GetSenders()))
+	//debugLog.Println("num senders", len(peerConnection.GetSenders()))
 	// for _, rtpSender := range peerConnection.GetSenders() {
 	// 	go processRTCP(rtpSender)
 	// }
@@ -1416,7 +1435,7 @@ func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.Sess
 func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *roomState) {
 
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		log.Println("ingress Connection State has changed", cs.String())
+		dbglog.Println("ingress Connection State has changed", cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 		case webrtc.PeerConnectionStateFailed:
@@ -1459,7 +1478,7 @@ func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz
 		s.tsOffset = p.Timestamp - (s.lastTS + uint32(td2))
 		s.snOffset = p.SequenceNumber - s.lastSN - 1
 
-		log.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
+		dbglog.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
 	}
 
 	p.Timestamp -= s.tsOffset
@@ -1614,27 +1633,27 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 
 }
 
-func startFtlListener(inf *log.Logger, dbg *log.Logger) {
+func startFtlListener() {
 
 	config := &net.ListenConfig{}
 	ln, err := config.Listen(context.Background(), "tcp", ":8084")
 	if err != nil {
-		inf.Fatalln(err)
+		log.Fatalln(err)
 	}
 	defer ln.Close()
 
 	for {
-		inf.Println("ftl/waiting for accept on:", ln.Addr())
+		logFtl.Println("ftl/waiting for accept on:", ln.Addr())
 
 		netconn, err := ln.Accept()
 		if err != nil {
-			inf.Fatalln(err)
+			log.Fatalln(err)
 		}
 
-		inf.Println("ftl/socket accepted")
+		logFtl.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
-		ftlserver.NewTcpSession(inf, dbg, tcpconn, findserver, *ftlUdpPort)
+		ftlserver.NewTcpSession(log.Default(), logFtl, tcpconn, findserver, *ftlUdpPort)
 		netconn.Close()
 	}
 	// unreachable
@@ -1711,7 +1730,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 		x.rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
 	}
 	if x.badssrc > 0 && x.badssrc%100 == 10 {
-		elog.Println("Bad SSRC media received :(  count:", x.badssrc)
+		log.Println("Bad SSRC media received :(  count:", x.badssrc)
 	}
 
 	return true //okay

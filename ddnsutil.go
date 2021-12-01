@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
@@ -58,7 +57,7 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 	// you can change the nameservers here
 	resolvers := recursiveNameservers([]string{})
 
-	log.Println("ddnsWaitUntilSet resolvers", resolvers)
+	ddnslog.Println("ddnsWaitUntilSet resolvers", resolvers)
 
 	var err error
 	start := time.Now()

@@ -27,9 +27,6 @@ import (
 // 	log.SetOutput(ioutil.Discard)
 // 	log.SetFlags(0)
 
-// 	// elog.SetOutput(ioutil.Discard)
-// 	// elog.SetFlags(0)
-
 // 	os.Exit(m.Run())
 // }
 
