@@ -15,19 +15,11 @@ import (
 	"github.com/x186k/ddns5libdns"
 )
 
-type SfuConfig struct {
-	Http        string
-	HttpsDomain string
-}
-
-// var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
-// var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
-// egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
-
-var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
-var ftlUdpPort = pflag.Int("ftl-udp-port", 8084, "The UDP port to use for FTL UDP rx. Zero is valid. Zero for ephemeral port num")
+var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
+
+var httpsDomainFlag = pflag.StringP("https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
 
 var httpsDnsProvider = pflag.StringP("https-dns-provider", "2", "", "One of ddns5, duckdns or cloudflare")
 var httpsDnsRegisterIp = pflag.BoolP("https-dns-register-ip", "3", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Uses interface addrs")
@@ -36,6 +28,9 @@ var httpsUseDns01Challenge = pflag.BoolP("https-dns01-challenge", "5", false, "W
 
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
+
+var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
+var ftlUdpPort = pflag.Int("ftl-udp-port", 8084, "The UDP port to use for FTL UDP rx. Zero is valid. Zero for ephemeral port num")
 
 var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1:4444'")
 var rtprx = pflag.StringArray("rtp-rx", nil, "use :port or addr:port. eg: '--rtp-rx :5004 --rtp-rx :5006' payload 96 for h264, 97 for opus")
@@ -57,6 +52,10 @@ var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile f
 var getStatsLogging = pflag.String("getstats-url", "", "The url of a server for getStats() logging")
 
 var debugFlag = pflag.StringArray("debug", nil, "use '--debug help' to see options")
+
+// var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
+// var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
+// egrep '(RTP_PACKET|RTCP_PACKET)' moz.log | text2pcap -D -n -l 1 -i 17 -u 1234,1235 -t '%H:%M:%S.' - rtp.pcap
 
 const bearerHelp = `
 Bearer Authentication. Like a password. Required on HTTP/S requests.
@@ -120,12 +119,7 @@ $ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`
 
 }
 
-func parseFlags() SfuConfig {
-
-	var conf SfuConfig
-
-	pflag.StringVar(&conf.Http, "http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
-	pflag.StringVarP(&conf.HttpsDomain, "https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
+func parseFlags() {
 
 	pflag.Usage = Usage // my own usage handle
 
@@ -141,9 +135,8 @@ func parseFlags() SfuConfig {
 
 	processDebugFlag()
 
-	return conf
 }
-func oneTimeFlagsActions(conf *SfuConfig) {
+func oneTimeFlagsActions() {
 
 	if *pprofFlag {
 		go func() {
@@ -171,18 +164,18 @@ func oneTimeFlagsActions(conf *SfuConfig) {
 		checkFatal(err)
 	}
 
-	if conf.HttpsDomain != "" {
-		if conf.HttpsDomain == "help" {
+	if *httpsDomainFlag != "" {
+		if *httpsDomainFlag == "help" {
 			println(httpsHelp)
 			os.Exit(0)
 		}
 
-		_, _, err := net.SplitHostPort(conf.HttpsDomain)
+		_, _, err := net.SplitHostPort(*httpsDomainFlag)
 		if err != nil && strings.Contains(err.Error(), "missing port") {
-			foo := conf.HttpsDomain + ":443"
-			conf.HttpsDomain = foo
+			foo := *httpsDomainFlag + ":443"
+			*httpsDomainFlag = foo
 		}
-		host, _, err := net.SplitHostPort(conf.HttpsDomain)
+		host, _, err := net.SplitHostPort(*httpsDomainFlag)
 		checkFatal(err)
 
 		var provider DDNSUnion

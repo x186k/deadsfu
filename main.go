@@ -258,22 +258,22 @@ func main() {
 
 	println("deadsfu Version " + Version)
 
-	conf := parseFlags()
-	oneTimeFlagsActions(&conf) //if !strings.HasSuffix(os.Args[0], ".test") {
+	parseFlags()
+	oneTimeFlagsActions() //if !strings.HasSuffix(os.Args[0], ".test") {
 
-	if conf.Http == "" && conf.HttpsDomain == "" {
+	if *httpFlag == "" && *httpsDomainFlag == "" {
 		Usage()
 		os.Exit(-1)
 	}
 
-	mux, err := setupMux(conf)
+	mux, err := setupMux()
 	checkFatal(err)
 
-	if conf.Http != "" {
-		ln, err := net.Listen("tcp", conf.Http)
+	if *httpFlag != "" {
+		ln, err := net.Listen("tcp", *httpFlag)
 		checkFatal(err)
 		var mux2 http.Handler = mux
-		if conf.HttpsDomain != "" {
+		if *httpsDomainFlag != "" {
 			mux2 = certmagic.DefaultACME.HTTPChallengeHandler(mux)
 		}
 		server := &http.Server{Handler: mux2}
@@ -286,8 +286,8 @@ func main() {
 
 	ctx := context.Background() // not really used well
 
-	if conf.HttpsDomain != "" {
-		go startHttpsListener(ctx, conf.HttpsDomain, mux)
+	if *httpsDomainFlag != "" {
+		go startHttpsListener(ctx, *httpsDomainFlag, mux)
 	}
 
 	if len(*rtprx) > 0 {
@@ -388,7 +388,7 @@ func handleSDPWarning(next http.Handler) http.Handler {
 	})
 }
 
-func setupMux(conf SfuConfig) (*http.ServeMux, error) {
+func setupMux() (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
 
