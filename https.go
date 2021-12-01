@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -78,7 +77,7 @@ func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux
 		}
 	}
 
-	if log.Default().Writer() != io.Discard {
+	if dbgHttps.enabled {
 		logger, err := zap.NewDevelopment()
 		checkFatal(err)
 		mgrTemplate.Logger = logger

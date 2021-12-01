@@ -143,39 +143,21 @@ var rtpoutConn *net.UDPConn
 // use:
 // log.Println(...)  for info messages that should be seen without enabling any debugging
 
-var dbgMedia = FastLogger{"media ", log.New(io.Discard, "", 0), false}
-var dbgHttps = FastLogger{"https ", log.New(io.Discard, "", 0), false}
-var dbgIceCandidates = FastLogger{"candidates ", log.New(io.Discard, "", 0), false}
-var dbgMain = FastLogger{"D ", log.New(io.Discard, "", 0), false}
-var dbgFtl = FastLogger{"ftl ", log.New(io.Discard, "", 0), false}
-var dbgDdns = FastLogger{"ddns ", log.New(io.Discard, "", 0), false}
+var dbgMedia = FastLogger{log.New(io.Discard, "", 0), false}
+var dbgHttps = FastLogger{log.New(io.Discard, "", 0), false}
+var dbgIceCandidates = FastLogger{log.New(io.Discard, "", 0), false}
+var dbgMain = FastLogger{log.New(io.Discard, "", 0), false}
+var dbgFtl = FastLogger{log.New(io.Discard, "", 0), false}
+var dbgDdns = FastLogger{log.New(io.Discard, "", 0), false}
 
 // note: log.Logger contains a mutex, which means log.Logger should not be copied around
 // so use a pointer to log.logger
 // https://eli.thegreenplace.net/2018/beware-of-copying-mutexes-in-go/
 
+//Fast logger allows using if dbgMain.enabled in code hotspots
 type FastLogger struct {
-	prefix string
 	*log.Logger
 	enabled bool // this is the WHOLE point of this struct, it allows fast logging checks
-}
-
-func (v *FastLogger) IsBoolFlag() bool {
-	return true
-}
-
-func (v *FastLogger) String() string {
-	return "XOK"
-}
-
-func (v *FastLogger) Type() string {
-	return "bool"
-}
-
-func (v *FastLogger) Set(s string) error {
-	v.Logger = log.New(os.Stdout, v.prefix, log.Lmicroseconds|log.LUTC|log.Lshortfile)
-	v.enabled = true
-	return nil
 }
 
 func logGoroutineCountToDebugLog() {
@@ -272,6 +254,8 @@ func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
 }
 
 func main() {
+	log.Default().SetOutput(os.Stdout) // always on output
+
 	println("deadsfu Version " + Version)
 
 	conf := parseFlags()

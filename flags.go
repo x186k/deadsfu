@@ -1,9 +1,7 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -58,6 +56,8 @@ var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile f
 
 var getStatsLogging = pflag.String("getstats-url", "", "The url of a server for getStats() logging")
 
+var debugFlag = pflag.StringArray("debug", nil, "use '--debug help' to see options")
+
 const bearerHelp = `
 Bearer Authentication. Like a password. Required on HTTP/S requests.
 Provide via URL: https://base.url?access_token=<secret>
@@ -77,20 +77,52 @@ var Usage = func() {
 	fmt.Fprint(os.Stderr, "Using '--http :8080 --html internal' is the suggested starting place.\n\n")
 }
 
+var debugOptionsMap = map[string]struct {
+	logger *FastLogger
+}{
+	"media":          {&dbgMedia},
+	"https":          {&dbgHttps},
+	"ice-candidates": {&dbgIceCandidates},
+	"main":           {&dbgMain},
+	"ftl":            {&dbgFtl},
+	"ddns":           {&dbgDdns},
+}
+
+func processDebugFlag() {
+
+	for _, v := range *debugFlag {
+		if v == "help" {
+			println()
+			println("debug options available:")
+			for k := range debugOptionsMap {
+				fmt.Println("--debug", k)
+			}
+			println()
+			println(`Examples:
+$ ./deadsfu --debug help                    # show this help
+$ ./deadsfu --debug main --debug media      # print debug log for media and main/general debuging
+$ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`)
+			os.Exit(0)
+		}
+	}
+
+	for _, v := range *debugFlag {
+
+		k, ok := debugOptionsMap[v]
+		if !ok {
+			checkFatal(fmt.Errorf("'%s' is not a valid debug option", v))
+		}
+
+		k.logger.enabled = true
+		k.logger.Logger = log.New(os.Stdout, v, log.Lmicroseconds|log.LUTC|log.Lshortfile)
+
+	}
+
+}
+
 func parseFlags() SfuConfig {
 
 	var conf SfuConfig
-
-	// setup the pflag.Var() flags
-	const xmsg = "enable debug logging for this area"
-
-	flag.Var(&dbgMedia, "debug-media", xmsg)
-	flag.Var(&dbgHttps, "debug-https", xmsg)
-	flag.Var(&dbgIceCandidates, "debug-ice-candidates", xmsg)
-	flag.Var(&dbgMain, "debug-main", xmsg)
-	flag.Var(&dbgFtl, "debug-ftl", xmsg)
-	flag.Var(&dbgDdns, "debug-ddns", xmsg)
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
 	pflag.StringVar(&conf.Http, "http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
 	pflag.StringVarP(&conf.HttpsDomain, "https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
@@ -107,7 +139,7 @@ func parseFlags() SfuConfig {
 		os.Exit(0)
 	}
 
-	log.Default().SetOutput(io.Discard)
+	processDebugFlag()
 
 	return conf
 }
@@ -204,32 +236,32 @@ const httpsHelp = `
 https related flags help:
 
 -1 or --https-domain <domain>
-	Use this option the domain name, and optional port for https. 
-	Defaults to port 443 for the port. Use domain:port if you need something else.
-	Port zero is valid, for auto-assign.
-	With this flag,  a certificate will be aquired from Let's Encrypt.
-	BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
+    Use this option the domain name, and optional port for https. 
+    Defaults to port 443 for the port. Use domain:port if you need something else.
+    Port zero is valid, for auto-assign.
+    With this flag,  a certificate will be aquired from Let's Encrypt.
+    BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
 
 -2 or --https-dns-provider <provider>
-	You can use: ddns5, duckdns, cloudflare
-	This flag is required when using --https-domain, as a DNS TXT record must be set for Let's Encrypt
-	ddns5: does not require a token! Domain must be: <name>.ddns5.com
-	duckdns: uses the environment variable DUCKDNS_TOKEN for the API token. Domain must be: <name>.duckdns.org
-	cloudflare: uses the environment variable CLOUDFLARE_TOKEN for the API token
+    You can use: ddns5, duckdns, cloudflare
+    This flag is required when using --https-domain, as a DNS TXT record must be set for Let's Encrypt
+    ddns5: does not require a token! Domain must be: <name>.ddns5.com
+    duckdns: uses the environment variable DUCKDNS_TOKEN for the API token. Domain must be: <name>.duckdns.org
+    cloudflare: uses the environment variable CLOUDFLARE_TOKEN for the API token
 
 -3 or --https-dns-register-ip
-	Register the IP addresses of this system at the DNS provider.
-	Looks at interfaces addresses. Sets DNS A/AAAA.
+    Register the IP addresses of this system at the DNS provider.
+    Looks at interfaces addresses. Sets DNS A/AAAA.
 
 -4 or --https-dns-register-ip-public
-	Register the IP addresses of this system at the DNS provider.
-	Queries Internet for my public address. Sets DNS A/AAAA.
-	Mutually exclusive with -3.
+    Register the IP addresses of this system at the DNS provider.
+    Queries Internet for my public address. Sets DNS A/AAAA.
+    Mutually exclusive with -3.
 
 -5 or --https-acme-challenge-dns01
-	Switch from the default ACME challenge of HTTP/HTTPS to DNS.
-	Use this when Let's Encrypt can't reach your system behind a firewall.
-	Great for corporate private-IP video transfer. ie: 192.168.* or 10.*
+    Switch from the default ACME challenge of HTTP/HTTPS to DNS.
+    Use this when Let's Encrypt can't reach your system behind a firewall.
+    Great for corporate private-IP video transfer. ie: 192.168.* or 10.*
 
 Examples:
 $ ./deadsfu -1 foof.duckdns.org -2 duckdns
