@@ -112,15 +112,17 @@ func oneTimeFlagsActions(conf *SfuConfig) {
 	for _, v := range *debugFlag {
 		switch v {
 		case "media":
-			medialog = FastLogger{enabled: true, Logger: log.New(os.Stdout, "M ", logflags)}
+			dbgMedia = FastLogger{enabled: true, Logger: log.New(os.Stdout, "M ", logflags)}
 		case "main":
-			dbglog = log.New(os.Stdout, "D ", logflags)
+			dbgMain = log.New(os.Stdout, "D ", logflags)
+		case "ftl":
+			dbgFtl = log.New(os.Stdout, "D ", logflags)
 		case "ddns":
-			ddnslog = log.New(os.Stdout, "DDNS ", logflags)
+			dbgDdns = log.New(os.Stdout, "DDNS ", logflags)
 		case "help":
 			fallthrough
 		default:
-			log.Fatal("--z-debug sub-flags are: main, help, media")
+			log.Fatal("--z-debug options: media, main, ftl, ddns, help")
 		}
 	}
 

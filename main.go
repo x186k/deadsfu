@@ -145,11 +145,11 @@ Use the 'standard' logger for end-user IN
 */
 
 //var elog = log.New(os.Stderr, "E ", log.Lmicroseconds | log.LUTC | log.Lshortfile)
-var medialog = FastLogger{log.New(io.Discard, "", 0), false}
+var dbgMedia = FastLogger{log.New(io.Discard, "", 0), false}
 var httpsLog = log.New(io.Discard, "", 0)
-var dbglog = log.New(io.Discard, "", 0)
-var logFtl = log.New(io.Discard, "", 0)
-var ddnslog = log.New(io.Discard, "", 0)
+var dbgMain = log.New(io.Discard, "", 0)
+var dbgFtl = log.New(io.Discard, "", 0)
+var dbgDdns = log.New(io.Discard, "", 0)
 var rtpoutConn *net.UDPConn
 
 // note: log.Logger contains a mutex, which means log.Logger should not be copied around
@@ -165,7 +165,7 @@ func logGoroutineCountToDebugLog() {
 	for {
 		nn := runtime.NumGoroutine()
 		if nn != n {
-			dbglog.Println("NumGoroutine", nn)
+			dbgMain.Println("NumGoroutine", nn)
 			n = nn
 		}
 		time.Sleep(2 * time.Second)
@@ -517,7 +517,7 @@ func newPeerConnection() *webrtc.PeerConnection {
 func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		dbglog.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
+		dbgMain.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
 
 		//could be OPTIONS
 		if handlePreflight(r, w) {
@@ -671,7 +671,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var err error
 
-	dbglog.Println("subHandler request", r.URL.String())
+	dbgMain.Println("subHandler request", r.URL.String())
 
 	// rx offer, tx answer
 	// offer from browser
@@ -683,7 +683,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a new PeerConnection
-	dbglog.Println("created PC")
+	dbgMain.Println("created PC")
 	peerConnection := newPeerConnection()
 
 	logTransceivers("new-pc", peerConnection)
@@ -699,11 +699,11 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	// so there is no OnTrack handler
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		dbglog.Println("sub ICE Connection State has changed", icecs.String())
+		dbgMain.Println("sub ICE Connection State has changed", icecs.String())
 	})
 	// XXX is this switch case necessary?, will the pc eventually reach Closed after Failed or Disconnected
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		dbglog.Printf("subscriber 0x%p newstate: %s", peerConnection, cs.String())
+		dbgMain.Printf("subscriber 0x%p newstate: %s", peerConnection, cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 		case webrtc.PeerConnectionStateFailed:
@@ -810,18 +810,18 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 func logTransceivers(tag string, pc *webrtc.PeerConnection) {
 	if len(pc.GetTransceivers()) == 0 {
-		dbglog.Printf("%v transceivers is empty", tag)
+		dbgMain.Printf("%v transceivers is empty", tag)
 	}
 	for i, v := range pc.GetTransceivers() {
 		rx := v.Receiver()
 		tx := v.Sender()
-		dbglog.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
+		dbgMain.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
 
 		if rx != nil && len(rx.GetParameters().Codecs) > 0 {
-			dbglog.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
+			dbgMain.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
 		}
 		if tx != nil && len(tx.GetParameters().Codecs) > 0 {
-			dbglog.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
+			dbgMain.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
 		}
 	}
 }
@@ -845,15 +845,15 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 		return fmt.Errorf("Invalid sdp, no v=0 startline:%s", rtcsd.SDP[:len])
 	}
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
-	dbglog.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
+	dbgMain.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
-	dbglog.Println("fullsdp", wherefrom, rtcsd.SDP)
+	dbgMain.Println("fullsdp", wherefrom, rtcsd.SDP)
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
 		return fmt.Errorf("rtcsd.Unmarshal() fail:%w", err)
 	}
-	dbglog.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
+	dbgMain.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
 	return nil
 }
 
@@ -990,7 +990,7 @@ func dialUpstream(dialurl string, token string, rxMediaCh chan MsgRxPacket) {
 	link := getRoomState(roomname)
 
 tryagain:
-	dbglog.Println("dialUpstream url:", dialurl)
+	dbgMain.Println("dialUpstream url:", dialurl)
 
 	peerConnection := newPeerConnection()
 
@@ -999,7 +999,7 @@ tryagain:
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		dbglog.Println("dial ICE Connection State has changed", icecs.String())
+		dbgMain.Println("dial ICE Connection State has changed", icecs.String())
 	})
 
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
@@ -1029,7 +1029,7 @@ tryagain:
 	// send offer, get answer
 
 	delay := time.Second
-	dbglog.Println("dialing", dialurl)
+	dbgMain.Println("dialing", dialurl)
 
 	req, err := http.NewRequest("POST", dialurl, strings.NewReader(offer.SDP))
 	checkFatal(err)
@@ -1044,7 +1044,7 @@ tryagain:
 
 	// yuck, back-off redialer
 	if err != nil && strings.HasSuffix(strings.ToLower(err.Error()), "connection refused") {
-		dbglog.Println("connection refused")
+		dbgMain.Println("connection refused")
 		time.Sleep(delay)
 		// disable back-off redialer
 		// we want fast re-connects on up-stream failure
@@ -1056,7 +1056,7 @@ tryagain:
 	checkFatal(err)
 	defer resp.Body.Close()
 
-	dbglog.Println("dial connected")
+	dbgMain.Println("dial connected")
 
 	answerraw, err := ioutil.ReadAll(resp.Body)
 	checkFatal(err) //cam
@@ -1117,7 +1117,7 @@ func text2pcapLog(log *log.Logger, inbuf []byte) {
 	}
 	b.WriteString("!text2pcap")
 
-	dbglog.Print(b.String())
+	dbgMain.Print(b.String())
 }
 
 // logPacket writes text2pcap compatible lines
@@ -1144,14 +1144,14 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	_ = receiver //silence warnings
 
 	mimetype := track.Codec().MimeType
-	dbglog.Println("OnTrack codec:", mimetype)
+	dbgMain.Println("OnTrack codec:", mimetype)
 
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
-		dbglog.Println("OnTrack audio", mimetype)
+		dbgMain.Println("OnTrack audio", mimetype)
 
 		inboundTrackReader(track, Audio, track.Codec().ClockRate, rxMediaCh)
 		//here on error
-		dbglog.Printf("audio reader %p exited", track)
+		dbgMain.Printf("audio reader %p exited", track)
 		return
 	}
 
@@ -1162,9 +1162,9 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 		panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
 	}
 
-	dbglog.Println("OnTrack RID():", track.RID())
-	dbglog.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
-	dbglog.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
+	dbgMain.Println("OnTrack RID():", track.RID())
+	dbgMain.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
+	dbgMain.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
 
 	go func() {
 		var err error
@@ -1195,7 +1195,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	// one per track (OnTrack above)
 	inboundTrackReader(track, Video, track.Codec().ClockRate, rxMediaCh)
 	//here on error
-	dbglog.Printf("video reader %p exited", track)
+	dbgMain.Printf("video reader %p exited", track)
 
 }
 
@@ -1316,7 +1316,7 @@ func mediaFanOutGr(link *roomState) {
 				err := tr.track.WriteRTP(&pkt)
 				//println(pkt.SequenceNumber,pkt.Timestamp)
 				if err == io.ErrClosedPipe {
-					dbglog.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
+					dbgMain.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
 
 					// slice tricks non-order preserving delete
 					txtracks[i] = txtracks[len(txtracks)-1]
@@ -1361,7 +1361,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 //
 func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.SessionDescription, error) {
 
-	dbglog.Println("createIngressPeerConnection")
+	dbgMain.Println("createIngressPeerConnection")
 
 	// Set the remote SessionDescription
 
@@ -1376,7 +1376,7 @@ func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.Sess
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		dbglog.Println("ingress ICE Connection State has changed", icecs.String())
+		dbgMain.Println("ingress ICE Connection State has changed", icecs.String())
 	})
 
 	// XXX 1 5 20 cam
@@ -1435,7 +1435,7 @@ func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.Sess
 func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *roomState) {
 
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		dbglog.Println("ingress Connection State has changed", cs.String())
+		dbgMain.Println("ingress Connection State has changed", cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 		case webrtc.PeerConnectionStateFailed:
@@ -1478,7 +1478,7 @@ func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz
 		s.tsOffset = p.Timestamp - (s.lastTS + uint32(td2))
 		s.snOffset = p.SequenceNumber - s.lastSN - 1
 
-		dbglog.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
+		dbgMain.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
 	}
 
 	p.Timestamp -= s.tsOffset
@@ -1643,17 +1643,17 @@ func startFtlListener() {
 	defer ln.Close()
 
 	for {
-		logFtl.Println("ftl/waiting for accept on:", ln.Addr())
+		dbgFtl.Println("ftl/waiting for accept on:", ln.Addr())
 
 		netconn, err := ln.Accept()
 		if err != nil {
 			log.Fatalln(err)
 		}
 
-		logFtl.Println("ftl/socket accepted")
+		dbgFtl.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
-		ftlserver.NewTcpSession(log.Default(), logFtl, tcpconn, findserver, *ftlUdpPort)
+		ftlserver.NewTcpSession(log.Default(), dbgFtl, tcpconn, findserver, *ftlUdpPort)
 		netconn.Close()
 	}
 	// unreachable
