@@ -611,7 +611,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 	//aquired!
 
-	answersd, err := createIngressPeerConnection(string(offer), link)
+	answersd, err := pubHandlerCreatePeerconn(string(offer), link)
 	if err != nil {
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -743,7 +743,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = logSdpReport("publisher", offer)
+	err = logSdpReport("sub-offer", offer)
 	checkFatal(err)
 
 	err = peerConnection.SetRemoteDescription(offer)
@@ -791,7 +791,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	err = peerConnection.SetLocalDescription(sessdesc)
 	checkFatal(err)
 
-	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
+	// without this, empty a=candidates in sdp
 	//<-webrtc.GatheringCompletePromise(peerConnection)
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
@@ -856,6 +856,16 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 		return fmt.Errorf("rtcsd.Unmarshal() fail:%w", err)
 	}
 	dbgMain.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
+
+	ncandidates := 0
+	for _, v := range strings.Split(strings.ReplaceAll(rtcsd.SDP, "\r\n", "\n"), "\n") {
+		if strings.HasPrefix(v, "a=candidate") {
+			dbgIceCandidates.Println(wherefrom, v)
+			ncandidates++
+		}
+	}
+	dbgIceCandidates.Println(wherefrom, "ice candidates found/printed", ncandidates)
+
 	return nil
 }
 
@@ -1023,7 +1033,7 @@ tryagain:
 	err = peerConnection.SetLocalDescription(offer)
 	checkFatal(err)
 
-	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
+	// without this, empty a=candidates in sdp
 	//<-webrtc.GatheringCompletePromise(peerConnection)
 
 	setupIngressStateHandler(peerConnection, link)
@@ -1361,7 +1371,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // if an error occurs, we panic
 // single-shot / fail-fast approach
 //
-func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.SessionDescription, error) {
+func pubHandlerCreatePeerconn(offersdp string, link *roomState) (*webrtc.SessionDescription, error) {
 
 	dbgMain.Println("createIngressPeerConnection")
 
@@ -1420,7 +1430,7 @@ func createIngressPeerConnection(offersdp string, link *roomState) (*webrtc.Sess
 		return nil, fmt.Errorf("pc.SetLocalDescription() fail %w", err)
 	}
 
-	// NO, We dont not use trickle-ICE, per WHIP/WHAP, the SFU should learn addresses other ways
+	// without this, empty a=candidates in sdp
 	//<-webrtc.GatheringCompletePromise(peerConnection)
 
 	err = logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
