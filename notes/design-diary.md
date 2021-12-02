@@ -413,3 +413,12 @@ Room deletion when the number of subscribers presents challeneges to implement, 
 
 It would be really nice to have Pub/Sub/Dial peerconn creation happen on a single GR,
 and would make empty room GR shutdown cleaner, but 
+
+
+## 12/1/21 note about putting Peerconn creation on a single goroutine
+
+I believe panics, will: print stack trace, terminate current GR, do not necessarily end process!
+So if we put Peerconn creation on a single goroutine, we might be causing more problems than we fix
+So, a panic inside pion (hostile sdp?) would not then be terminating the http handler, but
+would be terminating the peerconn creation GR.
+This is not a final answer on where to best do PC creation, but something to consider.
