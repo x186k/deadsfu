@@ -46,7 +46,7 @@ var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile f
 
 var getStatsLogging = pflag.String("getstats-url", "", "The url of a server for getStats() logging")
 
-var debugFlag = pflag.StringArray("debug", nil, "use '--debug help' to see options")
+var debugFlag = pflag.StringSlice("debug", nil, "use '--debug help' to see options. use comma to seperate multiple options")
 
 var helpShortFlag = pflag.BoolP("help", "h", false, "Print the short, getting-started help")
 var helpFullFlag = pflag.BoolP("help2", "2", false, "Print the full, long help")
@@ -158,7 +158,7 @@ func processDebugFlag() {
 			fmt.Println()
 			fmt.Println(`Examples:
 $ ./deadsfu --debug help                    # show this help
-$ ./deadsfu --debug main --debug media      # print debug log for media and main/general debuging
+$ ./deadsfu --debug main,media              # print debug log for media and main/general debuging
 $ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`)
 			os.Exit(0)
 		}
