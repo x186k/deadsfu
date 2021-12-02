@@ -791,8 +791,8 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	err = peerConnection.SetLocalDescription(sessdesc)
 	checkFatal(err)
 
-	// without this, empty a=candidates in sdp
-	//<-webrtc.GatheringCompletePromise(peerConnection)
+	// without this, there will be zero! a=candidates in sdp
+	<-webrtc.GatheringCompletePromise(peerConnection)
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	ansrtcsd := peerConnection.LocalDescription()
@@ -1033,8 +1033,8 @@ tryagain:
 	err = peerConnection.SetLocalDescription(offer)
 	checkFatal(err)
 
-	// without this, empty a=candidates in sdp
-	//<-webrtc.GatheringCompletePromise(peerConnection)
+	// without this, there will be zero! a=candidates in sdp
+	<-webrtc.GatheringCompletePromise(peerConnection)
 
 	setupIngressStateHandler(peerConnection, link)
 
@@ -1430,8 +1430,8 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState) (*webrtc.Session
 		return nil, fmt.Errorf("pc.SetLocalDescription() fail %w", err)
 	}
 
-	// without this, empty a=candidates in sdp
-	//<-webrtc.GatheringCompletePromise(peerConnection)
+	// without this, there will be zero! a=candidates in sdp
+	<-webrtc.GatheringCompletePromise(peerConnection)
 
 	err = logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
 	if err != nil {
