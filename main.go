@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/spf13/pflag"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/pkg/profile"
@@ -262,7 +263,11 @@ func main() {
 	oneTimeFlagsActions() //if !strings.HasSuffix(os.Args[0], ".test") {
 
 	if *httpFlag == "" && *httpsDomainFlag == "" {
-		Usage()
+		pflag.Usage()
+		os.Exit(-1)
+	}
+	if *htmlSource == "" {
+		pflag.Usage()
 		os.Exit(-1)
 	}
 
@@ -398,11 +403,6 @@ func setupMux() (*http.ServeMux, error) {
 	// handle: /whip if configured to do so
 	if *dialIngressURL == "" {
 		mux.Handle(whipPath, commonPubSubHandler(pubHandler))
-	}
-
-	if *htmlSource == "" {
-		Usage()
-		os.Exit(-1)
 	}
 
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")

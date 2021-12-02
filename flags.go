@@ -15,16 +15,14 @@ import (
 	"github.com/x186k/ddns5libdns"
 )
 
-var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty. like ':80' or ':8080' ")
+var httpFlag = pflag.String("http", "", "The addr:port at which http will bind/listen. addr may be empty, for example ':80' or ':8080' ")
+var httpsDomainFlag = pflag.StringP("https-domain", "q", "", "Domain name for https. Can add :port if needed. Uses port 443 when :port not provided")
+var httpsDnsProvider = pflag.StringP("https-dns-provider", "r", "", "One of ddns5, duckdns or cloudflare")
+var httpsDnsRegisterIp = pflag.BoolP("https-dns-register-ip", "s", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Uses interface addrs")
+var httpsDnsRegisterIpPublic = pflag.BoolP("https-dns-register-ip-public", "t", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Detects public addrs")
+var httpsUseDns01Challenge = pflag.BoolP("https-dns01-challenge", "u", false, "When registering at Let's Encrypt, use the DNS challenge, not HTTP/HTTPS. Recommended behind firewalls")
 
 var dialIngressURL = pflag.StringP("dial-ingress", "d", "", "Specify a URL for outbound dial for ingress. Used for SFU chaining!")
-
-var httpsDomainFlag = pflag.StringP("https-domain", "1", "", "Domain name for https. Use 'help' for more examples. Can add :port if needed")
-
-var httpsDnsProvider = pflag.StringP("https-dns-provider", "2", "", "One of ddns5, duckdns or cloudflare")
-var httpsDnsRegisterIp = pflag.BoolP("https-dns-register-ip", "3", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Uses interface addrs")
-var httpsDnsRegisterIpPublic = pflag.BoolP("https-dns-register-ip-public", "4", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Detects public addrs")
-var httpsUseDns01Challenge = pflag.BoolP("https-dns01-challenge", "5", false, "When registering at Let's Encrypt, use the DNS challenge, not HTTP/HTTPS. Recommended behind firewalls")
 
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
@@ -42,9 +40,6 @@ var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :606
 
 //var idleExitDuration = pflag.Duration("idle-exit-duration", time.Duration(0), `If there is no input video for duration, exit process/container. eg: '1h' one hour, '30m': 30 minutes`)
 
-var help = pflag.BoolP("help", "h", false, "Print the short help")
-var fullhelp = pflag.BoolP("fullhelp", "9", false, "Print the long help")
-
 var idleClipServerURL = pflag.String("idle-clip-server-url", "http://localhost:8088/idle-clip", "what server to hit when using --idle-clip-server-input")
 var idleClipServerInput = pflag.String("idle-clip-server-input", "", "a .jpg, .png, .mov, etc to use for your Idle Clip")
 var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile for the Idle Clip")
@@ -52,6 +47,10 @@ var idleClipZipfile = pflag.String("idle-clip-zipfile", "", "provide a zipfile f
 var getStatsLogging = pflag.String("getstats-url", "", "The url of a server for getStats() logging")
 
 var debugFlag = pflag.StringArray("debug", nil, "use '--debug help' to see options")
+
+var helpShortFlag = pflag.BoolP("help", "h", false, "Print the short, getting-started help")
+var helpFullFlag = pflag.BoolP("help2", "2", false, "Print the full, long help")
+var helpHttpsFlag = pflag.BoolP("help3", "3", false, "Print the help on using HTTPS")
 
 // var logPackets = flag.Bool("z-log-packets", false, "log packets for later use with text2pcap")
 // var logSplicer = flag.Bool("z-log-splicer", false, "log RTP splicing debug info")
@@ -65,15 +64,75 @@ Provide via headers: 'Authorization: Bearer <secret>'
 
 var bearerToken = pflag.StringP("bearer-token", "b", "", bearerHelp)
 
-var Usage = func() {
+func printShortHelp() {
+	fmt.Println("Short flags list:")
+	fmt.Println()
 	x := pflag.NewFlagSet("xxx", pflag.ExitOnError)
 	x.AddFlag(pflag.CommandLine.Lookup("http"))
 	x.AddFlag(pflag.CommandLine.Lookup("html"))
-	x.AddFlag(pflag.CommandLine.Lookup("fullhelp"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("h"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("2"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("3"))
 	x.SortFlags = false
 	x.PrintDefaults()
-	fmt.Fprint(os.Stderr, "\nOne of --http or --https-domain is required.\n")
-	fmt.Fprint(os.Stderr, "Using '--http :8080 --html internal' is the suggested starting place.\n\n")
+	fmt.Println(`
+
+Suggested new-user command: './deadsfu --http :8080 --html internal'
+(Next, open browser to http://localhost:8080/)
+
+Minimum required flags: --html is required, and either --http or --https-domain is required.`)
+	fmt.Println()
+}
+
+func printHttpsHelp() {
+	fmt.Println("Https flags list:")
+	fmt.Println()
+
+	x := pflag.NewFlagSet("xxx", pflag.ExitOnError)
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("q"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("r"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("s"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("t"))
+	x.AddFlag(pflag.CommandLine.ShorthandLookup("u"))
+
+	x.SortFlags = false
+	x.PrintDefaults()
+	fmt.Println(`
+    https related flags help:
+    
+    -q or --https-domain <domain>
+        Use this option the domain name, and optional port for https. 
+        Defaults to port 443 for the port. Use domain:port if you need something else.
+        Port zero is valid, for auto-assign.
+        With this flag,  a certificate will be aquired from Let's Encrypt.
+        BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
+    
+    -r or --https-dns-provider <provider>
+        You can use: ddns5, duckdns, cloudflare
+        This flag is required when using --https-domain, as a DNS TXT record must be set for Let's Encrypt
+        ddns5: does not require a token! Domain must be: <name>.ddns5.com
+        duckdns: uses the environment variable DUCKDNS_TOKEN for the API token. Domain must be: <name>.duckdns.org
+        cloudflare: uses the environment variable CLOUDFLARE_TOKEN for the API token
+    
+    -s or --https-dns-register-ip
+        Register the IP addresses of this system at the DNS provider.
+        Looks at interfaces addresses. Sets DNS A/AAAA.
+    
+    -t or --https-dns-register-ip-public
+        Register the IP addresses of this system at the DNS provider.
+        Queries Internet for my public address. Sets DNS A/AAAA.
+        Mutually exclusive with -3.
+    
+    -u or --https-acme-challenge-dns01
+        Switch from the default ACME challenge of HTTP/HTTPS to DNS.
+        Use this when Let's Encrypt can't reach your system behind a firewall.
+        Great for corporate private-IP video transfer. ie: 192.168.* or 10.*
+    
+    Examples:
+    $ ./deadsfu -1 foof.duckdns.org -2 duckdns
+    $ DUCKDNS_TOKEN=xxxx ./deadsfu -1 cameron4321.ddns5.com -2 ddns5
+    $ CLOUDFLARE_TOKEN=xxxx ./deadsfu -1 my.example.com -2 cloudflare`)
+	fmt.Println()
 }
 
 var debugOptionsMap = map[string]struct {
@@ -91,13 +150,13 @@ func processDebugFlag() {
 
 	for _, v := range *debugFlag {
 		if v == "help" {
-			println()
-			println("debug options available:")
+			fmt.Println()
+			fmt.Println("debug options available:")
 			for k := range debugOptionsMap {
 				fmt.Println("--debug", k)
 			}
-			println()
-			println(`Examples:
+			fmt.Println()
+			fmt.Println(`Examples:
 $ ./deadsfu --debug help                    # show this help
 $ ./deadsfu --debug main --debug media      # print debug log for media and main/general debuging
 $ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`)
@@ -121,13 +180,18 @@ $ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`
 
 func parseFlags() {
 
-	pflag.Usage = Usage // my own usage handle
+	pflag.Usage = printShortHelp
 
 	pflag.Parse()
-	if *help {
-		Usage()
+	if *helpShortFlag {
+		printShortHelp()
 		os.Exit(0)
-	} else if *fullhelp {
+	} else if *helpHttpsFlag {
+		printHttpsHelp()
+		os.Exit(0)
+	} else if *helpFullFlag {
+		fmt.Println("Full flags list:")
+		fmt.Println()
 		pflag.CommandLine.SortFlags = false
 		pflag.PrintDefaults()
 		os.Exit(0)
@@ -165,10 +229,6 @@ func oneTimeFlagsActions() {
 	}
 
 	if *httpsDomainFlag != "" {
-		if *httpsDomainFlag == "help" {
-			println(httpsHelp)
-			os.Exit(0)
-		}
 
 		_, _, err := net.SplitHostPort(*httpsDomainFlag)
 		if err != nil && strings.Contains(err.Error(), "missing port") {
@@ -224,43 +284,3 @@ func oneTimeFlagsActions() {
 	}
 
 }
-
-const httpsHelp = `
-https related flags help:
-
--1 or --https-domain <domain>
-    Use this option the domain name, and optional port for https. 
-    Defaults to port 443 for the port. Use domain:port if you need something else.
-    Port zero is valid, for auto-assign.
-    With this flag,  a certificate will be aquired from Let's Encrypt.
-    BY USING THIS FLAG, you consent to agreeing to the Let's Encrypt's terms.
-
--2 or --https-dns-provider <provider>
-    You can use: ddns5, duckdns, cloudflare
-    This flag is required when using --https-domain, as a DNS TXT record must be set for Let's Encrypt
-    ddns5: does not require a token! Domain must be: <name>.ddns5.com
-    duckdns: uses the environment variable DUCKDNS_TOKEN for the API token. Domain must be: <name>.duckdns.org
-    cloudflare: uses the environment variable CLOUDFLARE_TOKEN for the API token
-
--3 or --https-dns-register-ip
-    Register the IP addresses of this system at the DNS provider.
-    Looks at interfaces addresses. Sets DNS A/AAAA.
-
--4 or --https-dns-register-ip-public
-    Register the IP addresses of this system at the DNS provider.
-    Queries Internet for my public address. Sets DNS A/AAAA.
-    Mutually exclusive with -3.
-
--5 or --https-acme-challenge-dns01
-    Switch from the default ACME challenge of HTTP/HTTPS to DNS.
-    Use this when Let's Encrypt can't reach your system behind a firewall.
-    Great for corporate private-IP video transfer. ie: 192.168.* or 10.*
-
-Examples:
-$ ./deadsfu -1 foof.duckdns.org -2 duckdns
-$ DUCKDNS_TOKEN=xxxx ./deadsfu -1 cameron4321.ddns5.com -2 ddns5
-$ CLOUDFLARE_TOKEN=xxxx ./deadsfu -1 my.example.com -2 cloudflare
-
-
-
-`
