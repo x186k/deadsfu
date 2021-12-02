@@ -172,7 +172,7 @@ $ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`
 		}
 
 		k.logger.enabled = true
-		k.logger.Logger = log.New(os.Stdout, v, log.Lmicroseconds|log.LUTC|log.Lshortfile)
+		k.logger.Logger = log.New(os.Stdout, v+" ", log.Lmicroseconds|log.LUTC|log.Lshortfile|log.Lmsgprefix)
 
 	}
 
