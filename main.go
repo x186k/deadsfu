@@ -140,6 +140,8 @@ var peerConnectionConfig = webrtc.Configuration{
 
 var rtpoutConn *net.UDPConn
 
+var idleMediaPackets []rtp.Packet
+
 // logging notes
 // use:
 // log.Println(...)  for info messages that should be seen without enabling any debugging
@@ -869,15 +871,12 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) error {
 	return nil
 }
 
-func idleMediaGeneratorGr(link *roomState) {
-
-	var pkts []rtp.Packet
-
+func idleMediaLoader() {
 	if *idleClipZipfile == "" && *idleClipServerInput == "" {
 		if len(idleClipZipBytes) == 0 {
 			checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
 		}
-		pkts = readRTPFromZip(idleClipZipBytes)
+		idleMediaPackets = readRTPFromZip(idleClipZipBytes)
 	} else if *idleClipServerInput != "" {
 
 		inp, err := ioutil.ReadFile(*idleClipServerInput)
@@ -898,25 +897,29 @@ func idleMediaGeneratorGr(link *roomState) {
 		fmt.Println("response Status:", resp.Status)
 		body, err := ioutil.ReadAll(resp.Body)
 		checkFatal(err)
-		pkts = readRTPFromZip(body)
-		log.Println(len(pkts), "encoded rtp packets retrieved from", *idleClipServerURL)
+		idleMediaPackets = readRTPFromZip(body)
+		log.Println(len(idleMediaPackets), "encoded rtp packets retrieved from", *idleClipServerURL)
 
 	} else if *idleClipZipfile != "" {
 		buf, err := ioutil.ReadFile(*idleClipZipfile)
 		checkFatal(err)
-		pkts = readRTPFromZip(buf)
+		idleMediaPackets = readRTPFromZip(buf)
 
 	} else {
 		panic("badlogic")
 	}
 
-	if len(pkts) == 0 {
-		if len(pkts) == 0 {
+	if len(idleMediaPackets) == 0 {
+		if len(idleMediaPackets) == 0 {
 			checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
 		}
 	}
 
-	pkts = removeH264AccessDelimiterAndSEI(pkts)
+	idleMediaPackets = removeH264AccessDelimiterAndSEI(idleMediaPackets)
+
+}
+
+func idleMediaSenderGr(link *roomState) {
 
 	fps := 5
 	seqno := uint16(0)
@@ -926,16 +929,16 @@ func idleMediaGeneratorGr(link *roomState) {
 
 	framedur90 := uint32(90000 / fps)
 
-	pktsDur90 := pkts[len(pkts)-1].Timestamp - pkts[0].Timestamp
+	pktsDur90 := idleMediaPackets[len(idleMediaPackets)-1].Timestamp - idleMediaPackets[0].Timestamp
 
 	totalDur90 := pktsDur90/framedur90*framedur90 + framedur90
 
 	for {
 
-		for _, pkt := range pkts {
+		for _, pkt := range idleMediaPackets {
 
 			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
-			tsdelta := pkt.Timestamp - pkts[0].Timestamp
+			tsdelta := pkt.Timestamp - idleMediaPackets[0].Timestamp
 
 			tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
 
