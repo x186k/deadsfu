@@ -145,6 +145,7 @@ var idleMediaPackets []rtp.Packet
 // logging notes
 // use:
 // log.Println(...)  for info messages that should be seen without enabling any debugging
+const logFlags = log.Lmicroseconds | log.LUTC | log.Lshortfile | log.Lmsgprefix
 
 var dbgMedia = FastLogger{log.New(io.Discard, "", 0), false}
 var dbgHttps = FastLogger{log.New(io.Discard, "", 0), false}
@@ -152,6 +153,7 @@ var dbgIceCandidates = FastLogger{log.New(io.Discard, "", 0), false}
 var dbgMain = FastLogger{log.New(io.Discard, "", 0), false}
 var dbgFtl = FastLogger{log.New(io.Discard, "", 0), false}
 var dbgDdns = FastLogger{log.New(io.Discard, "", 0), false}
+var errlog = log.New(os.Stderr, "errlog", logFlags)
 
 // note: log.Logger contains a mutex, which means log.Logger should not be copied around
 // so use a pointer to log.logger
@@ -175,7 +177,12 @@ func logGoroutineCountToDebugLog() {
 	}
 }
 
+var checkFatalProhibited bool
+
 func checkFatal(err error) {
+	if checkFatalProhibited {
+		panic("checkFatalProhibited")
+	}
 	if err != nil {
 		_, fileName, fileLine, _ := runtime.Caller(1)
 		log.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
@@ -204,7 +211,6 @@ func validateEmbedFiles() {
 
 func init() {
 	validateEmbedFiles()
-	go logGoroutineCountToDebugLog()
 }
 
 func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
@@ -212,7 +218,7 @@ func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
 	var err error
 
 	pconn, err := net.ListenPacket("udp", hostport)
-	checkFatal(err)
+	checkFatal(err) //okay
 	defer pconn.Close()
 
 	log.Printf("RTP/UDP WAITING ON %s", pconn.LocalAddr().String())
@@ -264,6 +270,10 @@ func main() {
 	parseFlags()
 	oneTimeFlagsActions() //if !strings.HasSuffix(os.Args[0], ".test") {
 
+	idleMediaLoader()
+
+	go logGoroutineCountToDebugLog()
+
 	if *httpFlag == "" && *httpsDomainFlag == "" {
 		pflag.Usage()
 		os.Exit(-1)
@@ -274,11 +284,11 @@ func main() {
 	}
 
 	mux, err := setupMux()
-	checkFatal(err)
+	checkFatal(err) //okay
 
 	if *httpFlag != "" {
 		ln, err := net.Listen("tcp", *httpFlag)
-		checkFatal(err)
+		checkFatal(err) //okay
 		var mux2 http.Handler = mux
 		if *httpsDomainFlag != "" {
 			mux2 = certmagic.DefaultACME.HTTPChallengeHandler(mux)
@@ -287,7 +297,7 @@ func main() {
 		log.Println("SFU HTTP IS READY ON", ln.Addr())
 
 		go func() {
-			checkFatal(server.Serve(ln))
+			checkFatal(server.Serve(ln)) //okay
 		}()
 	}
 
@@ -320,18 +330,25 @@ func main() {
 
 	//the user can specify zero for port, and Linux/etc will choose a port
 
-	if *dialIngressURL != "" {
-		u, err := url.Parse(*dialIngressURL)
-		checkFatal(err)
+	for _, v := range *dialIngressURLs {
+
+		u, err := url.Parse(v)
+		checkFatal(err) //okay
 
 		link := getRoomState(u.Path)
 		go func() {
 			for {
-				log.Println("dial: Dialing upstream (got semaphore)")
-				dialUpstream(*dialIngressURL, *bearerToken, link.mediaCh)
+				dbgMain.Println("dialUpstream url:", u.String())
+				err := dialUpstream(u, *bearerToken, link.mediaCh)
+				if err != nil {
+					errlog.Println(err.Error())
+					time.Sleep(time.Second)
+				}
 			}
 		}()
 	}
+
+	checkFatalProhibited = true // make sure we are not called checkFatal after main init
 
 	// block here
 	if *cpuprofile == 0 {
@@ -403,7 +420,7 @@ func setupMux() (*http.ServeMux, error) {
 	mux.Handle(whapPath, commonPubSubHandler(subHandler))
 
 	// handle: /whip if configured to do so
-	if *dialIngressURL == "" {
+	if len(*dialIngressURLs) == 0 {
 		mux.Handle(whipPath, commonPubSubHandler(pubHandler))
 	}
 
@@ -416,7 +433,7 @@ func setupMux() (*http.ServeMux, error) {
 		return mux, nil
 	} else if *htmlSource == "internal" {
 		f, err := fs.Sub(htmlContent, "html")
-		checkFatal(err)
+		checkFatal(err) //okay
 
 		fsys := dotFileHidingFileSystemPlus{http.FS(f)}
 
@@ -425,13 +442,13 @@ func setupMux() (*http.ServeMux, error) {
 	} else if httpPrefix || httpsPrefix {
 
 		u, err := url.Parse(*htmlSource)
-		checkFatal(err)
+		checkFatal(err) //okay
 		rootmux = httputil.NewSingleHostReverseProxy(u)
 
 	} else {
 
 		s, err := os.Stat(*htmlSource)
-		checkFatal(err)
+		checkFatal(err) //okay
 		if !s.IsDir() {
 			checkFatal(fmt.Errorf("--html <path>, must refer to a directory when using filepath: %s", *htmlSource))
 		}
@@ -476,7 +493,7 @@ func setupMux() (*http.ServeMux, error) {
 	return mux, nil
 }
 
-func newPeerConnection() *webrtc.PeerConnection {
+func newPeerConnection() (*webrtc.PeerConnection, error) {
 
 	// Do NOT share MediaEngine between PC!  BUG of 020321
 	// with Sean & Orlando. They are so nice.
@@ -484,8 +501,9 @@ func newPeerConnection() *webrtc.PeerConnection {
 
 	i := &interceptor.Registry{}
 	_ = i
-	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
-		panic(err)
+	err := webrtc.RegisterDefaultInterceptors(m, i)
+	if err != nil {
+		return nil, err
 	}
 
 	se := webrtc.SettingEngine{}
@@ -503,19 +521,18 @@ func newPeerConnection() *webrtc.PeerConnection {
 
 	//rtcApi = webrtc.NewAPI()
 	//if *videoCodec == "h264" {
-	if true {
-		err := RegisterH264AndOpusCodecs(m)
-		checkFatal(err)
-	} else {
-		log.Fatalln("only h.264 supported")
-		// err := m.RegisterDefaultCodecs()
-		// checkFatal(err)
+
+	err = RegisterH264AndOpusCodecs(m)
+	if err != nil {
+		return nil, err
 	}
 
 	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
-	checkFatal(err)
+	if err != nil {
+		return nil, err
+	}
 
-	return peerConnection
+	return peerConnection, nil
 }
 
 func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
@@ -583,7 +600,7 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	if *dialIngressURL != "" {
+	if len(*dialIngressURLs) > 0 {
 		panic("no")
 	}
 
@@ -623,7 +640,12 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", "application/sdp")
 	rw.WriteHeader(201)
 	_, err = rw.Write([]byte(answersd.SDP))
-	checkFatal(err) // cam/if this write fails, then fail hard!
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	//NOTE, Do NOT ever use http.error to return SDPs
 
 }
@@ -645,7 +667,7 @@ func getRoomState(key string) *roomState {
 		}
 		roomMap[key] = link
 
-		go idleMediaGeneratorGr(link)
+		go idleMediaSenderGr(link)
 		go mediaFanOutGr(link)
 	}
 	roomMapMutex.Unlock()
@@ -670,7 +692,6 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 }
 
 // sfu egress setup
-// 041521 Decided checkFatal() is the correct way to handle errors in this func.
 func subHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var err error
@@ -686,9 +707,12 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a new PeerConnection
-	dbgMain.Println("created PC")
-	peerConnection := newPeerConnection()
+	peerConnection, err := newPeerConnection()
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	logTransceivers("new-pc", peerConnection)
 
@@ -746,17 +770,33 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	err = logSdpReport("sub-offer", offer)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	err = peerConnection.SetRemoteDescription(offer)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	logTransceivers("offer-added", peerConnection)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	rtpSender, err := peerConnection.AddTrack(track)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	go processRTCP(rtpSender)
 
 	// blocking is okay
@@ -769,9 +809,17 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	rtpSender2, err := peerConnection.AddTrack(track)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	go processRTCP(rtpSender2)
 
 	// blocking is okay
@@ -787,11 +835,19 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	// Create answer
 	sessdesc, err := peerConnection.CreateAnswer(nil)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	// Sets the LocalDescription, and starts our UDP listeners, starts ICE
 	err = peerConnection.SetLocalDescription(sessdesc)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	// without this, there will be zero! a=candidates in sdp
 	<-webrtc.GatheringCompletePromise(peerConnection)
@@ -800,13 +856,18 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	ansrtcsd := peerConnection.LocalDescription()
 
 	err = logSdpReport("sub-answer", *ansrtcsd)
-	checkFatal(err)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	rw.Header().Set("Content-Type", "application/sdp")
 	rw.WriteHeader(201)
 	_, err = rw.Write([]byte(ansrtcsd.SDP))
 	if err != nil {
-		log.Println(fmt.Errorf("sub sdp write failed:%w", err))
+		log.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -996,18 +1057,16 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 	return p2
 }
 
-func dialUpstream(dialurl string, token string, rxMediaCh chan MsgRxPacket) {
-
-	u, err := url.Parse(dialurl)
-	checkFatal(err)
+func dialUpstream(u *url.URL, token string, rxMediaCh chan MsgRxPacket) error {
 
 	roomname := u.Query().Get("room") // "" is permitted, most common room name!
 	link := getRoomState(roomname)
 
-tryagain:
-	dbgMain.Println("dialUpstream url:", dialurl)
-
-	peerConnection := newPeerConnection()
+	peerConnection, err := newPeerConnection()
+	if err != nil {
+		return err
+	}
+	defer peerConnection.Close()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		ingressOnTrack(peerConnection, track, receiver, rxMediaCh)
@@ -1020,68 +1079,79 @@ tryagain:
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
 	// create transceivers for 1x audio, 3x video
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, recvonly)
-	checkFatal(err)
+	if err != nil {
+		return err
+	}
 	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, recvonly)
-	checkFatal(err)
-
+	if err != nil {
+		return err
+	}
 	// Create an offer to send to the other process
 	offer, err := peerConnection.CreateOffer(nil)
-	checkFatal(err)
+	if err != nil {
+		return err
+	}
 
 	err = logSdpReport("dialupstream-offer", offer)
-	checkFatal(err)
+	if err != nil {
+		return err
+	}
 
 	// Sets the LocalDescription, and starts our UDP listeners
 	// Note: this will start the gathering of ICE candidates
 	err = peerConnection.SetLocalDescription(offer)
-	checkFatal(err)
+	if err != nil {
+		return err
+	}
 
 	// without this, there will be zero! a=candidates in sdp
 	<-webrtc.GatheringCompletePromise(peerConnection)
 
-	setupIngressStateHandler(peerConnection, link)
+	donech := make(chan struct{})
+	setupIngressStateHandler(peerConnection, link, donech)
 
 	// send offer, get answer
 
-	delay := time.Second
-	dbgMain.Println("dialing", dialurl)
+	dbgMain.Println("sending post", u.String())
 
-	req, err := http.NewRequest("POST", dialurl, strings.NewReader(offer.SDP))
-	checkFatal(err)
+	req, err := http.NewRequest("POST", u.String(), strings.NewReader(offer.SDP))
+	if err != nil {
+		return err
+	}
 
 	req.Header.Set("Content-Type", "application/sdp")
-
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
-
-	// yuck, back-off redialer
-	if err != nil && strings.HasSuffix(strings.ToLower(err.Error()), "connection refused") {
-		dbgMain.Println("connection refused")
-		time.Sleep(delay)
-		// disable back-off redialer
-		// we want fast re-connects on up-stream failure
-		// if delay <= time.Second*30 {
-		// 	delay *= 2
-		// }
-		goto tryagain
+	if err != nil {
+		return err
 	}
-	checkFatal(err)
 	defer resp.Body.Close()
 
 	dbgMain.Println("dial connected")
 
 	answerraw, err := ioutil.ReadAll(resp.Body)
-	checkFatal(err) //cam
+	if err != nil {
+		return err
+	}
 
 	anssd := webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answerraw)}
 	err = logSdpReport("dial-answer", anssd)
-	checkFatal(err)
+	if err != nil {
+		return err
+	}
 
 	err = peerConnection.SetRemoteDescription(anssd)
-	checkFatal(err)
+	if err != nil {
+		return err
+	}
+
+	<-donech
+	dbgMain.Println("dialUpstream peerconn is closed")
+
+	return nil
 
 }
 
@@ -1188,14 +1258,18 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 			err = sendPLI(peerConnection, track)
 			if err == io.ErrClosedPipe {
 				return
+			} else if err != nil {
+				errlog.Println(err.Error())
+				return
 			}
-			checkFatal(err)
 
 			err = sendREMB(peerConnection, track)
 			if err == io.ErrClosedPipe {
 				return
+			} else if err != nil {
+				errlog.Println(err.Error())
+				return
 			}
-			checkFatal(err)
 
 			time.Sleep(3 * time.Second)
 		}
@@ -1220,8 +1294,10 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uin
 		p, _, err := rxTrack.ReadRTP()
 		if err == io.EOF {
 			return
+		} else if err != nil {
+			errlog.Println(err.Error())
+			return
 		}
-		checkFatal(err)
 
 		// blocking is okay
 		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p, rxClockRate: clockrate}
@@ -1315,7 +1391,9 @@ func mediaFanOutGr(link *roomState) {
 			if txtype == Audio && rtpoutConn != nil {
 				//ptmp := pkt //copy
 				rtpbuf, err := pkt.Marshal()
-				checkFatal(err)
+				if err != nil {
+					errlog.Print(err.Error())
+				}
 				_, _ = rtpoutConn.Write(rtpbuf)
 			}
 
@@ -1378,13 +1456,10 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState) (*webrtc.Session
 
 	dbgMain.Println("createIngressPeerConnection")
 
-	// Set the remote SessionDescription
-
-	//	ofrsd, err := rtcsd.Unmarshal()
-	//	checkFatal(err)
-
-	// Create a new RTCPeerConnection
-	peerConnection := newPeerConnection()
+	peerConnection, err := newPeerConnection()
+	if err != nil {
+		return nil, err
+	}
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		ingressOnTrack(peerConnection, track, receiver, link.mediaCh)
@@ -1411,7 +1486,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState) (*webrtc.Session
 	// }
 
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
-	err := logSdpReport("publisher", offer)
+	err = logSdpReport("publisher", offer)
 	if err != nil {
 		return nil, fmt.Errorf("logSdpReport() fail %w", err)
 	}
@@ -1441,13 +1516,13 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState) (*webrtc.Session
 		return nil, fmt.Errorf("logSdpReport() fail %w", err)
 	}
 
-	setupIngressStateHandler(peerConnection, link)
+	setupIngressStateHandler(peerConnection, link, nil)
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	return peerConnection.LocalDescription(), nil
 }
 
-func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *roomState) {
+func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *roomState, done chan struct{}) {
 
 	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		dbgMain.Println("ingress Connection State has changed", cs.String())
@@ -1459,6 +1534,9 @@ func setupIngressStateHandler(peerConnection *webrtc.PeerConnection, link *roomS
 			peerConnection.Close()
 		case webrtc.PeerConnectionStateClosed:
 			link.pubSema.Release(1)
+			if done != nil {
+				close(done)
+			}
 		}
 	})
 }
@@ -1581,7 +1659,7 @@ func readRTPFromZip(buf []byte) []rtp.Packet {
 	// Open a zip archive for reading.
 
 	if len(buf) == 0 {
-		checkFatal(fmt.Errorf("zero-length rtp-zip file not gunna work"))
+		checkFatal(fmt.Errorf("zero-length rtp-zip file not gunna work")) //okay
 	}
 
 	bufrdr := bytes.NewReader(buf)
@@ -1687,7 +1765,10 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 		}
 
 		tmp64, err := strconv.ParseInt(arr[0], 10, 64)
-		checkFatal(err)
+		if err != nil {
+			errlog.Print(err.Error())
+			return nil, ""
+		}
 
 		a := &myFtlServer{}
 		a.audiossrc = uint32(rand.Int63())
