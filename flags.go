@@ -22,7 +22,7 @@ var httpsDnsRegisterIp = pflag.BoolP("https-dns-register-ip", "s", false, "DNS-R
 var httpsDnsRegisterIpPublic = pflag.BoolP("https-dns-register-ip-public", "t", false, "DNS-Register the IP of this box, at provider, for name: --https-domain. Detects public addrs")
 var httpsUseDns01Challenge = pflag.BoolP("https-dns01-challenge", "u", false, "When registering at Let's Encrypt, use the DNS challenge, not HTTP/HTTPS. Recommended behind firewalls")
 
-var dialIngressURLs = pflag.StringSliceP("dial-ingress", "d", []string{}, "Specify a URL for outbound dial for ingress. Used for SFU chaining!. Multiple flags possible")
+var dialUpstreamUrlFlag = pflag.StringP("dial-upstream-url", "d", "", "Specify a URL for upstream SFU. No path, no params. Used for SFU chaining!. Upstream dial triggered on subscriber connection to room.")
 
 var iceCandidateHost = pflag.String("ice-candidate-host", "", "For forcing the ice host candidate IP address")
 var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the ice srflx candidate IP address")
@@ -144,6 +144,7 @@ var debugOptionsMap = map[string]struct {
 	"main":           {&dbgMain},
 	"ftl":            {&dbgFtl},
 	"ddns":           {&dbgDdns},
+	"peer-conn":           {&dbgPeerConn},
 }
 
 func processDebugFlag() {
