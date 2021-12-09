@@ -144,7 +144,7 @@ var debugOptionsMap = map[string]struct {
 	"main":           {&dbgMain},
 	"ftl":            {&dbgFtl},
 	"ddns":           {&dbgDdns},
-	"peer-conn":           {&dbgPeerConn},
+	"peer-conn":      {&dbgPeerConn},
 }
 
 func processDebugFlag() {
