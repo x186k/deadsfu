@@ -6,7 +6,6 @@
 
 import * as whipwhap from "./whip-whap-js/whip-whap-js.js"
 
-
 // Onload, launch send or receive WebRTC session, adding '?send' or '&send' to url will
 // trigger sending
 window.onload = async function () {
@@ -42,19 +41,38 @@ window.onload = async function () {
         pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whipUrl, bearerToken))
 
         /** @type {MediaStream} */
-        var gum
-        try {
-            gum = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-        } catch (error) {
-            alert('No camera found, please attach & reload page')
-            return
+        var mediaStream
+
+        //no camera available
+        //camera available on localhost in some instances, so https check not reliable
+        //if (location.protocol !== 'https:') {
+        if (!navigator.mediaDevices) {
+
+            console.error('Check HTTPS: MDN navigator.mediaDevices not found, camera will not be available')
+            video1.loop = true
+            video1.crossOrigin = 'anonymous'
+            video1.src = 'https://docs.evostream.com/sample_content/assets/bun33s.mp4'
+            await video1.play()
+            //@ts-ignore
+            mediaStream = video1.captureStream()
+
+        } else {
+
+
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+                video1.srcObject = mediaStream
+                video1.play()
+            } catch (error) {
+                alert('Camera setup failed:' + error)
+                return
+            }
         }
 
-        video1.srcObject = gum
-        video1.play()
 
-        pc.addTransceiver(gum.getVideoTracks()[0], { 'direction': 'sendonly' })
-        pc.addTransceiver(gum.getAudioTracks()[0], { 'direction': 'sendonly' })
+
+        pc.addTransceiver(mediaStream.getVideoTracks()[0], { 'direction': 'sendonly' })
+        pc.addTransceiver(mediaStream.getAudioTracks()[0], { 'direction': 'sendonly' })
 
         document.title = "Sending"
 
