@@ -30,9 +30,14 @@ window.onload = async function () {
     let video1 = /** @type {HTMLVideoElement} */ (document.getElementById('video1'))
     let searchParams = new URLSearchParams(window.location.search)
     let bearerToken = searchParams.get('access_token')
+    //let roomname = window.location.pathname
+    let roomname = searchParams.get('room')
+    if (!roomname) {
+        roomname = "mainroom"
+    }
 
     if (searchParams.has('send')) {
-        let whipUrl = '/whip?room=' + window.location.pathname
+        let whipUrl = '/whip?room=' + roomname
 
         pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whipUrl, bearerToken))
 
@@ -54,7 +59,7 @@ window.onload = async function () {
         document.title = "Sending"
 
     } else {
-        let whapUrl = '/whap?room=' + window.location.pathname
+        let whapUrl = '/whap?room=' + roomname
 
         // console.debug(newurl.searchParams.get('room')) // we just pass along 'room'
 
