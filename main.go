@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"errors"
 	"math/rand"
 	"net"
 	"path"
@@ -669,23 +668,23 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func getRoomState(key string) *roomState {
+func getRoomState(roomname string) *roomState {
 
-	if !strings.HasPrefix("/", key) {
-		key = "/" + key
+	if roomname == "" {
+		roomname = "mainroom"
 	}
 
 	roomMapMutex.Lock()
-	link, found := roomMap[key]
+	link, found := roomMap[roomname]
 	if !found {
 		link = &roomState{
-			roomname:    key,
+			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
 			mediaCh:     make(chan MsgRxPacket, 100),
 			newTrackCh:  make(chan MsgSubscriberAddTrack, 10),
 			done:        make(chan bool),
 		}
-		roomMap[key] = link
+		roomMap[roomname] = link
 
 		go idleMediaSenderGr(link)
 		go mediaFanOutGr(link)
