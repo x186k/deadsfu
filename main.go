@@ -1905,9 +1905,11 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 
 	file, err := fsys.FileSystem.Open(name)
 	// next three lines turn /foo/bar into /index.html
-	if errors.Is(err, fs.ErrNotExist) {
-		file, err = fsys.FileSystem.Open("/index.html")
-	}
+	// 12 9 21, these 3 lines can be part of a system where
+	// room names are derived from the path. it means every path returns /index.html
+	// if errors.Is(err, fs.ErrNotExist) {
+	// 	file, err = fsys.FileSystem.Open("/index.html")
+	// }
 	if err != nil {
 		return nil, err
 	}
