@@ -158,8 +158,7 @@ func processDebugFlag() {
 		}
 
 		val.enabled = true
-		val.Logger = log.New(os.Stdout, flagName+" ", logFlags)
-
+		val.Logger = log.New(os.Stdout, "["+flagName+"] ", logFlags)
 	}
 
 }
