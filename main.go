@@ -152,9 +152,10 @@ var idleMediaPackets []rtp.Packet
 const logFlags = log.Lmicroseconds | log.LUTC | log.Lshortfile | log.Lmsgprefix
 
 var dbg = struct {
-	media, https, ice, main, ftl, ddns, peerConn FastLogger
+	url, media, https, ice, main, ftl, ddns, peerConn FastLogger
 }{}
 var dbgMap = map[string]*FastLogger{
+	"url":            &dbg.url,
 	"media":          &dbg.media,
 	"https":          &dbg.https,
 	"ice-candidates": &dbg.ice,
@@ -178,19 +179,19 @@ type FastLogger struct {
 
 func (x *FastLogger) Print(args ...interface{}) {
 	if x.enabled {
-		log.Print(args...)
+		x.Logger.Print(args...)
 	}
 }
 
 func (x *FastLogger) Printf(format string, args ...interface{}) {
 	if x.enabled {
-		log.Println(args...)
+		x.Logger.Println(args...)
 	}
 }
 
 func (x *FastLogger) Println(args ...interface{}) {
 	if x.enabled {
-		log.Println(args...)
+		x.Logger.Println(args...)
 	}
 }
 
@@ -645,6 +646,8 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
 	link := getRoomState(roomname)
 
+	dbg.url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
+
 	sdpCh := make(chan *webrtc.SessionDescription)
 	errCh := make(chan error)
 
@@ -860,6 +863,8 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
 	link := getRoomState(roomname)
+
+	dbg.url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
 	sdpCh := make(chan *webrtc.SessionDescription)
 	errCh := make(chan error)
@@ -1092,13 +1097,19 @@ func dialUpstream(link *roomState) error {
 	u.Scheme = dialUpstreamUrl.Scheme
 	u.Host = dialUpstreamUrl.Host
 	u.Path = "/whap"
-	u.Query().Add("room", link.roomname)
+	
+	q := u.Query()
+	q.Set("room", link.roomname)
+	u.RawQuery = q.Encode()
+	
 
 	peerConnection, err := newPeerConnection()
 	if err != nil {
 		return err
 	}
 	defer peerConnection.Close()
+
+	dbg.url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		ingressOnTrack(peerConnection, track, receiver, link.mediaCh)
@@ -1555,7 +1566,7 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 	done := make(chan struct{})
 
 	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		dbg.peerConn.Println(debug, link.roomname, unsafe.Pointer(pc), "ConnectionState", cs.String())
+		dbg.peerConn.Println(debug, link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
 		switch cs {
 		case webrtc.PeerConnectionStateClosed:
 			fallthrough
