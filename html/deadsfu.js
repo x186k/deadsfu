@@ -119,8 +119,24 @@ window.onload = async function () {
 
     // declare func
     async function rxtxTimeoutCallback() {
+
         let rates = await whipwhap.helperGetRxTxRate(pc)
         rxtxSpan.textContent = `${rates.rxrate}/${rates.txrate} rx/tx kbps`
+
+        if (pc.signalingState == 'closed') {
+            //this two lines are a desparate way to handle the pixelbook
+            //laptop lid close/reopen
+            // after this happens, the pc will be closed,
+            // and pc.restartIce() does nothing.
+            // this leaves us two choices: 1. create a new PC, 2. reload the page.
+            // we choose #2 at this time.
+            location.hash = 'closereloadlaptoplid'
+            location.reload()
+            // pc.restartIce()  this doesnt work after pixelbook lid closed/opened
+            // , maybe pc.restartIce() never works from a 'closed' PC
+        }
+
+
         setTimeout(rxtxTimeoutCallback, 3000)        // milliseconds
     }
 
