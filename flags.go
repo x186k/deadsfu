@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -135,48 +136,45 @@ func printHttpsHelp() {
 	fmt.Println()
 }
 
-var debugOptionsMap = map[string]struct {
-	logger *FastLogger
-}{
-	"media":          {&dbgMedia},
-	"https":          {&dbgHttps},
-	"ice-candidates": {&dbgIceCandidates},
-	"main":           {&dbgMain},
-	"ftl":            {&dbgFtl},
-	"ddns":           {&dbgDdns},
-	"peer-conn":      {&dbgPeerConn},
-}
-
 func processDebugFlag() {
+
+	for k, v := range dbgMap {
+		v.Logger = log.New(io.Discard, k, 0)
+		v.enabled = false
+	}
 
 	for _, v := range *debugFlag {
 		if v == "help" {
-			fmt.Println()
-			fmt.Println("debug options available:")
-			for k := range debugOptionsMap {
-				fmt.Println("--debug", k)
-			}
-			fmt.Println()
-			fmt.Println(`Examples:
-$ ./deadsfu --debug help                    # show this help
-$ ./deadsfu --debug main,media              # print debug log for media and main/general debuging
-$ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`)
+			printDebugFlagHelp()
 			os.Exit(0)
 		}
 	}
 
-	for _, v := range *debugFlag {
+	for _, flagName := range *debugFlag {
 
-		k, ok := debugOptionsMap[v]
+		val, ok := dbgMap[flagName]
 		if !ok {
-			checkFatal(fmt.Errorf("'%s' is not a valid debug option", v))
+			checkFatal(fmt.Errorf("'%s' is not a valid debug option", flagName))
 		}
 
-		k.logger.enabled = true
-		k.logger.Logger = log.New(os.Stdout, v+" ", logFlags)
+		val.enabled = true
+		val.Logger = log.New(os.Stdout, flagName+" ", logFlags)
 
 	}
 
+}
+
+func printDebugFlagHelp() {
+	fmt.Println()
+	fmt.Println("debug options available:")
+	for k := range dbgMap {
+		fmt.Println("--debug", k)
+	}
+	fmt.Println()
+	fmt.Println(`Examples:
+$ ./deadsfu --debug help                    # show this help
+$ ./deadsfu --debug main,media              # print debug log for media and main/general debuging
+$ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`)
 }
 
 func parseFlags() {
