@@ -294,7 +294,9 @@ func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
 func main() {
 	var err error
 
-	log.Default().SetOutput(os.Stdout) // always on output
+	log.SetFlags(logFlags)
+	log.SetPrefix("[log] ")
+	log.SetOutput(os.Stdout)
 
 	println("deadsfu Version " + Version)
 
