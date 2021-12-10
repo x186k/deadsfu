@@ -51,7 +51,7 @@ window.onload = async function () {
             console.error('Check HTTPS: MDN navigator.mediaDevices not found, camera will not be available')
             video1.loop = true
             video1.crossOrigin = 'anonymous'
-            video1.src = 'https://docs.evostream.com/sample_content/assets/bun33s.mp4'
+            video1.src = '/no-camera.mp4'
             await video1.play()
             //@ts-ignore
             mediaStream = video1.captureStream()
