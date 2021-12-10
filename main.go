@@ -134,6 +134,9 @@ var idleClipZipBytes []byte
 //go:embed deadsfu-binaries/favicon_io/favicon.ico
 var favicon_ico []byte
 
+//go:embed deadsfu-binaries/deadsfu-camera-not-available.mp4
+var deadsfuCameraNotAvailableMp4 []byte
+
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
 		{
@@ -304,6 +307,7 @@ func main() {
 	parseFlags()
 	oneTimeFlagsActions() //if !strings.HasSuffix(os.Args[0], ".test") {
 
+	verifyEmbedFiles()
 	idleMediaLoader()
 
 	go logGoroutineCountToDebugLog()
@@ -500,6 +504,11 @@ func setupMux() (*http.ServeMux, error) {
 	mux.HandleFunc("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
 		readseek := bytes.NewReader(favicon_ico)
 		http.ServeContent(rw, r, "favicon.ico", time.Time{}, readseek)
+	})
+
+	mux.HandleFunc("/no-camera.mp4", func(rw http.ResponseWriter, r *http.Request) {
+		readseek := bytes.NewReader(deadsfuCameraNotAvailableMp4)
+		http.ServeContent(rw, r, "/no-camera.mp4", time.Time{}, readseek)
 	})
 
 	if false {
@@ -965,11 +974,24 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 
 }
 
+func verifyEmbedFiles() {
+	if len(idleClipZipBytes) == 0 {
+		checkFatal(fmt.Errorf("embed idleClipZipBytes is zero-length!"))
+	}
+
+	if len(deadsfuCameraNotAvailableMp4) == 0 {
+		checkFatal(fmt.Errorf("embed deadsfuCameraNotAvailableMp4 is zero-length!"))
+	}
+
+	if len(favicon_ico) == 0 {
+		checkFatal(fmt.Errorf("embed deadsfuCameraNotAvailableMp4 is zero-length!"))
+	}
+
+}
+
 func idleMediaLoader() {
 	if *idleClipZipfile == "" && *idleClipServerInput == "" {
-		if len(idleClipZipBytes) == 0 {
-			checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
-		}
+
 		idleMediaPackets = readRTPFromZip(idleClipZipBytes)
 	} else if *idleClipServerInput != "" {
 
@@ -1097,11 +1119,10 @@ func dialUpstream(link *roomState) error {
 	u.Scheme = dialUpstreamUrl.Scheme
 	u.Host = dialUpstreamUrl.Host
 	u.Path = "/whap"
-	
+
 	q := u.Query()
 	q.Set("room", link.roomname)
 	u.RawQuery = q.Encode()
-	
 
 	peerConnection, err := newPeerConnection()
 	if err != nil {
