@@ -213,12 +213,12 @@ func logGoroutineCountToDebugLog() {
 var checkFatalProhibited bool
 
 func checkFatal(err error) {
-	if checkFatalProhibited {
-		panic("checkFatalProhibited")
-	}
 	if err != nil {
 		_, fileName, fileLine, _ := runtime.Caller(1)
 		log.Fatalf("FATAL %s:%d %v", filepath.Base(fileName), fileLine, err)
+	}
+	if checkFatalProhibited {
+		panic("cannot call checkfatal so late in code! file issue!")
 	}
 }
 
