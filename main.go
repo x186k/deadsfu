@@ -246,13 +246,7 @@ func init() {
 	validateEmbedFiles()
 }
 
-func rtpReceiver(hostport string, rxMediaCh chan MsgRxPacket) {
-
-	var err error
-
-	pconn, err := net.ListenPacket("udp", hostport)
-	checkFatal(err) //okay
-	defer pconn.Close()
+func rtpReceiver(pconn net.PacketConn, rxMediaCh chan MsgRxPacket) {
 
 	log.Printf("RTP/UDP WAITING ON %s", pconn.LocalAddr().String())
 
@@ -361,11 +355,20 @@ func main() {
 
 		//if (*rtprx)[0]=="help" {
 
-		link := getRoomState("")
+		link := getRoomState("") //default room
 
 		for _, v := range *rtprx {
 
-			go rtpReceiver(v, link.mediaCh)
+			var err error
+
+			pconn, err := net.ListenPacket("udp", v)
+			checkFatal(err)
+			defer pconn.Close()
+
+			go func() {
+				rtpReceiver(pconn, link.mediaCh)
+			}()
+
 		}
 
 	}
