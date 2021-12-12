@@ -372,11 +372,22 @@ func main() {
 
 	if *ftlKey != "" {
 
-		go startFtlListener()
+		go func() {
+			config := &net.ListenConfig{}
+			ln, err := config.Listen(context.Background(), "tcp", ":8084")
+			if err != nil {
+				log.Fatalln(err)
+			}
+			defer ln.Close()
+			err = startFtlListener(ln)
+			if err != nil {
+				errlog.Print("ftl listener shutting down:", err.Error())
+			}
+		}()
 
 	}
 
-	// https
+	// okay. sigh. both
 
 	//the user can specify zero for port, and Linux/etc will choose a port
 
@@ -1789,21 +1800,14 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 
 }
 
-func startFtlListener() {
-
-	config := &net.ListenConfig{}
-	ln, err := config.Listen(context.Background(), "tcp", ":8084")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer ln.Close()
+func startFtlListener(ln net.Listener) error {
 
 	for {
 		dbg.ftl.Println("ftl/waiting for accept on:", ln.Addr())
 
 		netconn, err := ln.Accept()
 		if err != nil {
-			log.Fatalln(err)
+			return fmt.Errorf("ftl: Accept() err %w", err)
 		}
 
 		dbg.ftl.Println("ftl/socket accepted")
@@ -1816,6 +1820,8 @@ func startFtlListener() {
 	//return
 }
 
+// XXX need to remove fatals eventually
+// called during ftl connection
 func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserver.FtlServer, string) {
 	want := requestChanid + "-"
 	match := strings.HasPrefix(*ftlKey, want)
