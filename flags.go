@@ -31,6 +31,7 @@ var iceCandidateSrflx = pflag.String("ice-candidate-srflx", "", "For forcing the
 var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream-key. LIKE A PASSWORD! CHANGE THIS FROM DEFAULT! ")
 var ftlUdpPort = pflag.Int("ftl-udp-port", 8084, "The UDP port to use for FTL UDP rx. Zero is valid. Zero for ephemeral port num")
 
+//var ffmpeg =pflag.StringToString("ffmpeg","","ffmpeg shortcut to spawn for RTP ingress into room"
 var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1:4444'")
 var rtprx = pflag.StringArray("rtp-rx", nil, "use :port or addr:port. eg: '--rtp-rx :5004 --rtp-rx :5006' payload 96 for h264, 97 for opus")
 var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
