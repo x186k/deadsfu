@@ -1516,6 +1516,48 @@ func mediaFanOutGr(link *roomState) {
 	}
 }
 
+//type XTrack *webrtc.TrackLocalStaticRTP
+type XTrack TxTrack
+
+type AddTrack XTrack
+type DelTrack XTrack
+
+func trackWriter(ch chan interface{}) {
+
+	var foo map[XTrack]struct{} = make(map[XTrack]struct{})
+
+	for i := range ch {
+
+		switch t := i.(type) {
+		case AddTrack:
+			foo[XTrack(t)] = struct{}{}
+
+		case DelTrack:
+			delete(foo, XTrack(t))
+
+		case MsgRxPacket:
+
+			for xtrack := range foo {
+
+				pkt := *t.packet // make copy
+				SpliceRTP(xtrack.splicer, &pkt, time.Now().UnixNano(), int64(t.rxClockRate))
+
+				err := xtrack.track.WriteRTP(t.packet)
+
+				if err == io.ErrClosedPipe {
+					dbg.main.Printf("track io.ErrClosedPipe, removing track %s", xtrack.txid)
+					delete(foo, xtrack)
+				}
+			}
+
+		default:
+			log.Panicf("Don't know type %T\n", i)
+		}
+
+	}
+
+}
+
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
 	return peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}})
 }
