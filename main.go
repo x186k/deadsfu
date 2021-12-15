@@ -308,28 +308,6 @@ func main() {
 		go startHttpsListener(ctx, *httpsDomainFlag, mux)
 	}
 
-	if len(*rtprx) > 0 {
-
-		//if (*rtprx)[0]=="help" {
-
-		link := getRoomState("") //default room
-
-		for _, v := range *rtprx {
-
-			var err error
-
-			pconn, err := net.ListenPacket("udp", v)
-			checkFatal(err)
-			defer pconn.Close()
-
-			go func() {
-				rtpReceiver(pconn, link.mediaCh)
-			}()
-
-		}
-
-	}
-
 	if *ftlKey != "" {
 
 		go func() {
