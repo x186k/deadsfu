@@ -246,49 +246,6 @@ func init() {
 	validateEmbedFiles()
 }
 
-func rtpReceiver(pconn net.PacketConn, rxMediaCh chan MsgRxPacket) {
-
-	log.Printf("RTP/UDP WAITING ON %s", pconn.LocalAddr().String())
-
-	c := pconn.(*net.UDPConn)
-
-	buf := make([]byte, 2000)
-
-	for {
-
-		var p rtp.Packet
-
-		n, err := c.Read(buf)
-		if err != nil {
-			continue // silent ignore
-		}
-
-		if len(buf) < 12 {
-			continue //silent ignore
-		}
-
-		b := make([]byte, n)
-		// this is necessary! pkt.raw/[]byte we chan-send gets modified
-		// and next iteration of this loop will overwrite 'buf'
-		copy(b, buf[:n])
-
-		err = p.Unmarshal(b)
-		if err != nil {
-			continue //silent ignore
-		}
-
-		switch p.Header.PayloadType {
-		case 96:
-			// blocking is okay
-			rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
-		case 97:
-			// blocking is okay
-			rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
-		}
-
-	}
-}
-
 func main() {
 	var err error
 
