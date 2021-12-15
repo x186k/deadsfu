@@ -1439,24 +1439,25 @@ func mediaFanOutGr(link *roomState) {
 				continue
 			}
 
-			if idlePkt && *dialUpstreamUrlFlag != "" {
-				// if this room is receiving the idle video, not 'real' ingress
-				// and we have dialUpstream urls
-				// we will see if we can connect to the upstream, by dialing it
+			//break dial upstream
+			// if idlePkt && *dialUpstreamUrlFlag != "" {
+			// 	// if this room is receiving the idle video, not 'real' ingress
+			// 	// and we have dialUpstream urls
+			// 	// we will see if we can connect to the upstream, by dialing it
 
-				if link.ingressSema.TryAcquire(1) {
-					go func() {
-						defer link.ingressSema.Release(1)
+			// 	if link.ingressSema.TryAcquire(1) {
+			// 		go func() {
+			// 			defer link.ingressSema.Release(1)
 
-						err := dialUpstream(link) // blocks until closed
-						if err != nil {
-							errlog.Println(err.Error())
-							time.Sleep(time.Second)
-						}
+			// 			err := dialUpstream(link) // blocks until closed
+			// 			if err != nil {
+			// 				errlog.Println(err.Error())
+			// 				time.Sleep(time.Second)
+			// 			}
 
-					}()
-				}
-			}
+			// 		}()
+			// 	}
+			// }
 
 			var txtype TrackId
 
