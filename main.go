@@ -1473,7 +1473,7 @@ func mediaFanOutGr(link *roomState) {
 			}
 
 			pkt := *m.packet // make copy
-			SpliceRTP(txtype, &inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
+			SpliceRTP(&inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
 
 			if txtype == Audio && rtpoutConn != nil {
 				//ptmp := pkt //copy
@@ -1629,7 +1629,7 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 // This grabs mutex after doing a fast, non-mutexed check for applicability
 
 // p gets modified
-func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz int64) {
+func SpliceRTP(s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz int64) {
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
@@ -1648,7 +1648,7 @@ func SpliceRTP(txid TrackId, s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz
 		s.tsOffset = p.Timestamp - (s.lastTS + uint32(td2))
 		s.snOffset = p.SequenceNumber - s.lastSN - 1
 
-		dbg.main.Printf("** ssrc change %v rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", txid.String(), rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
+		dbg.main.Printf("** ssrc change [txid] rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
 	}
 
 	p.Timestamp -= s.tsOffset
