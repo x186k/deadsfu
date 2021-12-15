@@ -116,6 +116,7 @@ type roomState struct {
 	mediaCh     chan MsgRxPacket    // where publisher sends media for '/foobar'
 	newTrackCh  chan MsgSubscriberAddTrack
 	audioSrcId  TrackId
+	videoSrcId  TrackId
 }
 
 var roomMap = make(map[string]*roomState)
@@ -1079,7 +1080,7 @@ func dialUpstream(link *roomState) error {
 	dbg.url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.mediaCh)
+		ingressOnTrack(peerConnection, track, receiver, link.mediaCh, link.audioSrcId, link.videoSrcId)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1225,8 +1226,13 @@ func text2pcapLog(log *log.Logger, inbuf []byte) {
 // 	text2pcapLog(log, buf.Bytes())
 // }
 
-func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver, rxMediaCh chan MsgRxPacket) {
-	_ = receiver //silence warnings
+func ingressOnTrack(
+	peerConnection *webrtc.PeerConnection,
+	track *webrtc.TrackRemote,
+	receiver *webrtc.RTPReceiver,
+	rxMediaCh chan MsgRxPacket,
+	audioSrcId TrackId,
+	videoSrcId TrackId) {
 
 	mimetype := track.Codec().MimeType
 	dbg.main.Println("OnTrack codec:", mimetype)
@@ -1234,7 +1240,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, Audio, track.Codec().ClockRate, rxMediaCh)
+		inboundTrackReader(track, audioSrcId, track.Codec().ClockRate, rxMediaCh)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1282,7 +1288,7 @@ func ingressOnTrack(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRe
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, Video, track.Codec().ClockRate, rxMediaCh)
+	inboundTrackReader(track, videoSrcId, track.Codec().ClockRate, rxMediaCh)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
@@ -1360,30 +1366,36 @@ func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxP
 	}
 }
 
+type RTCTrack *webrtc.TrackLocalStaticRTP
+
+type TrackGroupId interface{}
+
+// single instance of this GR
+
 func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
 
-	var txtracks []*TxTrack
+	var foo map[TrackGroupId]map[*TxTrack]bool = make(map[TrackGroupId]map[*TxTrack]bool)
 
 	for {
 		select {
 		case m := <-mediaCh:
-			for i, tr := range txtracks {
+			for tr := range foo[m.rxid] {
 
-				pkt := *m.packet // make copy XXX pool opportunity!
+				pkt := *m.packet // make copy, XXX pool opportunity!
 
 				SpliceRTP(tr.splicer, &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
 
 				err := tr.track.WriteRTP(&pkt)
 				if err == io.ErrClosedPipe {
 					dbg.main.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
-					txtracks[i] = txtracks[len(txtracks)-1]
-					txtracks[len(txtracks)-1] = nil
-					txtracks = txtracks[:len(txtracks)-1]
+					delete(foo[m.rxid], tr)
 				}
 			}
 
 		case m := <-newTrackCh:
-			txtracks = append(txtracks, m.txtrack)
+			//txtracks = append(txtracks, m.txtrack)
+
+			foo[m.txtrack.txid][m.txtrack] = false
 		}
 	}
 }
@@ -1450,7 +1462,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 	defer peerConnection.Close()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.mediaCh)
+		ingressOnTrack(peerConnection, track, receiver, link.mediaCh, link.audioSrcId, link.videoSrcId)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1795,7 +1807,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 		}
 		p.SSRC = x.videossrc // each FTL session should have different SSRC for downstream splicer
 		// blocking is okay
-		x.rxMediaCh <- MsgRxPacket{rxid: Video, packet: &p, rxClockRate: 90000}
+		x.rxMediaCh <- MsgRxPacket{packet: &p, rxClockRate: 90000}
 
 	case 97:
 
@@ -1810,7 +1822,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 		}
 		p.SSRC = x.audiossrc // each FTL session should have different SSRC for downstream splicer
 		// blocking is okay
-		x.rxMediaCh <- MsgRxPacket{rxid: Audio, packet: &p, rxClockRate: 48000}
+		x.rxMediaCh <- MsgRxPacket{packet: &p, rxClockRate: 48000}
 	}
 	if x.badssrc > 0 && x.badssrc%100 == 10 {
 		log.Println("Bad SSRC media received :(  count:", x.badssrc)
