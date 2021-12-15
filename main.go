@@ -115,7 +115,7 @@ type roomState struct {
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 	mediaCh     chan MsgRxPacket    // where publisher sends media for '/foobar'
 	newTrackCh  chan MsgSubscriberAddTrack
-	done        chan bool
+	audioSrcId  TrackId
 }
 
 var roomMap = make(map[string]*roomState)
@@ -669,7 +669,6 @@ func getRoomState(roomname string) *roomState {
 			ingressSema: semaphore.NewWeighted(int64(1)),
 			mediaCh:     make(chan MsgRxPacket, 100),
 			newTrackCh:  make(chan MsgSubscriberAddTrack, 10),
-			done:        make(chan bool),
 		}
 		roomMap[roomname] = link
 
