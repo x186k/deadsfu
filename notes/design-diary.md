@@ -422,3 +422,24 @@ So if we put Peerconn creation on a single goroutine, we might be causing more p
 So, a panic inside pion (hostile sdp?) would not then be terminating the http handler, but
 would be terminating the peerconn creation GR.
 This is not a final answer on where to best do PC creation, but something to consider.
+
+## 12/14/21 Why tracks to multiple PeerConns as allowed by Pion doesn't work for us.
+
+Note: we cannot use the Pion feature where a TrackLocalStaticRTP can be bound to multiple PeerConns.
+Why? When we switch an output track from PC1 to PC2, we need to maintain RTP clock/seqnos, 
+but the group writing to a number of tracks only takes *one* RTP packet, so you cannot have individual
+different clocks and seqnos for each packet. Thus switching a receiver between two different TrackLocalStaticRTP
+just isn't usable.
+
+## 12/14/21 switching design notes
+
+One of the most important things, is that, all writes _TrackLocalWriter.WriteRTP()_ are *performed in correct order*.
+Hopefully, it is not an async call! LOL
+Anyway, to maintain this requirement one of two things must happen:
+1. All WriteRTPs happen on the same GR as add and delete updates
+2. All writes take a mutex for the group, and track switchers take both the mutexs of from old-group and new-groups.
+
+So, basically, take two mutexs when switching tracks, or use a single GR with sync writes, and sync adds/dels.
+
+
+
