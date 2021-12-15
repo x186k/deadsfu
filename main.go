@@ -739,7 +739,7 @@ func getRoomState(roomname string) *roomState {
 		roomMap[roomname] = link
 
 		go idleMediaSenderGr(link)
-		go mediaFanOutGr(link)
+		go mediaFanOutGr(link.mediaCh, link.newTrackCh)
 	}
 	roomMapMutex.Unlock()
 	return link
@@ -1388,7 +1388,7 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func mediaFanOutGr(link *roomState) {
+func mediaFanOutGr(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
 	var inputSplicers = make([]RtpSplicer, NumTrackId)
@@ -1399,10 +1399,10 @@ func mediaFanOutGr(link *roomState) {
 		// should block, no default case
 		select {
 
-		case <-link.done: // this room is done? not currently closed/sent
-			return
+		// case <-link.done: // this room is done? not currently closed/sent
+		// 	return
 
-		case m := <-link.mediaCh:
+		case m := <-mediaCh:
 
 			idlePkt := m.rxid == IdleVideo
 
@@ -1508,7 +1508,7 @@ func mediaFanOutGr(link *roomState) {
 
 			}
 
-		case m := <-link.newTrackCh:
+		case m := <-newTrackCh:
 
 			txtracks = append(txtracks, m.txtrack)
 
