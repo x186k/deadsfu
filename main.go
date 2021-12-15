@@ -1476,14 +1476,14 @@ func mediaFanOutGr(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTra
 			pkt := *m.packet // make copy
 			SpliceRTP(&inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
 
-			if txtype == Audio && rtpoutConn != nil {
-				//ptmp := pkt //copy
-				rtpbuf, err := pkt.Marshal()
-				if err != nil {
-					errlog.Print(err.Error())
-				}
-				_, _ = rtpoutConn.Write(rtpbuf)
-			}
+			// if txtype == Audio && rtpoutConn != nil {
+			// 	//ptmp := pkt //copy
+			// 	rtpbuf, err := pkt.Marshal()
+			// 	if err k {
+			// 		errlog.Print(err.Error())
+			// 	}
+			// 	_, _ = rtpoutConn.Write(rtpbuf)
+			// }
 
 			for i, tr := range txtracks {
 
