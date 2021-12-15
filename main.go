@@ -738,8 +738,12 @@ func getRoomState(roomname string) *roomState {
 		}
 		roomMap[roomname] = link
 
-		go idleMediaSenderGr(link)
-		go mediaFanOutGr(link.mediaCh, link.newTrackCh)
+		idleCh := make(chan MsgRxPacket, 100)
+		mixedCh := make(chan MsgRxPacket, 100)
+
+		go idleMediaSenderGr(idleCh)
+		go idleMixer(link.mediaCh, idleCh, mixedCh)
+		go splicerWriterGR(mixedCh, link.newTrackCh)
 	}
 	roomMapMutex.Unlock()
 	return link
@@ -1049,7 +1053,7 @@ func idleMediaLoader() {
 
 }
 
-func idleMediaSenderGr(link *roomState) {
+func idleMediaSenderGr(idleCh chan MsgRxPacket) {
 
 	fps := 5
 	seqno := uint16(0)
@@ -1082,7 +1086,7 @@ func idleMediaSenderGr(link *roomState) {
 
 			copy := pkt // critical!, we must make a copy!
 			//blocking is okay
-			link.mediaCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
+			idleCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
 
 		}
 
@@ -1090,12 +1094,6 @@ func idleMediaSenderGr(link *roomState) {
 		basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
 
 		time.Sleep(time.Until(basetime))
-
-		select {
-		case <-link.done:
-			return
-		default:
-		}
 
 	}
 }
@@ -1388,130 +1386,70 @@ func (x TrackId) String() string {
 	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
 }
 
-func mediaFanOutGr(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
+func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxPacket) {
+
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
-	var inputSplicers = make([]RtpSplicer, NumTrackId)
-	var txtracks []*TxTrack
 
 	for {
 
-		// should block, no default case
 		select {
+		case in := <-inCh:
+			lastVideoRxTime = time.Now()
 
-		// case <-link.done: // this room is done? not currently closed/sent
-		// 	return
+			if sendingIdleVid {
+				iskeyframe := isH264Keyframe(in.packet.Payload)
+				if iskeyframe {
+					sendingIdleVid = false
+					log.Println("SWITCHING TO INPUT, NOW INPUT VIDEO PRESENT")
+				}
+			} else {
+				outCh <- in
+			}
 
+		case idle := <-idleCh:
+
+			rxActive := time.Since(lastVideoRxTime) <= time.Second
+
+			if !rxActive && !sendingIdleVid {
+				iskeyframe := isH264Keyframe(idle.packet.Payload)
+				if iskeyframe {
+					sendingIdleVid = true
+					log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
+				}
+			}
+
+			if sendingIdleVid {
+				outCh <- idle
+			}
+		}
+	}
+}
+
+func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
+
+	var txtracks []*TxTrack
+
+	for {
+		select {
 		case m := <-mediaCh:
-
-			idlePkt := m.rxid == IdleVideo
-
-			mainVidPkt := m.rxid == Video
-
-			if idlePkt {
-				rxActive := time.Since(lastVideoRxTime) <= time.Second
-
-				if !rxActive && !sendingIdleVid {
-					iskeyframe := isH264Keyframe(m.packet.Payload)
-					if iskeyframe {
-						sendingIdleVid = true
-						log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
-					}
-				}
-
-			} else if mainVidPkt {
-
-				lastVideoRxTime = time.Now()
-
-				if sendingIdleVid {
-					iskeyframe := isH264Keyframe(m.packet.Payload)
-					if iskeyframe {
-						sendingIdleVid = false
-						log.Println("SWITCHING TO INPUT, AS INPUT CAME UP")
-					}
-				}
-			}
-
-			if sendingIdleVid && mainVidPkt {
-				continue
-			}
-			if !sendingIdleVid && idlePkt {
-				continue
-			}
-
-			//break dial upstream
-			// if idlePkt && *dialUpstreamUrlFlag != "" {
-			// 	// if this room is receiving the idle video, not 'real' ingress
-			// 	// and we have dialUpstream urls
-			// 	// we will see if we can connect to the upstream, by dialing it
-
-			// 	if link.ingressSema.TryAcquire(1) {
-			// 		go func() {
-			// 			defer link.ingressSema.Release(1)
-
-			// 			err := dialUpstream(link) // blocks until closed
-			// 			if err != nil {
-			// 				errlog.Println(err.Error())
-			// 				time.Sleep(time.Second)
-			// 			}
-
-			// 		}()
-			// 	}
-			// }
-
-			var txtype TrackId
-
-			//keep in mind pion ignores both payloadtype, ssrc when you use write()
-			switch m.rxid {
-			case Audio:
-				txtype = Audio
-				m.packet.PayloadType = 80 // ignored by Pion
-			case Video:
-				fallthrough
-			case IdleVideo:
-				txtype = Video
-				m.packet.PayloadType = 100 // ignored by Pion
-			}
-
-			pkt := *m.packet // make copy
-			SpliceRTP(&inputSplicers[txtype], &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
-
-			// if txtype == Audio && rtpoutConn != nil {
-			// 	//ptmp := pkt //copy
-			// 	rtpbuf, err := pkt.Marshal()
-			// 	if err k {
-			// 		errlog.Print(err.Error())
-			// 	}
-			// 	_, _ = rtpoutConn.Write(rtpbuf)
-			// }
-
 			for i, tr := range txtracks {
 
-				ismatch := txtype == tr.txid
-				//println(i,ismatch,txtype)
-				if !ismatch {
-					continue
-				}
-				//pline()
+				pkt := *m.packet // make copy XXX pool opportunity!
+
+				SpliceRTP(tr.splicer, &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
 
 				err := tr.track.WriteRTP(&pkt)
-				//println(pkt.SequenceNumber,pkt.Timestamp)
 				if err == io.ErrClosedPipe {
 					dbg.main.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
-
-					// slice tricks non-order preserving delete
 					txtracks[i] = txtracks[len(txtracks)-1]
 					txtracks[len(txtracks)-1] = nil
 					txtracks = txtracks[:len(txtracks)-1]
-
 				}
-
 			}
 
 		case m := <-newTrackCh:
-
 			txtracks = append(txtracks, m.txtrack)
-
 		}
 	}
 }
