@@ -77,6 +77,7 @@ type MsgRxPacket struct {
 }
 type MsgSubscriberAddTrack struct {
 	txtrack *TxTrack
+	txid    TrackId
 }
 
 // size optimized, not readability
@@ -95,7 +96,6 @@ type TrackId int32
 type TxTrack struct {
 	track   *webrtc.TrackLocalStaticRTP
 	splicer *RtpSplicer
-	txid    TrackId
 }
 
 type myFtlServer struct {
@@ -750,8 +750,8 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		txtrack: &TxTrack{
 			track:   track,
 			splicer: &RtpSplicer{},
-			txid:    Audio,
 		},
+		txid: link.audioSrcId,
 	}
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
@@ -769,8 +769,8 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		txtrack: &TxTrack{
 			track:   track,
 			splicer: &RtpSplicer{},
-			txid:    Video,
 		},
+		txid: link.audioSrcId,
 	}
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
@@ -1391,7 +1391,7 @@ func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddT
 
 				err := tr.track.WriteRTP(&pkt)
 				if err == io.ErrClosedPipe {
-					dbg.main.Printf("track io.ErrClosedPipe, removing track %s", tr.txid)
+					dbg.main.Printf("track io.ErrClosedPipe, removing track")
 					delete(foo[m.rxid], tr)
 				}
 			}
