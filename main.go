@@ -1297,6 +1297,12 @@ func ingressOnTrack(
 func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uint32, rxMediaCh chan MsgRxPacket) {
 
 	for {
+
+		// .Read() is faster than .ReadRTP()
+		// it may present memory management opportunities also
+		// for today, keep using .ReadRTP()
+		// buf:=make([]byte,1460) //mtu
+		// p,_,err:=rxTrack.Read(buf)
 		p, _, err := rxTrack.ReadRTP()
 		if err == io.EOF {
 			return
