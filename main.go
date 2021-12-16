@@ -1021,7 +1021,7 @@ func idleMediaSenderGr(idleCh chan MsgRxPacket) {
 
 			copy := pkt // critical!, we must make a copy!
 			//blocking is okay
-			idleCh <- MsgRxPacket{rxid: IdleVideo, packet: &copy, rxClockRate: 90000}
+			idleCh <- MsgRxPacket{rxid: -1, packet: &copy, rxClockRate: 90000}
 
 		}
 
