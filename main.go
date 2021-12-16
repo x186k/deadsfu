@@ -62,6 +62,9 @@ const (
 	whapPath      = "/whap" // 2nd slash important
 )
 
+// could have been an void*, or interface{}, int32 will be fast :)
+// not an enum
+// before the
 type TrackId int32
 
 type MsgRxPacket struct {
@@ -83,8 +86,6 @@ type RtpSplicer struct {
 	lastSN           uint16
 	snOffset         uint16
 }
-
-type TrackId int32
 
 // size optimized, not readability
 type TxTrack struct {
@@ -1356,7 +1357,7 @@ func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxP
 
 func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
 
-	var foo map[TrackId]map[*TxTrack]bool = make(map[TrackId]map[*TxTrack]bool)
+	var foo map[TrackId]map[*TxTrack]struct{} = make(map[TrackId]map[*TxTrack]struct{})
 
 	for {
 		select {
@@ -1377,6 +1378,8 @@ func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddT
 		case m := <-newTrackCh:
 			//txtracks = append(txtracks, m.txtrack)
 
+			foo[m.txid][m.txtrack] = struct{}{}
+		}
 	}
 }
 
