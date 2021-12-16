@@ -1318,22 +1318,6 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uin
 	}
 }
 
-func (x TrackId) String() string {
-
-	switch x {
-	case Video:
-		return "Video"
-	case Audio:
-		return "Audio"
-	case Data:
-		return "Data"
-	case IdleVideo:
-		return "IdleVid"
-	}
-
-	panic("<bad TrackId>:" + strconv.Itoa((int(x))))
-}
-
 func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxPacket) {
 
 	var lastVideoRxTime time.Time = time.Now()
