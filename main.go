@@ -1059,6 +1059,8 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 	return p2
 }
 
+var _ = dialUpstream
+
 func dialUpstream(link *roomState) error {
 
 	var u url.URL
