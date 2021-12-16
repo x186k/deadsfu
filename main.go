@@ -146,7 +146,7 @@ var peerConnectionConfig = webrtc.Configuration{
 	},
 }
 
-var rtpoutConn *net.UDPConn
+//var rtpoutConn *net.UDPConn
 
 var idleMediaPackets []rtp.Packet
 
