@@ -1374,10 +1374,6 @@ func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxP
 	}
 }
 
-type RTCTrack *webrtc.TrackLocalStaticRTP
-
-type TrackGroupId interface{}
-
 // single instance of this GR
 
 func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
