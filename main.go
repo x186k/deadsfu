@@ -62,13 +62,7 @@ const (
 	whapPath      = "/whap" // 2nd slash important
 )
 
-const (
-	IdleVideo  TrackId = 0
-	Video      TrackId = iota
-	Audio      TrackId = iota
-	Data       TrackId = iota
-	NumTrackId         = iota
-)
+type TrackId int32
 
 type MsgRxPacket struct {
 	rxid        TrackId
