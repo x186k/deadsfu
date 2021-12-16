@@ -1362,7 +1362,7 @@ func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxP
 
 func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
 
-	var foo map[TrackGroupId]map[*TxTrack]bool = make(map[TrackGroupId]map[*TxTrack]bool)
+	var foo map[TrackId]map[*TxTrack]bool = make(map[TrackId]map[*TxTrack]bool)
 
 	for {
 		select {
