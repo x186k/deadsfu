@@ -32,9 +32,9 @@ var ftlKey = pflag.String("ftl-key", "", "Set the ftl/obs Settings/Stream/Stream
 var ftlUdpPort = pflag.Int("ftl-udp-port", 8084, "The UDP port to use for FTL UDP rx. Zero is valid. Zero for ephemeral port num")
 
 //var ffmpeg =pflag.StringToString("ffmpeg","","ffmpeg shortcut to spawn for RTP ingress into room"
-var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1:4444'")
-var rtprx = pflag.StringArray("rtp-rx", nil, "use :port or addr:port. eg: '--rtp-rx :5004 --rtp-rx :5006' payload 96 for h264, 97 for opus")
-var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
+//var rtptx = pflag.String("rtp-tx", "", "addr:port to send rtp to. ie: '127.0.0.1:4444'")
+//var rtprx = pflag.StringArray("rtp-rx", nil, "use :port or addr:port. eg: '--rtp-rx :5004 --rtp-rx :5006' payload 96 for h264, 97 for opus")
+//var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlSource = pflag.String("html", "", "required. 'internal' suggested. HTML source: internal, none, <file-path>, <url>")
 var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
@@ -205,26 +205,6 @@ func oneTimeFlagsActions() {
 		go func() {
 			log.Fatal(http.ListenAndServe(":6060", nil))
 		}()
-	}
-
-	if *rtptx != "" {
-		raddr, err := net.ResolveUDPAddr("udp", *rtptx)
-		checkFatal(err)
-		var laddr *net.UDPAddr = nil
-		if raddr.IP.IsLoopback() && *rtpWireshark {
-			//when sending packets to loopback, if there is no receiver
-			// we would get icmp dest unreachables
-			// so we open it to/from ourself, we won't  read the pkts, but
-			// the OS will throw them away when they overflow
-			// without this, and the ICMP errors, we lose packets
-			// this allows us to use wireshark on 127.0.0.1 without issues
-			//note, if I want to use gstreamer or ffprobe, etc, this must not be done
-
-			laddr = raddr
-
-		}
-		rtpoutConn, err = net.DialUDP("udp", laddr, raddr)
-		checkFatal(err)
 	}
 
 	if *httpsDomainFlag != "" {
