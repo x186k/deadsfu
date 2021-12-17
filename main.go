@@ -68,9 +68,8 @@ const (
 type TrackId int32
 
 type MsgRxPacket struct {
-	rxid        TrackId
-	rxClockRate uint32
-	packet      *rtp.Packet
+	rxid   TrackId
+	packet *rtp.Packet
 }
 type MsgSubscriberAddTrack struct {
 	txtrack *TxTrack
@@ -89,8 +88,9 @@ type RtpSplicer struct {
 
 // size optimized, not readability
 type TxTrack struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer *RtpSplicer
+	track     *webrtc.TrackLocalStaticRTP
+	splicer   *RtpSplicer
+	clockrate uint32
 }
 
 type myFtlServer struct {
@@ -743,8 +743,9 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// blocking is okay
 	link.newTrackCh <- MsgSubscriberAddTrack{
 		txtrack: &TxTrack{
-			track:   track,
-			splicer: &RtpSplicer{},
+			track:     track,
+			splicer:   &RtpSplicer{},
+			clockrate: 0,
 		},
 		txid: link.audioSrcId,
 	}
@@ -1016,7 +1017,7 @@ func idleMediaSenderGr(idleCh chan MsgRxPacket) {
 
 			copy := pkt // critical!, we must make a copy!
 			//blocking is okay
-			idleCh <- MsgRxPacket{rxid: -1, packet: &copy, rxClockRate: 90000}
+			idleCh <- MsgRxPacket{rxid: -1, packet: &copy}
 
 		}
 
@@ -1309,7 +1310,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uin
 		}
 
 		// blocking is okay
-		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p, rxClockRate: clockrate}
+		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p}
 	}
 }
 
@@ -1364,9 +1365,16 @@ func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddT
 		case m := <-mediaCh:
 			for tr := range foo[m.rxid] {
 
+				if tr.clockrate == 0 {
+					tr.clockrate = tr.track.Codec().ClockRate
+					if tr.clockrate == 0 {
+						panic("nope")
+					}
+				}
+
 				pkt := *m.packet // make copy, XXX pool opportunity!
 
-				SpliceRTP(tr.splicer, &pkt, time.Now().UnixNano(), int64(m.rxClockRate))
+				SpliceRTP(tr.splicer, &pkt, time.Now().UnixNano(), int64(tr.clockrate))
 
 				err := tr.track.WriteRTP(&pkt)
 				if err == io.ErrClosedPipe {
@@ -1748,7 +1756,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 		}
 		p.SSRC = x.videossrc // each FTL session should have different SSRC for downstream splicer
 		// blocking is okay
-		x.rxMediaCh <- MsgRxPacket{packet: &p, rxClockRate: 90000}
+		x.rxMediaCh <- MsgRxPacket{packet: &p}
 
 	case 97:
 
@@ -1763,7 +1771,7 @@ func (x *myFtlServer) TakePacket(inf *log.Logger, dbg *log.Logger, pkt []byte) b
 		}
 		p.SSRC = x.audiossrc // each FTL session should have different SSRC for downstream splicer
 		// blocking is okay
-		x.rxMediaCh <- MsgRxPacket{packet: &p, rxClockRate: 48000}
+		x.rxMediaCh <- MsgRxPacket{packet: &p}
 	}
 	if x.badssrc > 0 && x.badssrc%100 == 10 {
 		log.Println("Bad SSRC media received :(  count:", x.badssrc)
