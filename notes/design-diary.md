@@ -441,5 +441,38 @@ Anyway, to maintain this requirement one of two things must happen:
 
 So, basically, take two mutexs when switching tracks, or use a single GR with sync writes, and sync adds/dels.
 
+## 12/15/21 switching design notes : Splicer struct
+
+Every rtc-track needs its own splicer:
+While all clocks/seqnos may start the same, tracks may leave and return to a group,
+whereas they have now diverged from the original clock/seqnos.
+
+## 12/15/21 switching design notes : MsgRxPacket / rx rtp holder
+
+This really should identify the source room.
+In addition, we need to know if the rtp is audio/video/data.
+
+So, MsgRxPacket will have a SourceId, which identifies the source room, and vid/aud/data.
+
+## 12/15/21 switching: single choke point GR on ingress
+
+We really want to avoid a single choke GR on the multiple ingress paths,
+even though said might make life easier.
+Sad face.
+(While it seems unlikely that a single GR choke would present a bottleneck,
+maybe better to play it safe.)
+
+maybe we need a single splicer/writer GR per track-group.
+switches are created on demand using pub/sub
+
+## 12/16/21 the insane pain of high-performance switching
+
+What we know:
+1. That the packet fan-out must use multiple GRs
+2. We must be able to detect when all writing-child GRs are done, so we don't create a packet-order race condition.
+Choices for maintaining the TxTrack set is:
+map[*TxTrack]struct{}, []*TxTrack, doubly or singly linked list.
+I suppose a 
+
 
 
