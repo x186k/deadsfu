@@ -472,7 +472,57 @@ What we know:
 2. We must be able to detect when all writing-child GRs are done, so we don't create a packet-order race condition.
 Choices for maintaining the TxTrack set is:
 map[*TxTrack]struct{}, []*TxTrack, doubly or singly linked list.
-I suppose a 
+
+
+## 12/16/21 once an txtrack leaves it's original group, should it be able to re-enter the original group?
+
+This is important. If we don't care about txtracks re-joining their original group, then groups really only need splice-data per-group, not per-track.
+So, if we maintain splice-data per-group, txtracks may never re-join.
+But, if we maintain splice-data per-track, txtracks may re-join their original groups.
+I don't think having every one who has changed channels having their own little tx-group of one make
+sense, so it seems to make sense to track splice-data per-track, not per-tx-group.
+*Decision: we will track splice-data per-track, not per-group*
+
+## 12/18/21 should we run one single noSignalMediaGr(), or one per input video track?
+
+If we run a single one:
+- We need to implement some pub/sub scheme, which may be more complex WRT buffering/blocking
+  
+If we run an instance per input video track:
+- Not really a big resource impact
+- Possibly easier to shutdown on zero subscribers
+- We could provide a different no-signal clip per room.
+
+functions:
+
+noSignalMediaGr()
+noSignalSwitchGr()
+
+*Decided: for each rx-video-track, we create an instance of each goroutine*
+
+## 12/18/21 should audio and video share the same channels?
+
+No, generally audio can travel from rxGR to txGR without needing to be
+looked at in the same GR, although switching may affect this.
+Yes, for switching the switchGR should read from seperate audio and video channels.
+*Decided: audio and video won't generally share the same channels*
+
+## 12/18/21 does the media packet need a track id?
+
+Currently, the media packet looks like this:
+
+type MsgRxPacket struct {
+	rxid   TrackId
+	packet *rtp.Packet
+}
+
+Mostly, 'rxid' has indicated: audio or video, or idle video.
+
+*Decided: media messages no longer indicate media type*
+
+
+
+
 
 
 
