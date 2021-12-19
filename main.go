@@ -62,19 +62,10 @@ const (
 	whapPath      = "/whap" // 2nd slash important
 )
 
-// could have been an void*, or interface{}, int32 will be fast :)
-// not an enum
-// before the
-type TrackId int32
-
 type MsgRxPacket struct {
-	rxid   TrackId
 	packet *rtp.Packet
 }
-type MsgSubscriberAddTrack struct {
-	txtrack *TxTrack
-	txid    TrackId
-}
+type MsgAddTxTrack *TxTrack
 
 // size optimized, not readability
 type RtpSplicer struct {
@@ -88,9 +79,8 @@ type RtpSplicer struct {
 
 // size optimized, not readability
 type TxTrack struct {
-	track     *webrtc.TrackLocalStaticRTP
-	splicer   *RtpSplicer
-	clockrate uint32
+	track   *webrtc.TrackLocalStaticRTP
+	splicer *RtpSplicer
 }
 
 type myFtlServer struct {
@@ -108,11 +98,11 @@ type myFtlServer struct {
 type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
-	mediaCh     chan MsgRxPacket    // where publisher sends media for '/foobar'
-	newTrackCh  chan MsgSubscriberAddTrack
-	audioSrcId  TrackId
-	videoSrcId  TrackId
+	videoCh     chan MsgMediaEtc
+	audioCh     chan MsgMediaEtc
 }
+
+type MsgMediaEtc interface{}
 
 var roomMap = make(map[string]*roomState)
 var roomMapMutex sync.Mutex
@@ -663,17 +653,21 @@ func getRoomState(roomname string) *roomState {
 		link = &roomState{
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
-			mediaCh:     make(chan MsgRxPacket, 100),
-			newTrackCh:  make(chan MsgSubscriberAddTrack, 10),
+			//this is the channel the MsgAddTrack goes to.
+			// it needs to be prior to fan out
+			videoCh: make(chan MsgMediaEtc), // where OnTrack() reader puts media
+			audioCh: make(chan MsgMediaEtc), // where OnTrack() reader puts media
 		}
 		roomMap[roomname] = link
 
-		idleCh := make(chan MsgRxPacket, 100)
-		mixedCh := make(chan MsgRxPacket, 100)
+		ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
+		go noSignalMediaGr(ch1)      //send pkts to chan
 
-		go idleMediaSenderGr(idleCh)
-		go idleMixer(link.mediaCh, idleCh, mixedCh)
-		go splicerWriterGR(mixedCh, link.newTrackCh)
+		ch2 := make(chan MsgMediaEtc) // mixed output, either RX signal, or no-input-video-clip
+		go noSignalSwitchGr(link.videoCh, ch1, ch2)
+
+		go packetToTrackFanOutGr(ch2, 90000)
+		go packetToTrackFanOutGr(link.audioCh, 48000)
 	}
 	roomMapMutex.Unlock()
 	return link
@@ -741,13 +735,9 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	go processRTCP(rtpSender)
 
 	// blocking is okay
-	link.newTrackCh <- MsgSubscriberAddTrack{
-		txtrack: &TxTrack{
-			track:     track,
-			splicer:   &RtpSplicer{},
-			clockrate: 0,
-		},
-		txid: link.audioSrcId,
+	link.audioCh <- &TxTrack{
+		track:   track,
+		splicer: &RtpSplicer{},
 	}
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
@@ -761,12 +751,9 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	go processRTCP(rtpSender2)
 
 	// blocking is okay
-	link.newTrackCh <- MsgSubscriberAddTrack{
-		txtrack: &TxTrack{
-			track:   track,
-			splicer: &RtpSplicer{},
-		},
-		txid: link.audioSrcId,
+	link.videoCh <- &TxTrack{
+		track:   track,
+		splicer: &RtpSplicer{},
 	}
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
@@ -984,7 +971,7 @@ func idleMediaLoader() {
 
 }
 
-func idleMediaSenderGr(idleCh chan MsgRxPacket) {
+func noSignalMediaGr(idleCh chan<- rtp.Packet) {
 
 	fps := 5
 	seqno := uint16(0)
@@ -1002,6 +989,8 @@ func idleMediaSenderGr(idleCh chan MsgRxPacket) {
 
 		for _, pkt := range idleMediaPackets {
 
+			pkt.SSRC = 0xdeadbeef
+
 			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
 			tsdelta := pkt.Timestamp - idleMediaPackets[0].Timestamp
 
@@ -1015,9 +1004,10 @@ func idleMediaSenderGr(idleCh chan MsgRxPacket) {
 			seqno++
 			pkt.Timestamp = tsdelta + tstotal
 
-			copy := pkt // critical!, we must make a copy!
+			//copy := pkt // critical!, we must make a copy!
+			//actuall, the downstreams shouldn't be effing with this!
 			//blocking is okay
-			idleCh <- MsgRxPacket{rxid: -1, packet: &copy}
+			idleCh <- pkt
 
 		}
 
@@ -1078,7 +1068,7 @@ func dialUpstream(link *roomState) error {
 	dbg.url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.mediaCh, link.audioSrcId, link.videoSrcId)
+		ingressOnTrack(peerConnection, track, receiver, link.audioCh, link.videoCh)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1228,9 +1218,7 @@ func ingressOnTrack(
 	peerConnection *webrtc.PeerConnection,
 	track *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
-	rxMediaCh chan MsgRxPacket,
-	audioSrcId TrackId,
-	videoSrcId TrackId) {
+	audioCh chan MsgMediaEtc, videoCh chan MsgMediaEtc) {
 
 	mimetype := track.Codec().MimeType
 	dbg.main.Println("OnTrack codec:", mimetype)
@@ -1238,7 +1226,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, audioSrcId, track.Codec().ClockRate, rxMediaCh)
+		inboundTrackReader(track, track.Codec().ClockRate, audioCh)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1286,13 +1274,13 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, videoSrcId, track.Codec().ClockRate, rxMediaCh)
+	inboundTrackReader(track, track.Codec().ClockRate, videoCh)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uint32, rxMediaCh chan MsgRxPacket) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, rxMediaCh chan MsgMediaEtc) {
 
 	for {
 
@@ -1310,11 +1298,11 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, rxid TrackId, clockrate uin
 		}
 
 		// blocking is okay
-		rxMediaCh <- MsgRxPacket{rxid: rxid, packet: p}
+		rxMediaCh <- *p
 	}
 }
 
-func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxPacket) {
+func noSignalSwitchGr(liveCh <-chan MsgMediaEtc, noSignalCh <-chan rtp.Packet, outCh chan<- MsgMediaEtc) {
 
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool
@@ -1322,25 +1310,30 @@ func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxP
 	for {
 
 		select {
-		case in := <-inCh:
+		case mm := <-liveCh:
+			switch m := mm.(type) {
+			case rtp.Packet:
+				if sendingIdleVid {
+					iskeyframe := isH264Keyframe(m.Payload)
+					if iskeyframe {
+						sendingIdleVid = false
+						log.Println("SWITCHING TO INPUT, NOW INPUT VIDEO PRESENT")
+					}
+				} else {
+					outCh <- m
+				}
+			default:
+				outCh <- mm
+
+			}
 			lastVideoRxTime = time.Now()
 
-			if sendingIdleVid {
-				iskeyframe := isH264Keyframe(in.packet.Payload)
-				if iskeyframe {
-					sendingIdleVid = false
-					log.Println("SWITCHING TO INPUT, NOW INPUT VIDEO PRESENT")
-				}
-			} else {
-				outCh <- in
-			}
-
-		case idle := <-idleCh:
+		case idle := <-noSignalCh:
 
 			rxActive := time.Since(lastVideoRxTime) <= time.Second
 
 			if !rxActive && !sendingIdleVid {
-				iskeyframe := isH264Keyframe(idle.packet.Payload)
+				iskeyframe := isH264Keyframe(idle.Payload)
 				if iskeyframe {
 					sendingIdleVid = true
 					log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
@@ -1350,43 +1343,6 @@ func idleMixer(inCh chan MsgRxPacket, idleCh chan MsgRxPacket, outCh chan MsgRxP
 			if sendingIdleVid {
 				outCh <- idle
 			}
-		}
-	}
-}
-
-// single instance of this GR
-
-func splicerWriterGR(mediaCh chan MsgRxPacket, newTrackCh chan MsgSubscriberAddTrack) {
-
-	var foo map[TrackId]map[*TxTrack]struct{} = make(map[TrackId]map[*TxTrack]struct{})
-
-	for {
-		select {
-		case m := <-mediaCh:
-			for tr := range foo[m.rxid] {
-
-				if tr.clockrate == 0 {
-					tr.clockrate = tr.track.Codec().ClockRate
-					if tr.clockrate == 0 {
-						panic("nope")
-					}
-				}
-
-				pkt := *m.packet // make copy, XXX pool opportunity!
-
-				SpliceRTP(tr.splicer, &pkt, time.Now().UnixNano(), int64(tr.clockrate))
-
-				err := tr.track.WriteRTP(&pkt)
-				if err == io.ErrClosedPipe {
-					dbg.main.Printf("track io.ErrClosedPipe, removing track")
-					delete(foo[m.rxid], tr)
-				}
-			}
-
-		case m := <-newTrackCh:
-			//txtracks = append(txtracks, m.txtrack)
-
-			foo[m.txid][m.txtrack] = struct{}{}
 		}
 	}
 }
@@ -1411,7 +1367,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 	defer peerConnection.Close()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.mediaCh, link.audioSrcId, link.videoSrcId)
+		ingressOnTrack(peerConnection, track, receiver, link.audioCh, link.videoCh)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1856,4 +1812,105 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 		return nil, err
 	}
 	return dotFileHidingFile{file}, err
+}
+
+type MsgWorker struct {
+	pkt       rtp.Packet
+	tracks    []*TxTrack
+	now       int64
+	clockrate int64
+}
+
+var writerWorkerInCh chan MsgWorker = make(chan MsgWorker, 100)
+var writerWorkerOutCh chan []*TxTrack = make(chan []*TxTrack, 100)
+var writerWorkersLaunched sync.Once
+
+var _ = writerWorker
+
+func writerWorker() {
+
+	for m := range writerWorkerInCh {
+		// 1. The code below will *NOT* write to m.pkt.Raw nor m.pkt.Payload
+		// 2. The code below will write to m.pkt.Header
+		// 3. m.pkt is a value type, so our changes to m.pkt.Header don't affect others
+
+		var closed []*TxTrack
+
+		for _, tr := range m.tracks {
+
+			SpliceRTP(tr.splicer, &m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
+
+			err := tr.track.WriteRTP(&m.pkt) // faster than packet.Write()
+			if err == io.ErrClosedPipe {
+				closed = append(closed, tr)
+			} else if err != nil {
+				errlog.Println(err.Error())
+			}
+		}
+
+		writerWorkerOutCh <- closed
+
+	}
+}
+
+//we start one trackgroupwriter per trackgroup
+var _ = packetToTrackFanOutGr
+
+func packetToTrackFanOutGr(ch chan MsgMediaEtc, clockrate int64) {
+
+	tracks := make(map[*TxTrack]struct{})
+
+	// start worker GRs
+	f := func() {
+		for j := 0; j < runtime.NumCPU(); j++ {
+			go writerWorker()
+		}
+	}
+	writerWorkersLaunched.Do(f)
+
+	// XXX a lot of thought can go into sizing chunks
+	// etc etc etc.
+	// now is not the time to do so.
+	const chunkSize = 10 // send N tracks to the workers
+
+	for mm := range ch { // p is a local copy rtp.Packet, but slices point to shared byte array!
+
+		switch m := mm.(type) {
+		case rtp.Packet:
+			now := time.Now().UnixNano()
+			len := len(tracks)
+			keys := make([]*TxTrack, len)
+
+			i := 0
+			for k := range tracks {
+				keys[i] = k
+				i++
+			}
+
+			for j := 0; j < len; j += chunkSize {
+				end := j + chunkSize
+				if end > len {
+					end = len
+				}
+				x := keys[j:end]
+				writerWorkerInCh <- MsgWorker{m, x, now, int64(clockrate)}
+			}
+
+			for j := 0; j < len; j += chunkSize {
+				closedTracks := <-writerWorkerOutCh
+				for _, t := range closedTracks {
+					delete(tracks, t)
+				}
+			}
+		case MsgAddTxTrack:
+			if _, ok := tracks[m]; ok {
+				panic("adding pre-existing track")
+			}
+			tracks[m] = struct{}{}
+
+		}
+
+		// xxx delete the closed tracks
+
+	}
 }
