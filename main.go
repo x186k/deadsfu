@@ -1871,10 +1871,29 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 		select {
 		case m := <-ch:
 			now := time.Now().UnixNano()
-			len := len(tracks)
-			keys := make([]*TxTrack, len)
+			xlen := len(tracks)
+			keys := make([]*TxTrack, xlen)
 
-			if true {
+			simpleWriter := true
+			if simpleWriter {
+
+				for tr := range tracks {
+
+					// if you don't make a copy here,
+					// rather than the original packet getting used for
+					// each rather, the timestamp/seqno updated packet gets used
+					// from the prior track. watch two no-signal tabs on the same room
+					// after reverting this to see the issue
+					copy := m
+					SpliceRTP(tr.splicer, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
+					err := tr.track.WriteRTP(&copy)                     // faster than packet.Write()
+					if err == io.ErrClosedPipe {
+						delete(tracks, tr)
+						log.Println("remove track, n left:", len(tracks))
+					} else if err != nil {
+						errlog.Println(err.Error())
+					}
+				}
 
 			} else {
 				i := 0
@@ -1883,16 +1902,16 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 					i++
 				}
 
-				for j := 0; j < len; j += chunkSize {
+				for j := 0; j < xlen; j += chunkSize {
 					end := j + chunkSize
-					if end > len {
-						end = len
+					if end > xlen {
+						end = xlen
 					}
 					x := keys[j:end]
 					writerWorkerInCh <- MsgWorker{m, x, now, int64(clockrate)}
 				}
 
-				for j := 0; j < len; j += chunkSize {
+				for j := 0; j < xlen; j += chunkSize {
 					closedTracks := <-writerWorkerOutCh
 					for _, t := range closedTracks {
 						delete(tracks, t)
