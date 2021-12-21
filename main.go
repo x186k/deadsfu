@@ -1847,6 +1847,12 @@ func writerWorker() {
 	}
 }
 
+func launchWriterWorkers() {
+	for j := 0; j < runtime.NumCPU(); j++ {
+		go writerWorker()
+	}
+}
+
 //we start one trackgroupwriter per trackgroup
 var _ = packetToTrackFanOutGr
 
@@ -1855,12 +1861,7 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 	tracks := make(map[*TxTrack]struct{})
 
 	// start worker GRs
-	f := func() {
-		for j := 0; j < runtime.NumCPU(); j++ {
-			go writerWorker()
-		}
-	}
-	writerWorkersLaunched.Do(f)
+	writerWorkersLaunched.Do(launchWriterWorkers)
 
 	// XXX a lot of thought can go into sizing chunks
 	// etc etc etc.
