@@ -97,6 +97,8 @@ type roomState struct {
 	audioCh         chan rtp.Packet
 	addVideoTrackCh chan *TxTrack
 	delVideoTrackCh chan *TxTrack
+	addAudioTrackCh chan *TxTrack
+	delAudioTrackCh chan *TxTrack
 }
 
 var roomMap = make(map[string]*roomState)
@@ -654,17 +656,20 @@ func getRoomState(roomname string) *roomState {
 			audioCh:         make(chan rtp.Packet), // where OnTrack() reader puts media
 			addVideoTrackCh: make(chan *TxTrack),
 			delVideoTrackCh: make(chan *TxTrack),
+			addAudioTrackCh: make(chan *TxTrack),
+			delAudioTrackCh: make(chan *TxTrack),
 		}
 		roomMap[roomname] = link
 
+		// ## VIDEO
 		ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
 		go noSignalMediaGr(ch1)      //send pkts to chan
-
 		ch2 := make(chan rtp.Packet) // mixed output, either RX signal, or no-input-video-clip
 		go noSignalSwitchGr(link.videoCh, ch1, ch2)
-
 		go packetToTrackFanOutGr(ch2, link.addVideoTrackCh, link.delVideoTrackCh, 90000)
-		//go packetToTrackFanOutGr(link.audioCh, 48000)
+
+		// ## AUDIO
+		go packetToTrackFanOutGr(link.audioCh, link.addAudioTrackCh, link.delAudioTrackCh, 48000)
 	}
 	roomMapMutex.Unlock()
 	return link
@@ -732,7 +737,7 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	go processRTCP(rtpSender)
 
 	// blocking is okay
-	link.addVideoTrackCh <- &TxTrack{
+	link.addAudioTrackCh <- &TxTrack{
 		track:   track,
 		splicer: &RtpSplicer{},
 	}
