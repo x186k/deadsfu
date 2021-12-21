@@ -1302,7 +1302,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, rxMediaCh
 func noSignalSwitchGr(liveCh <-chan rtp.Packet, noSignalCh <-chan rtp.Packet, outCh chan<- rtp.Packet) {
 
 	var lastVideoRxTime time.Time = time.Now()
-	var sendingIdleVid bool
+	var sendingIdleVid bool = true
 
 	for {
 
