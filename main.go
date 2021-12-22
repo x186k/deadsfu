@@ -75,7 +75,7 @@ type RtpSplicer struct {
 // size optimized, not readability
 type TxTrack struct {
 	track   *webrtc.TrackLocalStaticRTP
-	splicer *RtpSplicer
+	splicer RtpSplicer
 }
 
 type myFtlServer struct {
@@ -739,7 +739,7 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// blocking is okay
 	link.addAudioTrackCh <- &TxTrack{
 		track:   track,
-		splicer: &RtpSplicer{},
+		splicer: RtpSplicer{},
 	}
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
@@ -755,7 +755,7 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// blocking is okay
 	link.addVideoTrackCh <- &TxTrack{
 		track:   track,
-		splicer: &RtpSplicer{},
+		splicer: RtpSplicer{},
 	}
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
@@ -1837,7 +1837,7 @@ func writerWorker() {
 
 		for _, tr := range m.tracks {
 
-			SpliceRTP(tr.splicer, &m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
+			SpliceRTP(&tr.splicer, &m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
 
 			err := tr.track.WriteRTP(&m.pkt) // faster than packet.Write()
 			if err == io.ErrClosedPipe {
@@ -1891,8 +1891,8 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 					// from the prior track. watch two no-signal tabs on the same room
 					// after reverting this to see the issue
 					copy := m
-					SpliceRTP(tr.splicer, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
-					err := tr.track.WriteRTP(&copy)                     // faster than packet.Write()
+					SpliceRTP(&tr.splicer, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
+					err := tr.track.WriteRTP(&copy)                      // faster than packet.Write()
 					if err == io.ErrClosedPipe {
 						delete(tracks, tr)
 						log.Println("remove track, n left:", len(tracks))
