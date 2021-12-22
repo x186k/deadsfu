@@ -1813,9 +1813,14 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 	return dotFileHidingFile{file}, err
 }
 
+type MsgTxTrackAddDel struct {
+	txt    TxTrack
+	result chan<- TxTrack
+}
+
 type MsgWorker struct {
 	pkt       rtp.Packet
-	tracks    []*TxTrack
+	tracks    []TxTrack
 	now       int64
 	clockrate int64
 }
@@ -1841,7 +1846,7 @@ func writerWorker() {
 
 			err := tr.track.WriteRTP(&m.pkt) // faster than packet.Write()
 			if err == io.ErrClosedPipe {
-				closed = append(closed, tr)
+				closed = append(closed, &tr)
 			} else if err != nil {
 				errlog.Println(err.Error())
 			}
@@ -1863,7 +1868,7 @@ var _ = packetToTrackFanOutGr
 
 func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack chan *TxTrack, clockrate int64) {
 
-	tracks := make(map[*TxTrack]struct{})
+	a := make([]TxTrack, 0) // we don't use pointers for memory locality/perf reasons
 
 	// start worker GRs
 	writerWorkersLaunched.Do(launchWriterWorkers)
@@ -1877,13 +1882,15 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 		select {
 		case m := <-ch:
 			now := time.Now().UnixNano()
-			xlen := len(tracks)
-			keys := make([]*TxTrack, xlen)
+			xlen := len(a)
 
 			simpleWriter := true
 			if simpleWriter {
 
-				for tr := range tracks {
+				for i := range a {
+					//we have to do this because of our memory locatilty optimization
+					// if we used for _, txt := range, then txt would be a value type, not pointer
+					txt := &a[i]
 
 					// if you don't make a copy here,
 					// rather than the original packet getting used for
@@ -1891,52 +1898,77 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 					// from the prior track. watch two no-signal tabs on the same room
 					// after reverting this to see the issue
 					copy := m
-					SpliceRTP(&tr.splicer, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
-					err := tr.track.WriteRTP(&copy)                      // faster than packet.Write()
+					SpliceRTP(&txt.splicer, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
+					//pline(txt.splicer.lastSN, txt.splicer.lastTS)
+					err := txt.track.WriteRTP(&copy) // faster than packet.Write()
 					if err == io.ErrClosedPipe {
-						delete(tracks, tr)
-						log.Println("remove track, n left:", len(tracks))
+
+						// delete slice trick
+						a[i] = a[len(a)-1]
+						a[len(a)-1] = TxTrack{}
+						a = a[:len(a)-1]
+
+						//log.Println("track closed, removing:", len(a))
+
 					} else if err != nil {
+						//pline("err2")
 						errlog.Println(err.Error())
 					}
 				}
 
 			} else {
-				i := 0
-				for k := range tracks {
-					keys[i] = k
-					i++
-				}
 
 				for j := 0; j < xlen; j += chunkSize {
 					end := j + chunkSize
 					if end > xlen {
 						end = xlen
 					}
-					x := keys[j:end]
+					x := a[j:end]
 					writerWorkerInCh <- MsgWorker{m, x, now, int64(clockrate)}
 				}
 
 				for j := 0; j < xlen; j += chunkSize {
 					closedTracks := <-writerWorkerOutCh
-					for _, t := range closedTracks {
-						delete(tracks, t)
+					for _, removed := range closedTracks {
+
+						// delete slice trick
+						*removed = a[len(a)-1]
+						a[len(a)-1] = TxTrack{}
+						a = a[:len(a)-1]
+
 					}
 				}
 
 			}
 
 		case tr := <-addTrack:
-			if _, ok := tracks[tr]; ok {
-				panic("adding pre-existing track")
-			}
-			tracks[tr] = struct{}{}
+			// XXX slow safety check. remove someday: 2031?
 
-		case tr := <-delTrack:
-			if _, ok := tracks[tr]; ok {
-				panic("adding pre-existing track")
+			for i := range a {
+				if tr == &a[i] {
+					panic("add2")
+				}
 			}
-			tracks[tr] = struct{}{}
+
+			a = append(a, *tr)
+
+		case removed := <-delTrack:
+			// XXX slow safety check. remove someday: 2031?
+			// make sure pointer lies on our slice.
+			i := 0
+			for i = range a {
+				if removed == &a[i] {
+					break
+				}
+			}
+			if i == len(a) {
+				panic("not found")
+			}
+
+			// delete slice trick
+			*removed = a[len(a)-1]
+			a[len(a)-1] = TxTrack{}
+			a = a[:len(a)-1]
 		}
 	}
 
