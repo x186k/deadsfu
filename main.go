@@ -207,9 +207,9 @@ func checkFatal(err error) {
 
 var _ = pline
 
-func pline() {
+func pline(a ...interface{}) {
 	_, fileName, fileLine, _ := runtime.Caller(1)
-	fmt.Println("pline:", filepath.Base(fileName), fileLine)
+	fmt.Println("pline:", filepath.Base(fileName), fileLine, a)
 }
 
 var _ = fileline
