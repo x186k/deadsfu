@@ -43,8 +43,6 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 
-
-
 	//redigo "github.com/gomodule/redigo/redis"
 
 	"net/http/httputil"
@@ -654,8 +652,8 @@ func getRoomState(roomname string) *roomState {
 			ingressSema: semaphore.NewWeighted(int64(1)),
 			//this is the channel the MsgAddTrack goes to.
 			// it needs to be prior to fan out
-			videoCh:         make(chan rtp.Packet), // where OnTrack() reader puts media
-			audioCh:         make(chan rtp.Packet), // where OnTrack() reader puts media
+			videoCh:         make(chan rtp.Packet), // where OnTrack() reader sends media
+			audioCh:         make(chan rtp.Packet), // where OnTrack() reader sends media
 			addVideoTrackCh: make(chan MsgTxTrackAddDel),
 			delVideoTrackCh: make(chan MsgTxTrackAddDel),
 			addAudioTrackCh: make(chan MsgTxTrackAddDel),
@@ -738,7 +736,7 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	}
 	go processRTCP(rtpSender)
 
-	resultCh := make(chan TxTrack)
+	resultCh := make(chan *TxTrack)
 	// blocking is okay
 	link.addAudioTrackCh <- MsgTxTrackAddDel{
 		txt: &TxTrack{
@@ -747,6 +745,7 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		},
 		result: resultCh,
 	}
+	// foof xxx we need to save this somewhere
 	<-resultCh
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
@@ -767,6 +766,7 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		},
 		result: resultCh,
 	}
+	// foof xxx we need to save this somewhere
 	<-resultCh
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
@@ -1826,7 +1826,7 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 
 type MsgTxTrackAddDel struct {
 	txt    *TxTrack
-	result chan<- TxTrack
+	result chan<- *TxTrack
 }
 
 type MsgWorker struct {
@@ -1964,7 +1964,7 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 			a = append(a, *m.txt)
 
 			select {
-			case m.result <- TxTrack{}: // there is nothing really to return here!, so we offer zero value
+			case m.result <- &TxTrack{}: // there is nothing really to return here!, so we offer zero value
 			default:
 				panic("no reader")
 			}
@@ -1988,7 +1988,7 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 			a = a[:len(a)-1]
 
 			select {
-			case m.result <- removed: // provide the removed TxTrack to sender
+			case m.result <- &removed: // provide the removed TxTrack to sender
 			default:
 				panic("no reader")
 			}
