@@ -95,10 +95,10 @@ type roomState struct {
 	ingressSema     *semaphore.Weighted // is a publisher already using '/foobar' ??
 	videoCh         chan rtp.Packet
 	audioCh         chan rtp.Packet
-	addVideoTrackCh chan *TxTrack
-	delVideoTrackCh chan *TxTrack
-	addAudioTrackCh chan *TxTrack
-	delAudioTrackCh chan *TxTrack
+	addVideoTrackCh chan MsgTxTrackAddDel
+	delVideoTrackCh chan MsgTxTrackAddDel
+	addAudioTrackCh chan MsgTxTrackAddDel
+	delAudioTrackCh chan MsgTxTrackAddDel
 }
 
 var roomMap = make(map[string]*roomState)
@@ -654,10 +654,10 @@ func getRoomState(roomname string) *roomState {
 			// it needs to be prior to fan out
 			videoCh:         make(chan rtp.Packet), // where OnTrack() reader puts media
 			audioCh:         make(chan rtp.Packet), // where OnTrack() reader puts media
-			addVideoTrackCh: make(chan *TxTrack),
-			delVideoTrackCh: make(chan *TxTrack),
-			addAudioTrackCh: make(chan *TxTrack),
-			delAudioTrackCh: make(chan *TxTrack),
+			addVideoTrackCh: make(chan MsgTxTrackAddDel),
+			delVideoTrackCh: make(chan MsgTxTrackAddDel),
+			addAudioTrackCh: make(chan MsgTxTrackAddDel),
+			delAudioTrackCh: make(chan MsgTxTrackAddDel),
 		}
 		roomMap[roomname] = link
 
@@ -736,11 +736,16 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	}
 	go processRTCP(rtpSender)
 
+	resultCh := make(chan TxTrack)
 	// blocking is okay
-	link.addAudioTrackCh <- &TxTrack{
-		track:   track,
-		splicer: RtpSplicer{},
+	link.addAudioTrackCh <- MsgTxTrackAddDel{
+		txt: &TxTrack{
+			track:   track,
+			splicer: RtpSplicer{},
+		},
+		result: resultCh,
 	}
+	<-resultCh
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
 	if err != nil {
@@ -753,10 +758,14 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	go processRTCP(rtpSender2)
 
 	// blocking is okay
-	link.addVideoTrackCh <- &TxTrack{
-		track:   track,
-		splicer: RtpSplicer{},
+	link.addVideoTrackCh <- MsgTxTrackAddDel{
+		txt: &TxTrack{
+			track:   track,
+			splicer: RtpSplicer{},
+		},
+		result: resultCh,
 	}
+	<-resultCh
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -1814,7 +1823,7 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 }
 
 type MsgTxTrackAddDel struct {
-	txt    TxTrack
+	txt    *TxTrack
 	result chan<- TxTrack
 }
 
@@ -1866,7 +1875,7 @@ func launchWriterWorkers() {
 //we start one trackgroupwriter per trackgroup
 var _ = packetToTrackFanOutGr
 
-func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack chan *TxTrack, clockrate int64) {
+func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, delTrack chan MsgTxTrackAddDel, clockrate int64) {
 
 	a := make([]TxTrack, 0) // we don't use pointers for memory locality/perf reasons
 
@@ -1941,34 +1950,47 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan *TxTrack, delTrack 
 
 			}
 
-		case tr := <-addTrack:
+		case m := <-addTrack:
 			// XXX slow safety check. remove someday: 2031?
 
 			for i := range a {
-				if tr == &a[i] {
-					panic("add2")
+				if m.txt == &a[i] {
+					panic("already in slice! bad")
 				}
 			}
 
-			a = append(a, *tr)
+			a = append(a, *m.txt)
 
-		case removed := <-delTrack:
+			select {
+			case m.result <- TxTrack{}: // there is nothing really to return here!, so we offer zero value
+			default:
+				panic("no reader")
+			}
+
+		case m := <-delTrack:
 			// XXX slow safety check. remove someday: 2031?
 			// make sure pointer lies on our slice.
 			i := 0
 			for i = range a {
-				if removed == &a[i] {
-					break
+				if m.txt == &a[i] {
+					break //found it
 				}
 			}
-			if i == len(a) {
+			if i == len(a) { //not found
 				panic("not found")
 			}
 
 			// delete slice trick
-			*removed = a[len(a)-1]
+			removed := a[len(a)-1]
 			a[len(a)-1] = TxTrack{}
 			a = a[:len(a)-1]
+
+			select {
+			case m.result <- removed: // provide the removed TxTrack to sender
+			default:
+				panic("no reader")
+			}
+
 		}
 	}
 
