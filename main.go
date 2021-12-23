@@ -99,6 +99,8 @@ type roomState struct {
 	delVideoTrackCh chan MsgTxTrackAddDel
 	addAudioTrackCh chan MsgTxTrackAddDel
 	delAudioTrackCh chan MsgTxTrackAddDel
+	audioRawSubs    Pubsub
+	videoRawSubs    Pubsub
 }
 
 var roomMap = make(map[string]*roomState)
@@ -662,14 +664,20 @@ func getRoomState(roomname string) *roomState {
 		roomMap[roomname] = link
 
 		// ## VIDEO
-		ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
-		go noSignalMediaGr(ch1)      //send pkts to chan
-		ch2 := make(chan rtp.Packet) // mixed output, either RX signal, or no-input-video-clip
-		go noSignalSwitchGr(link.videoCh, ch1, ch2)
-		go packetToTrackFanOutGr(ch2, link.addVideoTrackCh, link.delVideoTrackCh, 90000)
+		if false {
+			link.videoRawSubs.Subscribe(make(chan rtp.Packet))
 
-		// ## AUDIO
-		go packetToTrackFanOutGr(link.audioCh, link.addAudioTrackCh, link.delAudioTrackCh, 48000)
+			ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
+			go noSignalMediaGr(ch1)      //send pkts to chan
+
+			ch2 := make(chan rtp.Packet) // mixed output, either RX signal, or no-input-video-clip
+			go noSignalSwitchGr(link.videoCh, ch1, ch2)
+			go packetToTrackFanOutGr(ch2, link.addVideoTrackCh, link.delVideoTrackCh, 90000)
+
+			// ## AUDIO
+			go packetToTrackFanOutGr(link.audioCh, link.addAudioTrackCh, link.delAudioTrackCh, 48000)
+		}
+
 	}
 	roomMapMutex.Unlock()
 	return link
@@ -736,17 +744,19 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	}
 	go processRTCP(rtpSender)
 
-	resultCh := make(chan *TxTrack)
-	// blocking is okay
-	link.addAudioTrackCh <- MsgTxTrackAddDel{
-		txt: &TxTrack{
-			track:   track,
-			splicer: RtpSplicer{},
-		},
-		result: resultCh,
-	}
-	// foof xxx we need to save this somewhere
-	<-resultCh
+	// XXX for now, we don't do anything with audio
+
+	// resultCh := make(chan *TxTrack)
+	// // blocking is okay
+	// link.addAudioTrackCh <- MsgTxTrackAddDel{
+	// 	txt: &TxTrack{
+	// 		track:   track,
+	// 		splicer: RtpSplicer{},
+	// 	},
+	// 	result: resultCh,
+	// }
+	// // foof xxx we need to save this somewhere
+	// <-resultCh
 
 	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
 	if err != nil {
@@ -758,16 +768,40 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	}
 	go processRTCP(rtpSender2)
 
-	// blocking is okay
-	link.addVideoTrackCh <- MsgTxTrackAddDel{
-		txt: &TxTrack{
-			track:   track,
-			splicer: RtpSplicer{},
-		},
-		result: resultCh,
-	}
-	// foof xxx we need to save this somewhere
-	<-resultCh
+	// // blocking is okay
+	// link.addVideoTrackCh <- MsgTxTrackAddDel{
+	// 	txt: &TxTrack{
+	// 		track:   track,
+	// 		splicer: RtpSplicer{},
+	// 	},
+	// 	result: resultCh,
+	// }
+	// // foof xxx we need to save this somewhere
+	// <-resultCh
+
+	go func() {
+		chch := make(chan rtp.Packet, 100)
+		defer close(chch)
+
+		chptr := link.videoRawSubs.Subscribe(chch)
+		defer link.videoRawSubs.Unubscribe(chptr)
+
+		tr := TxTrack{}
+		tr.track = track
+
+		for pkt := range chch {
+			now := time.Now().UnixNano()
+			SpliceRTP(&tr.splicer, &pkt, now, int64(90000)) // writes all over m.pkt.Header
+			err := tr.track.WriteRTP(&pkt)                  // faster than packet.Write()
+			if err == io.ErrClosedPipe {
+				return
+
+			} else if err != nil {
+				errlog.Println(err.Error())
+			}
+		}
+
+	}()
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -1081,7 +1115,7 @@ func dialUpstream(link *roomState) error {
 	dbg.url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.audioCh, link.videoCh)
+		ingressOnTrack(peerConnection, track, receiver, link)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1231,7 +1265,7 @@ func ingressOnTrack(
 	peerConnection *webrtc.PeerConnection,
 	track *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
-	audioCh chan rtp.Packet, videoCh chan rtp.Packet) {
+	link *roomState) {
 
 	mimetype := track.Codec().MimeType
 	dbg.main.Println("OnTrack codec:", mimetype)
@@ -1239,7 +1273,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, audioCh)
+		inboundTrackReader(track, track.Codec().ClockRate, &link.audioRawSubs)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1287,13 +1321,13 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, videoCh)
+	inboundTrackReader(track, track.Codec().ClockRate, &link.videoRawSubs)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, rxMediaCh chan rtp.Packet) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, pubsub *Pubsub) {
 
 	for {
 
@@ -1304,6 +1338,8 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, rxMediaCh
 		// p,_,err:=rxTrack.Read(buf)
 		p, _, err := rxTrack.ReadRTP()
 		if err == io.EOF {
+			//XXX
+			//pubsub.CloseSubs()
 			return
 		} else if err != nil {
 			errlog.Println(err.Error())
@@ -1311,7 +1347,8 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, rxMediaCh
 		}
 
 		// blocking is okay
-		rxMediaCh <- *p
+		//rxMediaCh <- *p
+		pubsub.Publish(*p)
 	}
 }
 
@@ -1377,7 +1414,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 	defer peerConnection.Close()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link.audioCh, link.videoCh)
+		ingressOnTrack(peerConnection, track, receiver, link)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
