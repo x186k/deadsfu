@@ -91,16 +91,11 @@ type myFtlServer struct {
 // mostly the channel on which a /pub puts media for a /sub to send out
 // this struct, is currently IMMUTABLE, ideally, it stays that way
 type roomState struct {
-	roomname        string
-	ingressSema     *semaphore.Weighted // is a publisher already using '/foobar' ??
-	videoCh         chan rtp.Packet
-	audioCh         chan rtp.Packet
-	addVideoTrackCh chan MsgTxTrackAddDel
-	delVideoTrackCh chan MsgTxTrackAddDel
-	addAudioTrackCh chan MsgTxTrackAddDel
-	delAudioTrackCh chan MsgTxTrackAddDel
-	audioRawSubs    Pubsub
-	videoRawSubs    Pubsub
+	roomname    string
+	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
+
+	audioRawSubs Pubsub
+	videoRawSubs Pubsub
 }
 
 var roomMap = make(map[string]*roomState)
@@ -650,16 +645,7 @@ func getRoomState(roomname string) *roomState {
 	link, found := roomMap[roomname]
 	if !found {
 		link = &roomState{
-			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
-			//this is the channel the MsgAddTrack goes to.
-			// it needs to be prior to fan out
-			videoCh:         make(chan rtp.Packet), // where OnTrack() reader sends media
-			audioCh:         make(chan rtp.Packet), // where OnTrack() reader sends media
-			addVideoTrackCh: make(chan MsgTxTrackAddDel),
-			delVideoTrackCh: make(chan MsgTxTrackAddDel),
-			addAudioTrackCh: make(chan MsgTxTrackAddDel),
-			delAudioTrackCh: make(chan MsgTxTrackAddDel),
 		}
 		roomMap[roomname] = link
 
@@ -668,14 +654,14 @@ func getRoomState(roomname string) *roomState {
 			link.videoRawSubs.Subscribe(make(chan rtp.Packet))
 
 			ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
-			go noSignalMediaGr(ch1)      //send pkts to chan
+			go noSignalGeneratorGr(ch1)  //send pkts to chan
 
 			ch2 := make(chan rtp.Packet) // mixed output, either RX signal, or no-input-video-clip
-			go noSignalSwitchGr(link.videoCh, ch1, ch2)
-			go packetToTrackFanOutGr(ch2, link.addVideoTrackCh, link.delVideoTrackCh, 90000)
+			go noSignalSwitchGr(nil, ch1, ch2)
+			go packetToTrackFanOutGr(ch2, nil, nil, 90000)
 
 			// ## AUDIO
-			go packetToTrackFanOutGr(link.audioCh, link.addAudioTrackCh, link.delAudioTrackCh, 48000)
+			go packetToTrackFanOutGr(nil, nil, nil, 48000)
 		}
 
 	}
@@ -1019,7 +1005,7 @@ func idleMediaLoader() {
 
 }
 
-func noSignalMediaGr(idleCh chan<- rtp.Packet) {
+func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
 
 	fps := 5
 	seqno := uint16(0)
