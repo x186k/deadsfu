@@ -34,15 +34,13 @@ func (ps *Pubsub) UnsubscribeAndClose(removed *chan rtp.Packet) {
 
 func (ps *Pubsub) Publish(p rtp.Packet) {
 
-	// faster lock period
-	ps.mu.RLock()
-	a := make([]chan rtp.Packet, len(ps.subs))
-	copy(a, ps.subs)
-	ps.mu.RUnlock()
-
 	discardOnBusy := true
 
-	for _, v := range a {
+	// cannot make a copy of the slice
+	// in order to reduce lock period.
+	// as it creates a race on send/close
+	ps.mu.RLock()
+	for _, v := range ps.subs {
 		if discardOnBusy {
 			select {
 			case v <- p:
@@ -52,4 +50,5 @@ func (ps *Pubsub) Publish(p rtp.Packet) {
 			v <- p
 		}
 	}
+	ps.mu.RUnlock()
 }
