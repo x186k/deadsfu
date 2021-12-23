@@ -781,10 +781,11 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	go func() {
 		chch := make(chan rtp.Packet, 100)
-		defer close(chch)
+		// DO NOT!: defer close(chch)
+		// we rely on the UnsubscribeAndClose will do that
 
 		chptr := link.videoRawSubs.Subscribe(chch)
-		defer link.videoRawSubs.Unubscribe(chptr)
+		defer link.videoRawSubs.UnsubscribeAndClose(chptr)
 
 		tr := TxTrack{}
 		tr.track = track

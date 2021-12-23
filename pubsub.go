@@ -20,11 +20,11 @@ func (ps *Pubsub) Subscribe(ch chan rtp.Packet) *chan rtp.Packet {
 	return &ps.subs[len(ps.subs)-1]
 }
 
-func (ps *Pubsub) Unubscribe(removed *chan rtp.Packet) {
+func (ps *Pubsub) UnsubscribeAndClose(removed *chan rtp.Packet) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	//close(*removed)
+	close(*removed)
 
 	// delete slice trick
 	*removed = ps.subs[len(ps.subs)-1]
