@@ -179,6 +179,7 @@ go build .
 - [Sayan Bhattacharya](https://github.com/Thunder80) Louper developer.
 - [Charles Surett](https://github.com/scj643) Early user.
 - [Alex Peder](https://artiflix.com/) Project supporter.
+- [Akash](https://github.com/discist) Early user.
 
 
 
