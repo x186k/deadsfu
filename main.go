@@ -94,8 +94,10 @@ type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 
-	audioRawSubs Pubsub
-	videoRawSubs Pubsub
+	videoOnTrackOut chan rtp.Packet
+	audioOnTrackOut chan rtp.Packet
+
+	newSubCh chan MsgNewSubscriber
 }
 
 var roomMap = make(map[string]*roomState)
@@ -205,8 +207,8 @@ func checkFatal(err error) {
 var _ = pline
 
 func pline(a ...interface{}) {
-	_, fileName, fileLine, _ := runtime.Caller(1)
-	fmt.Println("pline:", filepath.Base(fileName), fileLine, a)
+	b := fmt.Sprint("pline:", a)
+	_ = log.Output(2, b)
 }
 
 var _ = fileline
@@ -645,13 +647,21 @@ func getRoomState(roomname string) *roomState {
 	link, found := roomMap[roomname]
 	if !found {
 		link = &roomState{
+			roomname: roomname,
+
 			ingressSema: semaphore.NewWeighted(int64(1)),
+
+			videoOnTrackOut: make(chan rtp.Packet),
+			audioOnTrackOut: make(chan rtp.Packet),
+			newSubCh:        make(chan MsgNewSubscriber),
 		}
 		roomMap[roomname] = link
 
+		go mainSwitchGr(link.audioOnTrackOut, link.videoOnTrackOut, link.newSubCh)
+
 		// ## VIDEO
 		if false {
-			link.videoRawSubs.Subscribe(make(chan rtp.Packet))
+			//link.videoRawSubs.Subscribe(make(chan rtp.Packet))
 
 			ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
 			go noSignalGeneratorGr(ch1)  //send pkts to chan
@@ -686,7 +696,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
-func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
+func subPCLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
 	peerConnection, err := newPeerConnection()
 	if err != nil {
 		return err
@@ -720,11 +730,11 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	logTransceivers("offer-added", peerConnection)
 
-	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
+	audioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	if err != nil {
 		return err
 	}
-	rtpSender, err := peerConnection.AddTrack(track)
+	rtpSender, err := peerConnection.AddTrack(audioTrack)
 	if err != nil {
 		return err
 	}
@@ -744,15 +754,22 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// // foof xxx we need to save this somewhere
 	// <-resultCh
 
-	track, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
+	videoTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
 	if err != nil {
 		return err
 	}
-	rtpSender2, err := peerConnection.AddTrack(track)
+	rtpSender2, err := peerConnection.AddTrack(videoTrack)
 	if err != nil {
 		return err
 	}
 	go processRTCP(rtpSender2)
+
+	peerConnection.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
+		log.Println(333, pcs.String())
+
+	})
+	// this will never fire, because the subscriber only receives.
+	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { panic(77777) })
 
 	// // blocking is okay
 	// link.addVideoTrackCh <- MsgTxTrackAddDel{
@@ -765,30 +782,9 @@ func subHandlerGR(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// // foof xxx we need to save this somewhere
 	// <-resultCh
 
-	go func() {
-		chch := make(chan rtp.Packet, 100)
-		// DO NOT!: defer close(chch)
-		// we rely on the UnsubscribeAndClose will do that
-
-		chptr := link.videoRawSubs.Subscribe(chch)
-		defer link.videoRawSubs.UnsubscribeAndClose(chptr)
-
-		tr := TxTrack{}
-		tr.track = track
-
-		for pkt := range chch {
-			now := time.Now().UnixNano()
-			SpliceRTP(&tr.splicer, &pkt, now, int64(90000)) // writes all over m.pkt.Header
-			err := tr.track.WriteRTP(&pkt)                  // faster than packet.Write()
-			if err == io.ErrClosedPipe {
-				return
-
-			} else if err != nil {
-				errlog.Println(err.Error())
-			}
-		}
-
-	}()
+	link.newSubCh <- MsgNewSubscriber{
+		video: videoTrack,
+	}
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -845,12 +841,12 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	dbg.url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
-	sdpCh := make(chan *webrtc.SessionDescription)
+	sdpCh := make(chan *webrtc.SessionDescription) // 
 	errCh := make(chan error)
 
 	go func() {
 
-		err := subHandlerGR(string(offersdpbytes), link, sdpCh)
+		err := subPCLifetimeGr(string(offersdpbytes), link, sdpCh)
 		if err != nil {
 			errlog.Println(err.Error())
 			select {
@@ -1260,7 +1256,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, &link.audioRawSubs)
+		inboundTrackReader(track, track.Codec().ClockRate, link.audioOnTrackOut)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1308,13 +1304,13 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, &link.videoRawSubs)
+	inboundTrackReader(track, track.Codec().ClockRate, link.videoOnTrackOut)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, pubsub *Pubsub) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<- rtp.Packet) {
 
 	for {
 
@@ -1334,8 +1330,8 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, pubsub *P
 		}
 
 		// blocking is okay
-		//rxMediaCh <- *p
-		pubsub.Publish(*p)
+		ch <- *p
+
 	}
 }
 
@@ -1467,8 +1463,10 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 	done := make(chan struct{})
 
 	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		dbg.peerConn.Println(debug, link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
+		dbg.peerConn.Println(debug+"/"+link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
 		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+
 		case webrtc.PeerConnectionStateClosed:
 			fallthrough
 		case webrtc.PeerConnectionStateFailed:
@@ -2017,6 +2015,157 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 				panic("no reader")
 			}
 
+		}
+	}
+
+}
+
+type XPacketType int
+
+var _ = Invalid
+
+const (
+	Invalid XPacketType = iota
+	Video               = iota
+	Audio               = iota
+	//Data = iota
+)
+
+type XPacket struct {
+	typ XPacketType
+	pkt rtp.Packet
+	now int64
+}
+
+func mainSwitchGr(aud chan rtp.Packet, vid chan rtp.Packet, newsub chan MsgNewSubscriber) {
+
+	buf := make([]XPacket, 0)
+
+	subs := make([]chan XPacket, 0)
+
+	n := 0
+
+	for {
+		n++
+
+		select {
+		case m := <-vid:
+
+			iskf := isH264Keyframe(m.Payload)
+			if iskf || len(buf) > 1e6 {
+				pline("new KF", n)
+				buf = make([]XPacket, 0) // tricky to clear
+				// faster
+				// for i := range buf {
+				// 	buf[i] = XPacket{}
+				// }
+				// buf=buf[:0]
+			}
+			pkt := XPacket{Video, m, time.Now().UnixNano()}
+			buf = append(buf, pkt)
+			for _, v := range subs {
+				select {
+				case v <- pkt:
+				default:
+				}
+			}
+		case m := <-aud:
+			_ = m
+			if len(buf) > 1e6 {
+				buf = make([]XPacket, 0) // tricky to clear
+			}
+			//pkt := XPacket{Audio, m, time.Now().UnixNano()}
+			// buf = append(buf, pkt)
+			// for _, v := range subs {
+			// 	select {
+			// 	case v <- pkt:
+			// 	default:
+			// 	}
+			// }
+
+		case m := <-newsub:
+			pktCh := make(chan XPacket, len(buf)+10)
+			for _, v := range buf {
+				pktCh <- v // no select needed
+			}
+			pline("stored n pkts in handover chan", len(buf))
+			go newSubscriber(m, pktCh)
+			subs = append(subs, pktCh)
+		}
+	}
+}
+
+type MsgNewSubscriber struct {
+	video *webrtc.TrackLocalStaticRTP
+	//audio *webrtc.TrackLocalStaticRTP
+}
+
+func newSubscriber(newsub MsgNewSubscriber, pktCh chan XPacket) {
+
+	last := int64(0)
+
+	vidSplice := RtpSplicer{}
+
+	pline("func newSubscriber()")
+
+	xx := make([]XPacket, 0)
+
+morePkts:
+
+	for {
+		select {
+		case m := <-pktCh:
+			xx = append(xx, m)
+		default:
+			break morePkts
+		}
+	}
+
+	pline("newsub got n pkts in chan", len(xx))
+
+	firstwrite := sync.Once{}
+
+	for {
+
+		for _, m := range xx {
+			now := time.Now().UnixNano()
+
+			switch m.typ {
+			case Video:
+				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+
+				firstwrite.Do(func() { pline("first write") })
+
+				err := newsub.video.WriteRTP(&m.pkt)
+				if err == io.ErrClosedPipe {
+					return
+
+				} else if err != nil {
+					errlog.Println(err.Error())
+				}
+			case Audio:
+				// SpliceRTP(&splicer, &m.pkt, now, int64(48000)) // writes all over m.pkt.Header
+				// err := newsub.video.WriteRTP(&m.pkt)
+				// if err == io.ErrClosedPipe {
+				// 	return
+
+				// } else if err != nil {
+				// 	errlog.Println(err.Error())
+				// }
+
+			default:
+				panic("oh no")
+			}
+
+			if last != 0 {
+				delta := m.now - last
+				if delta < 0 {
+					delta = 0
+				}
+				///pline(111, delta/1e6)
+				time.Sleep(time.Duration(delta))
+			}
+			last = m.now
 		}
 	}
 
