@@ -521,6 +521,31 @@ Mostly, 'rxid' has indicated: audio or video, or idle video.
 *Decided: media messages no longer indicate media type*
 
 
+# 12/24/21 How to do KF switching
+
+Rooms need a GR on their chain that synchronously forwards KFs, and **waits** for the response.
+If there is no wait, then we cannot guarantee the consistency of the written ES.
+
+Subscribers to KF msgs will typically also be reading pkt msgs from another room.
+
+*major goroutines*
+- rtpReaderGr() - reads from pion types
+- rtpWriterGr() - writes to pion types
+- roomGr()
+  - forwarding of media
+  - synchronous forwarding of keyframes (waits for response)
+- subscriberGr()
+  - controls media etc for a single subscriber
+
+# 12/26/21 synchronousicity requirements
+
+when switching video between graph A to graph B, on a keyframe,
+'A' must be done with all writes when passing the token to B
+
+
+
+
+
 
 
 
