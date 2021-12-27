@@ -105,6 +105,8 @@ type roomState struct {
 	videoOnTrackOut chan XPacket
 	audioOnTrackOut chan XPacket
 	replayRequest   chan chan XPacket
+
+	pktBroker *Broker
 }
 
 var roomMap = make(map[string]*roomState)
@@ -659,24 +661,27 @@ func getRoomState(roomname string) *roomState {
 
 	roomMapMutex.Lock()
 	link, found := roomMap[roomname]
+	roomMapMutex.Unlock()
+
 	if !found {
 		link = &roomState{
 			roomname: roomname,
 
 			ingressSema: semaphore.NewWeighted(int64(1)),
 
-			videoOnTrackOut: make(chan XPacket),
-			audioOnTrackOut: make(chan XPacket),
+			videoOnTrackOut: make(chan XPacket), // directly written by OnTrack()
+			audioOnTrackOut: make(chan XPacket), // directly written by OnTrack()
 			//replayRequest:   make(chan chan XPacket),
 		}
+
+		link.pktBroker = NewBroker()
+		go link.pktBroker.Start()
+
+		go gopCollectorGr(link.audioOnTrackOut, link.videoOnTrackOut, link.replayRequest, link.pktBroker)
+
+		roomMapMutex.Lock()
 		roomMap[roomname] = link
-
-		// broker := NewBroker()
-		// pl(222)
-		// go broker.Start()
-		// pl(333)
-
-		// go gopCollectorGr(link.audioOnTrackOut, link.videoOnTrackOut, link.replayRequest, *broker)
+		roomMapMutex.Unlock()
 
 		// ## VIDEO
 		if false {
@@ -694,7 +699,7 @@ func getRoomState(roomname string) *roomState {
 		}
 
 	}
-	roomMapMutex.Unlock()
+
 	return link
 }
 
@@ -802,7 +807,8 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// }
 
 	//z := make(chan XPacket,100)
-	go videoWriterGr(videoTrack, link.videoOnTrackOut)
+	//go trackWriterBasicGr(videoTrack, link.videoOnTrackOut)
+	go trackWriterBrokerGr(videoTrack, link.pktBroker)
 	// pl()
 	// link.replayRequest <- z
 	// pl()
@@ -2068,7 +2074,7 @@ type XPacket struct {
 //2. respond to requests for partial (PGOPs)
 //3. pass pkt traffic down the same channels as the PGOP requests (ideally)
 //4. pass on individual pkts using the broker
-func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan chan XPacket, broker Broker) {
+func gopCollectorGr(aud chan XPacket, vid chan XPacket, replayRequest chan chan XPacket, broker *Broker) {
 
 	pl("gopcollectorgr start")
 
@@ -2080,7 +2086,7 @@ func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan
 		select {
 		case m := <-vid:
 
-			iskf := isH264Keyframe(m.Payload)
+			iskf := isH264Keyframe(m.pkt.Payload)
 			if iskf || len(buf) > 1e6 { // handle no KF issue
 				pl("new KF", n)
 				buf = make([]XPacket, 0) // tricky to clear
@@ -2090,24 +2096,23 @@ func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan
 				// }
 				// buf=buf[:0]
 			}
-			pkt := XPacket{Video, m, nanotime()}
-			buf = append(buf, pkt)
 
-			broker.Publish(pkt)
+			buf = append(buf, m)
+
+			broker.Publish(m)
 
 		case m := <-aud:
 			_ = m
 			if len(buf) > 1e6 { // handle no KF issue
 				buf = make([]XPacket, 0) // tricky to clear
 			}
-			pkt := XPacket{Audio, m, nanotime()}
-			buf = append(buf, pkt)
+			buf = append(buf, m)
 
-			broker.Publish(pkt)
+			broker.Publish(m)
 
 		case outCh := <-replayRequest:
 
-			pl("got replay request")
+			panic("got replay request")
 
 			pktCh := make(chan interface{}, len(buf)+10)
 			for _, v := range buf {
@@ -2150,7 +2155,7 @@ func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan
 	}
 }
 
-func videoWriterGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
+func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 	pl("startec videoWriter()")
 
 	vidSplice := RtpSplicer{}
@@ -2176,6 +2181,45 @@ func videoWriterGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 			case Audio:
 			default:
 				panic("oh no")
+			}
+		}
+	}
+}
+
+func trackWriterBrokerGr(video *webrtc.TrackLocalStaticRTP, b *Broker) {
+	pl("startec videoWriter()")
+
+	vidSplice := RtpSplicer{}
+
+	ch := make(chan interface{}, 200)
+	b.Subscribe(ch)
+
+	for {
+
+		for mm := range ch {
+			switch m := mm.(type) {
+			case XPacket:
+				now := nanotime()
+
+				switch m.typ {
+				case Video:
+					pl("splice", unsafe.Pointer(video))
+
+					SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+
+					err := video.WriteRTP(&m.pkt)
+					if err == io.ErrClosedPipe {
+						pl(33333)
+						return
+
+					} else if err != nil {
+						pl(333333)
+						errlog.Println(err.Error())
+					}
+				case Audio:
+				default:
+					panic("oh no")
+				}
 			}
 		}
 	}
