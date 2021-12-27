@@ -102,8 +102,8 @@ type myFtlServer struct {
 type roomState struct {
 	roomname        string
 	ingressSema     *semaphore.Weighted // is a publisher already using '/foobar' ??
-	videoOnTrackOut chan rtp.Packet
-	audioOnTrackOut chan rtp.Packet
+	videoOnTrackOut chan XPacket
+	audioOnTrackOut chan XPacket
 	replayRequest   chan chan XPacket
 }
 
@@ -576,12 +576,16 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
+	pl()
+
 	offer, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	pl()
 
 	if !strings.HasPrefix(string(offer), "v=") {
 		err := fmt.Errorf("invalid SDP message")
@@ -590,8 +594,10 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pl()
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
 	link := getRoomState(roomname)
+	pl()
 
 	dbg.url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
@@ -608,6 +614,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	pl()
 	go func() {
 		defer link.ingressSema.Release(1)
 
@@ -658,15 +665,18 @@ func getRoomState(roomname string) *roomState {
 
 			ingressSema: semaphore.NewWeighted(int64(1)),
 
-			videoOnTrackOut: make(chan rtp.Packet),
-			audioOnTrackOut: make(chan rtp.Packet),
-			replayRequest:   make(chan chan XPacket),
+			videoOnTrackOut: make(chan XPacket),
+			audioOnTrackOut: make(chan XPacket),
+			//replayRequest:   make(chan chan XPacket),
 		}
 		roomMap[roomname] = link
 
-		broker := NewBroker()
+		// broker := NewBroker()
+		// pl(222)
+		// go broker.Start()
+		// pl(333)
 
-		go gopCollectorGr(link.audioOnTrackOut, link.videoOnTrackOut, link.replayRequest, *broker)
+		// go gopCollectorGr(link.audioOnTrackOut, link.videoOnTrackOut, link.replayRequest, *broker)
 
 		// ## VIDEO
 		if false {
@@ -705,7 +715,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
-func subPeerconnLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
+func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
 	peerConnection, err := newPeerConnection()
 	if err != nil {
 		return err
@@ -791,11 +801,11 @@ func subPeerconnLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.
 	// 	video: videoTrack,
 	// }
 
-	z := make(chan XPacket)
-	go videoWriterGr(videoTrack, z)
-	pl()
-	link.replayRequest <- z
-	pl()
+	//z := make(chan XPacket,100)
+	go videoWriterGr(videoTrack, link.videoOnTrackOut)
+	// pl()
+	// link.replayRequest <- z
+	// pl()
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -857,7 +867,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	go func() {
 
-		err := subPeerconnLifetimeGr(string(offersdpbytes), link, sdpCh)
+		err := subHandlerGr(string(offersdpbytes), link, sdpCh)
 		if err != nil {
 			errlog.Println(err.Error())
 			select {
@@ -1267,7 +1277,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, link.audioOnTrackOut)
+		inboundTrackReader(track, track.Codec().ClockRate, link.audioOnTrackOut, Audio)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1315,13 +1325,13 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, link.videoOnTrackOut)
+	inboundTrackReader(track, track.Codec().ClockRate, link.videoOnTrackOut, Video)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<- rtp.Packet) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<- XPacket, typ XPacketType) {
 
 	for {
 
@@ -1341,7 +1351,11 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<-
 		}
 
 		// blocking is okay
-		ch <- *p
+		ch <- XPacket{
+			typ: typ,
+			pkt: *p,
+			now: nanotime(),
+		}
 
 	}
 }
@@ -1399,6 +1413,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // Blocks until PC is Closed
 func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
 
+	pl(111)
 	dbg.main.Println("createIngressPeerConnection")
 
 	peerConnection, err := newPeerConnection()
@@ -2055,6 +2070,8 @@ type XPacket struct {
 //4. pass on individual pkts using the broker
 func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan chan XPacket, broker Broker) {
 
+	pl("gopcollectorgr start")
+
 	buf := make([]XPacket, 0)
 	n := 0
 
@@ -2089,6 +2106,8 @@ func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan
 			broker.Publish(pkt)
 
 		case outCh := <-replayRequest:
+
+			pl("got replay request")
 
 			pktCh := make(chan interface{}, len(buf)+10)
 			for _, v := range buf {
@@ -2139,11 +2158,12 @@ func videoWriterGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 	for {
 
 		for m := range pktCh {
+
 			now := nanotime()
 
 			switch m.typ {
 			case Video:
-				pl("foof")
+
 				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
 				err := video.WriteRTP(&m.pkt)
