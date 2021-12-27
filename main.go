@@ -100,6 +100,8 @@ type roomState struct {
 	newSubCh chan MsgNewSubscriber
 }
 
+
+
 var roomMap = make(map[string]*roomState)
 var roomMapMutex sync.Mutex
 
@@ -841,7 +843,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	dbg.url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
-	sdpCh := make(chan *webrtc.SessionDescription) // 
+	sdpCh := make(chan *webrtc.SessionDescription) //
 	errCh := make(chan error)
 
 	go func() {
@@ -1914,7 +1916,7 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 	for {
 		select {
 		case m := <-ch:
-			now := time.Now().UnixNano()
+			now := time.Since(time.Time{})
 			xlen := len(a)
 
 			simpleWriter := true
@@ -2034,7 +2036,7 @@ const (
 type XPacket struct {
 	typ XPacketType
 	pkt rtp.Packet
-	now int64
+	now time.Duration
 }
 
 func mainSwitchGr(aud chan rtp.Packet, vid chan rtp.Packet, newsub chan MsgNewSubscriber) {
@@ -2061,7 +2063,7 @@ func mainSwitchGr(aud chan rtp.Packet, vid chan rtp.Packet, newsub chan MsgNewSu
 				// }
 				// buf=buf[:0]
 			}
-			pkt := XPacket{Video, m, time.Now().UnixNano()}
+			pkt := XPacket{Video, m, time.Since(time.Time{})}
 			buf = append(buf, pkt)
 			for _, v := range subs {
 				select {
@@ -2128,7 +2130,7 @@ morePkts:
 	for {
 
 		for _, m := range xx {
-			now := time.Now().UnixNano()
+			now := int64(time.Since(time.Time{}))
 
 			switch m.typ {
 			case Video:
