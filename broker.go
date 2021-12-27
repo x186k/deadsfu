@@ -34,6 +34,7 @@ func (b *Broker) Start() {
 				select {
 				case msgCh <- msg:
 				default:
+					pl("dropped packet/msg")
 				}
 			}
 		}
