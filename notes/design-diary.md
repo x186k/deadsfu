@@ -542,6 +542,20 @@ Subscribers to KF msgs will typically also be reading pkt msgs from another room
 when switching video between graph A to graph B, on a keyframe,
 'A' must be done with all writes when passing the token to B
 
+when requesting a PGOP, the requestor needs to know:
+- it won't receive any pkts in the PGOP on the per-pkt chan, again (or twice)
+- it won't miss any pkts between the end of the PGOP and the per-pkt chan
+*This really requires a sync system for requesting PGOPs and receiving individual pkts*
+
+## where should the GOP collector go ? before or after the broker?
+
+Multiple GRs can request the current GOP, and will need sync pkt reception after GOP,
+so it seems gopCollectorGr() must contain/go before Broker.
+gopCollectorGr() is the GR that will collect GOPs, but also broadcast pkts down the graph.
+
+*
+
+
 
 
 
