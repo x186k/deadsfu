@@ -12,7 +12,6 @@ import (
 	"path"
 	"strconv"
 	"sync"
-	"unsafe"
 
 	"fmt"
 	"io"
@@ -49,7 +48,17 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/x186k/deadsfu/ftlserver"
+
+	"unsafe"
 )
+
+// Make goimports import the unsafe package, which is required to be able
+// to use //go:linkname
+//var _ = unsafe.Sizeof(0)
+
+//go:noescape
+//go:linkname nanotime runtime.nanotime
+func nanotime() int64
 
 // https://tools.ietf.org/id/draft-ietf-mmusic-msid-05.html
 // msid:streamid trackid/appdata
@@ -91,16 +100,12 @@ type myFtlServer struct {
 // mostly the channel on which a /pub puts media for a /sub to send out
 // this struct, is currently IMMUTABLE, ideally, it stays that way
 type roomState struct {
-	roomname    string
-	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
-
+	roomname        string
+	ingressSema     *semaphore.Weighted // is a publisher already using '/foobar' ??
 	videoOnTrackOut chan rtp.Packet
 	audioOnTrackOut chan rtp.Packet
-
-	newSubCh chan MsgNewSubscriber
+	replayRequest   chan chan XPacket
 }
-
-
 
 var roomMap = make(map[string]*roomState)
 var roomMapMutex sync.Mutex
@@ -206,9 +211,9 @@ func checkFatal(err error) {
 	}
 }
 
-var _ = pline
+var _ = pl
 
-func pline(a ...interface{}) {
+func pl(a ...interface{}) {
 	b := fmt.Sprint("pline:", a)
 	_ = log.Output(2, b)
 }
@@ -655,11 +660,13 @@ func getRoomState(roomname string) *roomState {
 
 			videoOnTrackOut: make(chan rtp.Packet),
 			audioOnTrackOut: make(chan rtp.Packet),
-			newSubCh:        make(chan MsgNewSubscriber),
+			replayRequest:   make(chan chan XPacket),
 		}
 		roomMap[roomname] = link
 
-		go mainSwitchGr(link.audioOnTrackOut, link.videoOnTrackOut, link.newSubCh)
+		broker := NewBroker()
+
+		go gopCollectorGr(link.audioOnTrackOut, link.videoOnTrackOut, link.replayRequest, *broker)
 
 		// ## VIDEO
 		if false {
@@ -698,7 +705,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
-func subPCLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
+func subPeerconnLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
 	peerConnection, err := newPeerConnection()
 	if err != nil {
 		return err
@@ -766,12 +773,8 @@ func subPCLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.Sessio
 	}
 	go processRTCP(rtpSender2)
 
-	peerConnection.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
-		log.Println(333, pcs.String())
-
-	})
 	// this will never fire, because the subscriber only receives.
-	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { panic(77777) })
+	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { panic("never") })
 
 	// // blocking is okay
 	// link.addVideoTrackCh <- MsgTxTrackAddDel{
@@ -784,9 +787,15 @@ func subPCLifetimeGr(offersdp string, link *roomState, sdpCh chan *webrtc.Sessio
 	// // foof xxx we need to save this somewhere
 	// <-resultCh
 
-	link.newSubCh <- MsgNewSubscriber{
-		video: videoTrack,
-	}
+	// link.newSubCh <- MsgNewSubscriber{
+	// 	video: videoTrack,
+	// }
+
+	z := make(chan XPacket)
+	go videoWriterGr(videoTrack, z)
+	pl()
+	link.replayRequest <- z
+	pl()
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -848,7 +857,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	go func() {
 
-		err := subPCLifetimeGr(string(offersdpbytes), link, sdpCh)
+		err := subPeerconnLifetimeGr(string(offersdpbytes), link, sdpCh)
 		if err != nil {
 			errlog.Println(err.Error())
 			select {
@@ -1916,7 +1925,7 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 	for {
 		select {
 		case m := <-ch:
-			now := time.Since(time.Time{})
+			now := nanotime()
 			xlen := len(a)
 
 			simpleWriter := true
@@ -2036,26 +2045,27 @@ const (
 type XPacket struct {
 	typ XPacketType
 	pkt rtp.Packet
-	now time.Duration
+	now int64
 }
 
-func mainSwitchGr(aud chan rtp.Packet, vid chan rtp.Packet, newsub chan MsgNewSubscriber) {
+// I do these things
+//1. collect GOPS
+//2. respond to requests for partial (PGOPs)
+//3. pass pkt traffic down the same channels as the PGOP requests (ideally)
+//4. pass on individual pkts using the broker
+func gopCollectorGr(aud chan rtp.Packet, vid chan rtp.Packet, replayRequest chan chan XPacket, broker Broker) {
 
 	buf := make([]XPacket, 0)
-
-	subs := make([]chan XPacket, 0)
-
 	n := 0
 
 	for {
-		n++
 
 		select {
 		case m := <-vid:
 
 			iskf := isH264Keyframe(m.Payload)
-			if iskf || len(buf) > 1e6 {
-				pline("new KF", n)
+			if iskf || len(buf) > 1e6 { // handle no KF issue
+				pl("new KF", n)
 				buf = make([]XPacket, 0) // tricky to clear
 				// faster
 				// for i := range buf {
@@ -2063,82 +2073,80 @@ func mainSwitchGr(aud chan rtp.Packet, vid chan rtp.Packet, newsub chan MsgNewSu
 				// }
 				// buf=buf[:0]
 			}
-			pkt := XPacket{Video, m, time.Since(time.Time{})}
+			pkt := XPacket{Video, m, nanotime()}
 			buf = append(buf, pkt)
-			for _, v := range subs {
-				select {
-				case v <- pkt:
-				default:
-				}
-			}
+
+			broker.Publish(pkt)
+
 		case m := <-aud:
 			_ = m
-			if len(buf) > 1e6 {
+			if len(buf) > 1e6 { // handle no KF issue
 				buf = make([]XPacket, 0) // tricky to clear
 			}
-			//pkt := XPacket{Audio, m, time.Now().UnixNano()}
-			// buf = append(buf, pkt)
-			// for _, v := range subs {
-			// 	select {
-			// 	case v <- pkt:
-			// 	default:
-			// 	}
-			// }
+			pkt := XPacket{Audio, m, nanotime()}
+			buf = append(buf, pkt)
 
-		case m := <-newsub:
-			pktCh := make(chan XPacket, len(buf)+10)
+			broker.Publish(pkt)
+
+		case outCh := <-replayRequest:
+
+			pktCh := make(chan interface{}, len(buf)+10)
 			for _, v := range buf {
-				pktCh <- v // no select needed
+				pktCh <- v //squirrel away
 			}
-			pline("stored n pkts in handover chan", len(buf))
-			go newSubscriber(m, pktCh)
-			subs = append(subs, pktCh)
+			pl("stored n pkts in handover chan", len(buf))
+
+			broker.Subscribe(pktCh)
+
+			go func() {
+
+				delta := int64(0)
+
+				if len(buf) > 0 {
+					// you could use linear regression to calculate delta
+					delta = nanotime() - buf[0].now
+				}
+
+				for m := range pktCh {
+
+					p := m.(XPacket)
+
+					deadline := p.now + delta
+					sleep := deadline - nanotime()
+
+					if sleep < 0 {
+						sleep = 0
+					}
+					time.Sleep(time.Duration(sleep))
+
+					outCh <- p
+
+				}
+
+			}()
+
+			// go newSubscriber(outCh, pktCh)
+			// subs = append(subs, pktCh)
 		}
 	}
 }
 
-type MsgNewSubscriber struct {
-	video *webrtc.TrackLocalStaticRTP
-	//audio *webrtc.TrackLocalStaticRTP
-}
-
-func newSubscriber(newsub MsgNewSubscriber, pktCh chan XPacket) {
-
-	last := int64(0)
+func videoWriterGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
+	pl("startec videoWriter()")
 
 	vidSplice := RtpSplicer{}
 
-	pline("func newSubscriber()")
-
-	xx := make([]XPacket, 0)
-
-morePkts:
-
-	for {
-		select {
-		case m := <-pktCh:
-			xx = append(xx, m)
-		default:
-			break morePkts
-		}
-	}
-
-	pline("newsub got n pkts in chan", len(xx))
-
-	firstwrite := sync.Once{}
-
 	for {
 
-		for _, m := range xx {
-			now := int64(time.Since(time.Time{}))
+		for m := range pktCh {
+			now := nanotime()
 
 			switch m.typ {
 			case Video:
+				pl("foof")
 				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
-				firstwrite.Do(func() { pline("first write") })
-
-				err := newsub.video.WriteRTP(&m.pkt)
+				err := video.WriteRTP(&m.pkt)
 				if err == io.ErrClosedPipe {
 					return
 
@@ -2146,29 +2154,9 @@ morePkts:
 					errlog.Println(err.Error())
 				}
 			case Audio:
-				// SpliceRTP(&splicer, &m.pkt, now, int64(48000)) // writes all over m.pkt.Header
-				// err := newsub.video.WriteRTP(&m.pkt)
-				// if err == io.ErrClosedPipe {
-				// 	return
-
-				// } else if err != nil {
-				// 	errlog.Println(err.Error())
-				// }
-
 			default:
 				panic("oh no")
 			}
-
-			if last != 0 {
-				delta := m.now - last
-				if delta < 0 {
-					delta = 0
-				}
-				///pline(111, delta/1e6)
-				time.Sleep(time.Duration(delta))
-			}
-			last = m.now
 		}
 	}
-
 }
