@@ -2195,11 +2195,9 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
 				err := video.WriteRTP(&m.pkt)
-				if err == io.ErrClosedPipe {
+				if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+					errlog.Println("closing writer GR:", err.Error())
 					return
-
-				} else if err != nil {
-					errlog.Println(err.Error())
 				}
 			case Audio:
 			default:
