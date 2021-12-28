@@ -101,12 +101,9 @@ type myFtlServer struct {
 // mostly the channel on which a /pub puts media for a /sub to send out
 // this struct, is currently IMMUTABLE, ideally, it stays that way
 type roomState struct {
-	roomname        string
-	ingressSema     *semaphore.Weighted // is a publisher already using '/foobar' ??
-	videoOnTrackOut chan XPacket
-	audioOnTrackOut chan XPacket
-
-	pktBroker *PgopBroker
+	roomname    string
+	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
+	pgopBroker  *PgopBroker
 }
 
 var roomMap = make(map[string]*roomState)
@@ -578,16 +575,12 @@ func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	pl()
-
 	offer, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	pl()
 
 	if !strings.HasPrefix(string(offer), "v=") {
 		err := fmt.Errorf("invalid SDP message")
@@ -596,10 +589,8 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pl()
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
 	link := getRoomState(roomname)
-	pl()
 
 	dbg.url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
@@ -616,7 +607,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	pl()
+
 	go func() {
 		defer link.ingressSema.Release(1)
 
@@ -665,17 +656,12 @@ func getRoomState(roomname string) *roomState {
 
 	if !found {
 		link = &roomState{
-			roomname: roomname,
-
+			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
-
-			videoOnTrackOut: make(chan XPacket), // directly written by OnTrack()
-			audioOnTrackOut: make(chan XPacket), // directly written by OnTrack()
-			//replayRequest:   make(chan chan XPacket),
+			pgopBroker:  NewPgopBroker(),
 		}
 
-		link.pktBroker = NewPgopBroker()
-		go link.pktBroker.Start()
+		go link.pgopBroker.Start()
 
 		roomMapMutex.Lock()
 		roomMap[roomname] = link
@@ -813,14 +799,8 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// 	video: videoTrack,
 	// }
 
-	//z := make(chan XPacket,100)
-	//go trackWriterBasicGr(videoTrack, link.videoOnTrackOut)
-
 	pcDone := make(chan struct{})
-	go trackWriterGr(pcDone, videoTrack, link.pktBroker)
-	// pl()
-	// link.replayRequest <- z
-	// pl()
+	go trackWriterGr(pcDone, videoTrack, link.pgopBroker)
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
@@ -1292,7 +1272,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, link.audioOnTrackOut, Audio)
+		inboundTrackReader(track, track.Codec().ClockRate, link.pgopBroker, Audio)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1340,13 +1320,13 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, link.videoOnTrackOut, Video)
+	inboundTrackReader(track, track.Codec().ClockRate, link.pgopBroker, Video)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<- XPacket, typ XPacketType) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *PgopBroker, typ XPacketType) {
 
 	for {
 
@@ -1371,13 +1351,15 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<-
 		}
 
 		// blocking is okay
-		ch <- XPacket{
+
+		xp := XPacket{
 			typ:      typ,
 			pkt:      *p,
 			now:      nanotime(),
 			keyframe: kf,
 			replay:   false,
 		}
+		broker.Publish(xp)
 
 	}
 }
@@ -1435,7 +1417,6 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // Blocks until PC is Closed
 func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
 
-	pl(111)
 	dbg.main.Println("createIngressPeerConnection")
 
 	peerConnection, err := newPeerConnection()
