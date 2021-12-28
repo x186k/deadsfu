@@ -2209,7 +2209,11 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 	}
 }
 
-func trackWriterBrokerGr(video *webrtc.TrackLocalStaticRTP, b *Broker) {
+//how do we know to go away?
+// the broker gets created at room-creation-time, and never goes away!
+// so, we can add a ctx or done channel to the front of these params.
+
+func trackWriterBrokerGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *Broker) {
 	pl("startec videoWriter()")
 
 	vidSplice := RtpSplicer{}
@@ -2219,46 +2223,41 @@ func trackWriterBrokerGr(video *webrtc.TrackLocalStaticRTP, b *Broker) {
 
 	n := 0
 
-	//ticker := time.NewTicker(time.Second * 2).C
-	var ticker chan bool = nil
+	go func() {
+		// we do this on a seperate GR, so read loop below can be a for range, not select
+		//wait until peer connection is closed
+		<-pcDone
+		b.UnsubscribeClose(ch)
+	}()
 
-	for {
+	//var ticker <-chan time.Time = time.NewTicker(time.Second * 2).C
+	//var ticker <-chan time.Time = nil
+	// case <-ticker:
+	// 	pl("trackWriterBrokerGr", "num packets receivec", n)
 
-		for {
-			select {
-			case <-ticker:
-				pl(3333, n)
-			case mm := <-ch:
-				switch m := mm.(type) {
-				case XPacket:
-					now := nanotime()
+	for mm := range ch { // faster than select {}
 
-					switch m.typ {
-					case Video:
-						n++
-						//pl("splice", unsafe.Pointer(video))
+		switch m := mm.(type) {
+		case XPacket:
+			now := nanotime()
 
-						SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+			switch m.typ {
+			case Video:
+				n++
 
-						err := video.WriteRTP(&m.pkt)
-						if err != nil {
-							log.Fatal(err)
-							os.Exit(0)
-						}
-						if err == io.ErrClosedPipe {
-							pl(33333)
-							return
+				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
-						} else if err != nil {
-							pl(333333)
-							errlog.Println(err.Error())
-						}
-					case Audio:
-					default:
-						panic("oh no")
-					}
+				err := video.WriteRTP(&m.pkt)
+				if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+					errlog.Println("closing writer GR:", err.Error())
+					return
 				}
+			case Audio:
+			default:
+				panic("oh no")
 			}
 		}
+
 	}
+
 }
