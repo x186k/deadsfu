@@ -556,8 +556,53 @@ gopCollectorGr() is the GR that will collect GOPs, but also broadcast pkts down 
 *
 
 
+# 12/27/21 discussion with Sean D. on the missing io.ErrClosedPipe
 
 
+Sean DuBois  6:46 PM
+It can go to Failed -> Connected but Closed is terminal. Yea let me share!
+
+Cameron Elliott  6:46 PM
+So, let me just confirm something:
+
+Wow! you rock! :100--:
+6:47
+Let me confirm:
+6:47
+Some coders will call PeerConn.Close() after getting a close event, and then my WriteRTP()s will fail? (edited) 
+
+Sean DuBois  6:48 PM
+Yes they should! A lot of people will wait for Failed or just Disconnected (30 vs 5 second timeout) and then call Close
+New
+6:48
+If you don't want to attempt an ICE Restart
+
+Cameron Elliott  6:49 PM
+Right, I have done the same, cause close can take so long.
+6:49
+Ohhhh man, thank you so much! I owe you another one! LOL
+6:50
+It will be interesting to see what/if Orlando/Juliusz say about adding a StaticLocalRTPTrack to more than a single PeerConnection
+
+Sean DuBois  6:50 PM
+Of course always happy to help :slightly_smiling_face: You are making magic happen with deadsfu so love to unblock you on the simple stuff
+
+Cameron Elliott  6:50 PM
+Maybe there is another way of getting packets out that I don't know, but I'm follow the examples.
+
+Sean DuBois  6:51 PM
+I think if you are doing congestion control it might make sense to not share
+
+Cameron Elliott  6:51 PM
+DeadSFU isn't magic yet, but I'm working on it!
+
+Sean DuBois  6:51 PM
+but if you are faning out something I think it is ok to share!
+
+Cameron Elliott  6:51 PM
+Okay, good point about CC
+6:52
+Thanks thanks thanks
 
 
 
