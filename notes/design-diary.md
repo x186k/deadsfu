@@ -338,20 +338,20 @@ maybe --my-ipaddr <address> stunserver or local or public
 // so, there is NO good reason to make it an array
 // sooo... we keep it a map.
 
-# 8/14/21 decided to gut multi-track support
+## 8/14/21 decided to gut multi-track support
 
-# 8/16/21 need a tool for ES (elementary stream) consistency checking in the field
+## 8/16/21 need a tool for ES (elementary stream) consistency checking in the field
 
 - for either run-time or:
 - post run-time consistency checking
 
-# 8/18/21
+## 8/18/21
 
 screen flow text:
 DeadSFU: Use --idle-screen to replace this screen
 No Input Present
 
-# 11/3/21 Bearer tokens
+## 11/3/21 Bearer tokens
 
 places where bearer tokens can be used:
 -  "/*"   (html)
@@ -537,7 +537,7 @@ Subscribers to KF msgs will typically also be reading pkt msgs from another room
 - subscriberGr()
   - controls media etc for a single subscriber
 
-# 12/26/21 synchronousicity requirements
+## 12/26/21 synchronousicity requirements
 
 when switching video between graph A to graph B, on a keyframe,
 'A' must be done with all writes when passing the token to B
@@ -556,7 +556,7 @@ gopCollectorGr() is the GR that will collect GOPs, but also broadcast pkts down 
 *
 
 
-# 12/27/21 discussion with Sean D. on the missing io.ErrClosedPipe
+## 12/27/21 discussion with Sean D. on the missing io.ErrClosedPipe
 
 
 Sean DuBois  6:46 PM
@@ -604,6 +604,34 @@ Okay, good point about CC
 6:52
 Thanks thanks thanks
 
+
+## 12/28/21 when building a PGOP captured consistentcy thoughts
+
+For PGOP replay to live transition, we must ensure:
+- we don't miss any packets between PGOP to live
+- we don't send any packets twice between PGOP to live
+
+HOW?
+There are two sides, with two operations:
+- recorder & responder
+- requestor & switcher
+
+The first side must make sure it _pkt save & repond to PGOP request_ operations are atomic
+with regards to the 2nd sides: _request PGOP & join live_ operations.
+
+*CONCLUSION: join-live & gimme-PGOP must be a single atomic operation*
+
+## CONCLUSION: join-live & gimme-PGOP must be a single atomic operation
+
+The best way to implement this is to make the live broker, and the PGOP server the same entity.
+
+
+Question do we make the interface for receivers of live & replay a single channel or two?
+
+*Decision: the interface between PGOPBroker & subscribers is a single channel*
+(Not: live-channel, replay-channel, but both-channel)
+It just makes re-using the existing broker easier. It also makes thinking about
+maintaining ES constistency easier.
 
 
 
