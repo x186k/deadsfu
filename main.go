@@ -105,9 +105,8 @@ type roomState struct {
 	ingressSema     *semaphore.Weighted // is a publisher already using '/foobar' ??
 	videoOnTrackOut chan XPacket
 	audioOnTrackOut chan XPacket
-	replayRequest   chan chan XPacket
 
-	pktBroker *Broker
+	pktBroker *PgopBroker
 }
 
 var roomMap = make(map[string]*roomState)
@@ -675,10 +674,8 @@ func getRoomState(roomname string) *roomState {
 			//replayRequest:   make(chan chan XPacket),
 		}
 
-		link.pktBroker = NewBroker()
+		link.pktBroker = NewPgopBroker()
 		go link.pktBroker.Start()
-
-		go gopCollectorGr(link.audioOnTrackOut, link.videoOnTrackOut, link.replayRequest, link.pktBroker)
 
 		roomMapMutex.Lock()
 		roomMap[roomname] = link
@@ -820,7 +817,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	//go trackWriterBasicGr(videoTrack, link.videoOnTrackOut)
 
 	pcDone := make(chan struct{})
-	go trackWriterBrokerGr(pcDone, videoTrack, link.pktBroker)
+	go trackWriterGr(pcDone, videoTrack, link.pktBroker)
 	// pl()
 	// link.replayRequest <- z
 	// pl()
@@ -1368,11 +1365,18 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, ch chan<-
 			return
 		}
 
+		kf := false
+		if typ == Video {
+			kf = isH264Keyframe(p.Payload)
+		}
+
 		// blocking is okay
 		ch <- XPacket{
-			typ: typ,
-			pkt: *p,
-			now: nanotime(),
+			typ:      typ,
+			pkt:      *p,
+			now:      nanotime(),
+			keyframe: kf,
+			replay:   false,
 		}
 
 	}
@@ -2084,96 +2088,11 @@ const (
 )
 
 type XPacket struct {
-	typ XPacketType
-	pkt rtp.Packet
-	now int64
-}
-
-// I do these things
-//1. collect GOPS
-//2. respond to requests for partial (PGOPs)
-//3. pass pkt traffic down the same channels as the PGOP requests (ideally)
-//4. pass on individual pkts using the broker
-func gopCollectorGr(aud chan XPacket, vid chan XPacket, replayRequest chan chan XPacket, broker *Broker) {
-
-	pl("gopcollectorgr start")
-
-	buf := make([]XPacket, 0)
-	n := 0
-
-	for {
-
-		select {
-		case m := <-vid:
-
-			iskf := isH264Keyframe(m.pkt.Payload)
-			if iskf || len(buf) > 1e6 { // handle no KF issue
-				pl("new KF", n)
-				buf = make([]XPacket, 0) // tricky to clear
-				// faster
-				// for i := range buf {
-				// 	buf[i] = XPacket{}
-				// }
-				// buf=buf[:0]
-			}
-
-			buf = append(buf, m)
-
-			broker.Publish(m)
-
-		case m := <-aud:
-			_ = m
-			if len(buf) > 1e6 { // handle no KF issue
-				buf = make([]XPacket, 0) // tricky to clear
-			}
-			buf = append(buf, m)
-
-			broker.Publish(m)
-
-		case outCh := <-replayRequest:
-			_ = outCh
-
-			panic("got replay request")
-
-			pktCh := make(chan interface{}, len(buf)+10)
-			for _, v := range buf {
-				pktCh <- v //squirrel away
-			}
-			pl("stored n pkts in handover chan", len(buf))
-
-			broker.Subscribe(pktCh)
-
-			go func() {
-
-				delta := int64(0)
-
-				if len(buf) > 0 {
-					// you could use linear regression to calculate delta
-					delta = nanotime() - buf[0].now
-				}
-
-				for m := range pktCh {
-
-					p := m.(XPacket)
-
-					deadline := p.now + delta
-					sleep := deadline - nanotime()
-
-					if sleep < 0 {
-						sleep = 0
-					}
-					time.Sleep(time.Duration(sleep))
-
-					outCh <- p
-
-				}
-
-			}()
-
-			// go newSubscriber(outCh, pktCh)
-			// subs = append(subs, pktCh)
-		}
-	}
+	typ      XPacketType
+	pkt      rtp.Packet
+	now      int64
+	keyframe bool
+	replay   bool
 }
 
 var _ = trackWriterBasicGr
@@ -2211,12 +2130,12 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
 
-func trackWriterBrokerGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *Broker) {
+func trackWriterGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
 	pl("startec videoWriter()")
 
 	vidSplice := RtpSplicer{}
 
-	ch := make(chan interface{}, 200)
+	ch := make(chan XPacket, 5)
 	b.Subscribe(ch)
 
 	n := 0
@@ -2233,27 +2152,24 @@ func trackWriterBrokerGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticR
 	// case <-ticker:
 	// 	pl("trackWriterBrokerGr", "num packets receivec", n)
 
-	for mm := range ch { // faster than select {}
+	for m := range ch { // faster than select {}
 
-		switch m := mm.(type) {
-		case XPacket:
-			now := nanotime()
+		now := nanotime()
 
-			switch m.typ {
-			case Video:
-				n++
+		switch m.typ {
+		case Video:
+			n++
 
-				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+			SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
-				err := video.WriteRTP(&m.pkt)
-				if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					errlog.Println("closing writer GR:", err.Error())
-					return
-				}
-			case Audio:
-			default:
-				panic("oh no")
+			err := video.WriteRTP(&m.pkt)
+			if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				errlog.Println("closing writer GR:", err.Error())
+				return
 			}
+		case Audio:
+		default:
+			panic("oh no")
 		}
 
 	}
