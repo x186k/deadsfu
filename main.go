@@ -782,6 +782,15 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	if err != nil {
 		return err
 	}
+
+	if false {
+		// I don't know what this would do exactly, if it would help, or wrongly add track twice
+		sendonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}
+		_, err := peerConnection.AddTransceiverFromTrack(videoTrack, sendonly)
+		if err != nil {
+			return err
+		}
+	}
 	rtpSender2, err := peerConnection.AddTrack(videoTrack)
 	if err != nil {
 		return err
