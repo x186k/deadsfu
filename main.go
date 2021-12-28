@@ -2203,31 +2203,46 @@ func trackWriterBrokerGr(video *webrtc.TrackLocalStaticRTP, b *Broker) {
 	ch := make(chan interface{}, 200)
 	b.Subscribe(ch)
 
+	n := 0
+
+	//ticker := time.NewTicker(time.Second * 2).C
+	var ticker chan bool = nil
+
 	for {
 
-		for mm := range ch {
-			switch m := mm.(type) {
-			case XPacket:
-				now := nanotime()
+		for {
+			select {
+			case <-ticker:
+				pl(3333, n)
+			case mm := <-ch:
+				switch m := mm.(type) {
+				case XPacket:
+					now := nanotime()
 
-				switch m.typ {
-				case Video:
-					pl("splice", unsafe.Pointer(video))
+					switch m.typ {
+					case Video:
+						n++
+						//pl("splice", unsafe.Pointer(video))
 
-					SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+						SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
-					err := video.WriteRTP(&m.pkt)
-					if err == io.ErrClosedPipe {
-						pl(33333)
-						return
+						err := video.WriteRTP(&m.pkt)
+						if err != nil {
+							log.Fatal(err)
+							os.Exit(0)
+						}
+						if err == io.ErrClosedPipe {
+							pl(33333)
+							return
 
-					} else if err != nil {
-						pl(333333)
-						errlog.Println(err.Error())
+						} else if err != nil {
+							pl(333333)
+							errlog.Println(err.Error())
+						}
+					case Audio:
+					default:
+						panic("oh no")
 					}
-				case Audio:
-				default:
-					panic("oh no")
 				}
 			}
 		}
