@@ -9,6 +9,8 @@ type Broker struct {
 	unsubCh   chan chan interface{}
 }
 
+var _ = NewBroker
+
 func NewBroker() *Broker {
 	return &Broker{
 		stopCh:    make(chan struct{}),
