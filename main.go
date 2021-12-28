@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"math/rand"
 	"net"
 	"path"
@@ -817,7 +818,9 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	//z := make(chan XPacket,100)
 	//go trackWriterBasicGr(videoTrack, link.videoOnTrackOut)
-	go trackWriterBrokerGr(videoTrack, link.pktBroker)
+
+	pcDone := make(chan struct{})
+	go trackWriterBrokerGr(pcDone, videoTrack, link.pktBroker)
 	// pl()
 	// link.replayRequest <- z
 	// pl()
@@ -851,7 +854,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		return nil
 	}
 
-	waitPeerconnClosed("sub", link, peerConnection)
+	waitPeerconnClosed(pcDone, "sub", link, peerConnection)
 
 	return nil
 }
@@ -1203,8 +1206,8 @@ func dialUpstream(link *roomState) error {
 	if err != nil {
 		return err
 	}
-
-	waitPeerconnClosed("dial", link, peerConnection)
+	pcDone := make(chan struct{})
+	waitPeerconnClosed(pcDone, "dial", link, peerConnection)
 
 	return nil
 
@@ -1494,17 +1497,19 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 	}
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
-	waitPeerconnClosed("pub", link, peerConnection)
+	pcDone := make(chan struct{})
+	waitPeerconnClosed(pcDone, "pub", link, peerConnection)
 
 	return nil
 }
 
-func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection) {
+func waitPeerconnClosed(pcDone chan struct{}, debug string, link *roomState, pc *webrtc.PeerConnection) {
 
-	done := make(chan struct{})
+	closeOnce := sync.Once{}
 
 	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		dbg.peerConn.Println(debug+"/"+link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
+
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 
@@ -1513,14 +1518,20 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 		case webrtc.PeerConnectionStateFailed:
 			fallthrough
 		case webrtc.PeerConnectionStateDisconnected:
-			select {
-			case done <- struct{}{}:
-			default:
-			}
+			closeOnce.Do(func() { close(pcDone) })
 		}
 	})
 
-	<-done // get nil value when closed
+	// IMPORTANT
+	// per 12/27/21 Conversation with Sean, the PC going to a closed
+	// state is NOT the last step, we need to Close() the PC when we want it
+	// to release resources, and have WriteRTP start failing
+	//12/27/21 this doesn't seem to start io.ErrPipeClosed on WriteRTP,
+	// but this is important none the less.
+	<-pcDone // get nil value when closed
+	pc.Close()
+	//pl("closing PC")
+
 }
 
 // SpliceRTP
@@ -2120,6 +2131,7 @@ func gopCollectorGr(aud chan XPacket, vid chan XPacket, replayRequest chan chan 
 			broker.Publish(m)
 
 		case outCh := <-replayRequest:
+			_ = outCh
 
 			panic("got replay request")
 
@@ -2163,6 +2175,8 @@ func gopCollectorGr(aud chan XPacket, vid chan XPacket, replayRequest chan chan 
 		}
 	}
 }
+
+var _ = trackWriterBasicGr
 
 func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 	pl("startec videoWriter()")
