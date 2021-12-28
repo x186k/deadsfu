@@ -50,7 +50,8 @@ func (b *Broker) Subscribe(msgCh chan interface{}) {
 	b.subCh <- msgCh
 }
 
-func (b *Broker) Unsubscribe(msgCh chan interface{}) {
+func (b *Broker) UnsubscribeClose(msgCh chan interface{}) {
+	close(msgCh)
 	b.unsubCh <- msgCh
 }
 
