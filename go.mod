@@ -4,7 +4,6 @@ go 1.16
 
 require (
 	github.com/caddyserver/certmagic v0.14.6-0.20210923203551-1bbe11e2914b
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libdns/cloudflare v0.1.0
 	github.com/libdns/duckdns v0.1.1
