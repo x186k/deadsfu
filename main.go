@@ -784,9 +784,6 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// 	video: videoTrack,
 	// }
 
-	pcDone := make(chan struct{})
-	go trackWriterGr(pcDone, videoTrack, link.pgopBroker)
-
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
 	// Create answer
@@ -1185,8 +1182,8 @@ func dialUpstream(link *roomState) error {
 	if err != nil {
 		return err
 	}
-	pcDone := make(chan struct{})
-	waitPeerconnClosed(pcDone, "dial", link, peerConnection)
+
+	waitPeerconnClosed("dial", link, peerConnection)
 
 	return nil
 
@@ -1486,15 +1483,36 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 	}
 
 	// Get the LocalDescription and take it to base64 so we can paste in browser
-	pcDone := make(chan struct{})
-	waitPeerconnClosed(pcDone, "pub", link, peerConnection)
+
+	pcdone, _ := waitPeerconnClosed("pub", link, peerConnection)
+	<-pcdone
 
 	return nil
 }
 
-func waitPeerconnClosed(pcDone chan struct{}, debug string, link *roomState, pc *webrtc.PeerConnection) {
+// pcDone will get closed upon the failed, closed or disconnected state of the PC
+// connected will get closed upon the connected state of the PC
+// this does not block until the PC is finished, you can do that with pcDone
+func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection) (
+	pcDone chan struct{},
+	connected chan bool) {
 
-	closeOnce := sync.Once{}
+	pcDone = make(chan struct{})
+	connected = make(chan bool)
+
+	onceCloseDone := sync.Once{}
+	onceCloseConnected := sync.Once{}
+	onceClosePc := sync.Once{}
+	dbg.peerConn.Println(4444, unsafe.Pointer(&onceClosePc))
+
+	fCloseDone := func() { close(pcDone) }
+	fCloseConnected := func() {
+		select {
+		case connected <- true:
+		default:
+		}
+		close(connected)
+	}
 
 	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		dbg.peerConn.Println(debug+"/"+link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
@@ -1502,25 +1520,30 @@ func waitPeerconnClosed(pcDone chan struct{}, debug string, link *roomState, pc 
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 
+			onceCloseConnected.Do(fCloseConnected)
 		case webrtc.PeerConnectionStateClosed:
 			fallthrough
 		case webrtc.PeerConnectionStateFailed:
 			fallthrough
 		case webrtc.PeerConnectionStateDisconnected:
-			closeOnce.Do(func() { close(pcDone) })
+			onceCloseDone.Do(fCloseDone)
+			// IMPORTANT
+			// per 12/27/21 Conversation with Sean, the PC going to a closed
+			// state is NOT the last step, we need to Close() the PC when we want it
+			// to release resources, and have WriteRTP start failing
+			//12/27/21 this doesn't seem to start io.ErrPipeClosed on WriteRTP,
+			// but this is important none the less.
+			// get nil value when closed
+			dbg.peerConn.Println(2222, unsafe.Pointer(&onceClosePc))
+			onceClosePc.Do(func() {
+				pl(999)
+				pc.Close()
+			})
+
 		}
 	})
 
-	// IMPORTANT
-	// per 12/27/21 Conversation with Sean, the PC going to a closed
-	// state is NOT the last step, we need to Close() the PC when we want it
-	// to release resources, and have WriteRTP start failing
-	//12/27/21 this doesn't seem to start io.ErrPipeClosed on WriteRTP,
-	// but this is important none the less.
-	<-pcDone // get nil value when closed
-	pc.Close()
-	//pl("closing PC")
-
+	return
 }
 
 // SpliceRTP
