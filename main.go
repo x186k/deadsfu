@@ -2121,7 +2121,7 @@ func trackWriterGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b 
 	vidSplice := RtpSplicer{}
 
 	ch := make(chan XPacket, 5)
-	b.Subscribe(ch)
+	b.SubscribeReplay(ch)
 
 	n := 0
 
