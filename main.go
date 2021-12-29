@@ -2139,22 +2139,31 @@ func trackWriterGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b 
 
 	for m := range ch { // faster than select {}
 
-		now := nanotime()
+		if m.typ != Video { //testing
+			continue
+		}
+		if m.replay {
 
-		switch m.typ {
-		case Video:
-			n++
+			pl("writer - replay packet", m.pkt.SequenceNumber)
 
-			SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+		} else {
+			//pl("writer - live packet", m.pkt.SequenceNumber)
 
-			err := video.WriteRTP(&m.pkt)
-			if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				errlog.Println("closing writer GR:", err.Error())
-				return
+			switch m.typ {
+			case Video:
+				n++
+				now := nanotime()
+				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+
+				err := video.WriteRTP(&m.pkt)
+				if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+					errlog.Println("closing writer GR:", err.Error())
+					return
+				}
+			case Audio:
+			default:
+				panic("oh no")
 			}
-		case Audio:
-		default:
-			panic("oh no")
 		}
 
 	}
