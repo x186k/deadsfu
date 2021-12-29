@@ -831,7 +831,22 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		return nil
 	}
 
-	waitPeerconnClosed(pcDone, "sub", link, peerConnection)
+	pcDone, connected := waitPeerconnClosed("sub", link, peerConnection)
+
+	go func() {
+		conn, ok := <-connected
+
+		if conn && ok {
+			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
+			go trackWriterGr(pcDone, videoTrack, link.pgopBroker)
+		} else {
+			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
+		}
+	}()
+
+	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
+	<-pcDone
+	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
 
 	return nil
 }
