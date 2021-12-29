@@ -667,21 +667,6 @@ func getRoomState(roomname string) *roomState {
 		roomMap[roomname] = link
 		roomMapMutex.Unlock()
 
-		// ## VIDEO
-		if false {
-			//link.videoRawSubs.Subscribe(make(chan rtp.Packet))
-
-			ch1 := make(chan rtp.Packet) //no-input-video-clip as an RTP ES
-			go noSignalGeneratorGr(ch1)  //send pkts to chan
-
-			ch2 := make(chan rtp.Packet) // mixed output, either RX signal, or no-input-video-clip
-			go noSignalSwitchGr(nil, ch1, ch2)
-			go packetToTrackFanOutGr(ch2, nil, nil, 90000)
-
-			// ## AUDIO
-			go packetToTrackFanOutGr(nil, nil, nil, 48000)
-		}
-
 	}
 
 	return link
@@ -1032,6 +1017,8 @@ func idleMediaLoader() {
 
 }
 
+var _ = noSignalGeneratorGr
+
 func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
 
 	fps := 5
@@ -1378,6 +1365,8 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *P
 
 	}
 }
+
+var _ = noSignalSwitchGr
 
 func noSignalSwitchGr(liveCh <-chan rtp.Packet, noSignalCh <-chan rtp.Packet, outCh chan<- rtp.Packet) {
 
@@ -2127,7 +2116,7 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // so, we can add a ctx or done channel to the front of these params.
 
 func trackWriterGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
-	pl("startec videoWriter()")
+	pl("started videoWriter()")
 
 	vidSplice := RtpSplicer{}
 
