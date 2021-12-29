@@ -92,13 +92,16 @@ func (b *PgopBroker) Publish(msg XPacket) {
 }
 
 func PgopReplay(buf []XPacket, ch chan XPacket) {
+
+	pl("pgopreplay n:", len(buf))
+
 	if len(buf) == 0 {
 		return
 	}
 
 	delta := nanotime() - buf[0].now // linear regression or other would be better
 
-	for p := range ch {
+	for _, p := range buf {
 		deadline := p.now + delta
 		sleep := deadline - nanotime()
 
@@ -107,6 +110,8 @@ func PgopReplay(buf []XPacket, ch chan XPacket) {
 		}
 		time.Sleep(time.Duration(sleep))
 
+		//pl("pgop replay sending 1")
+		p.replay = true
 		ch <- p
 	}
 
