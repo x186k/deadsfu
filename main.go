@@ -490,8 +490,10 @@ func newPeerConnection() (*webrtc.PeerConnection, error) {
 		peerConnectionConfig.ICEServers = []webrtc.ICEServer{} // yuck
 	}
 
-	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
-	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
+	// good
+	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se), webrtc.WithInterceptorRegistry(i))
+	// bad, ~30kbps throughput on ingest
+	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
 
 	//rtcApi = webrtc.NewAPI()
 	//if *videoCodec == "h264" {
