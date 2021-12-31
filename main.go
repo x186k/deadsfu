@@ -1302,13 +1302,13 @@ func ingressOnTrack(
 				return
 			}
 
-			err = sendREMB(peerConnection, track)
-			if err == io.ErrClosedPipe {
-				return
-			} else if err != nil {
-				errlog.Println(err.Error())
-				return
-			}
+			// err = sendREMB(peerConnection, track)
+			// if err == io.ErrClosedPipe {
+			// 	return
+			// } else if err != nil {
+			// 	errlog.Println(err.Error())
+			// 	return
+			// }
 
 			time.Sleep(5 * time.Second)
 		}
