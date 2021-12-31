@@ -832,7 +832,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
-			go trackWriterGr(pcDone, videoTrack, link.pgopBroker)
+			go switchReplayPGOPAndJumpCutOnKF(pcDone, videoTrack, link.pgopBroker)
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
@@ -1517,7 +1517,6 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 	onceCloseDone := sync.Once{}
 	onceCloseConnected := sync.Once{}
 	onceClosePc := sync.Once{}
-	dbg.peerConn.Println(4444, unsafe.Pointer(&onceClosePc))
 
 	fCloseDone := func() { close(pcDone) }
 	fCloseConnected := func() {
@@ -1548,9 +1547,8 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 			//12/27/21 this doesn't seem to start io.ErrPipeClosed on WriteRTP,
 			// but this is important none the less.
 			// get nil value when closed
-			dbg.peerConn.Println(2222, unsafe.Pointer(&onceClosePc))
+
 			onceClosePc.Do(func() {
-				pl(999)
 				pc.Close()
 			})
 
@@ -1576,6 +1574,7 @@ func SpliceRTP(s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz int64) {
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
 	// code is modeled on code from ion-sfu
+	// 12/30/21 maybe we should use something else other than SSRC transitions?
 	if p.SSRC != s.lastSSRC {
 
 		td1 := unixnano - s.lastUnixnanosNow // nanos
@@ -2152,57 +2151,121 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
 
-func trackWriterGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
+func switchReplayPGOPAndJumpCutOnKF(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
 	pl("started videoWriter()")
 
-	vidSplice := RtpSplicer{}
+	outCh := make(chan XPacket, 1) // XXX is 1 or 0 best?
+	go trackWriterBasicGr(video, outCh)
 
-	ch := make(chan XPacket, 5)
-	b.SubscribeReplay(ch)
-
-	n := 0
+	inCh := make(chan xany, 5)
+	b.Subscribe(inCh)
 
 	go func() {
 		// we do this on a seperate GR, so read loop below can be a for range, not select
 		//wait until peer connection is closed
 		<-pcDone
-		b.UnsubscribeClose(ch)
+		b.UnsubscribeClose(inCh)
+		close(outCh)
 	}()
 
-	//var ticker <-chan time.Time = time.NewTicker(time.Second * 2).C
-	//var ticker <-chan time.Time = nil
-	// case <-ticker:
-	// 	pl("trackWriterBrokerGr", "num packets receivec", n)
+	buf := (<-inCh).([]XPacket) // ha ha ha! wait till they get generics! lol
 
-	for m := range ch { // faster than select {}
+	var delta int64
+	var ssrclive uint32 = uint32(mrand.Int63())
 
-		if m.typ != Video { //testing
-			continue
+	testing := true //TESTING VIDEO ONLY
+	bufcopy := buf
+
+	if testing {
+		for i := range buf {
+			if buf[i].typ != Video {
+
+				copy(buf[i:], buf[i+1:])
+				buf[len(buf)-1] = XPacket{}
+				buf = buf[:len(buf)-1]
+
+			}
 		}
-		if m.replay {
+	}
 
-			pl("writer - replay packet", m.pkt.SequenceNumber)
+	pl("got n packets for replay", len(buf))
+	if len(buf) > 0 {
+		delta = nanotime() - buf[0].now // alternative: linear regression
 
-		} else {
-			//pl("writer - live packet", m.pkt.SequenceNumber)
+		if !buf[0].keyframe {
+			panic("replay must begin with KF, or be empty")
+		}
 
-			switch m.typ {
-			case Video:
-				n++
-				now := nanotime()
-				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+		dur := buf[len(buf)-1].now - buf[0].now
+		dur2 := time.Duration(dur).Round(time.Second / 100)
 
-				err := video.WriteRTP(&m.pkt)
-				if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					errlog.Println("closing writer GR:", err.Error())
-					return
-				}
-			case Audio:
-			default:
-				panic("oh no")
+		nframe := 0
+		lastts := buf[0].pkt.Timestamp
+		for _, v := range buf {
+			if lastts != v.pkt.Timestamp {
+				nframe += 1
+			}
+			lastts = v.pkt.Timestamp
+		}
+		log.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
+	}
+
+replayLoop:
+
+	// replay loop
+
+	for {
+		sleep := int64(time.Hour)
+
+		if len(buf) > 0 {
+			playtime := buf[0].now + delta
+			sleep = playtime - nanotime()
+			sleep += int64(time.Microsecond) // safety measure, so we sleep plenty
+			if sleep < 0 {
+				sleep = 0
 			}
 		}
 
+		select {
+		case <-time.NewTimer(time.Duration(sleep)).C:
+			outCh <- buf[0]
+			buf = buf[1:]
+		case x := <-inCh:
+			p := x.(XPacket)
+			if p.keyframe {
+				pl("### switch to live")
+				p.pkt.SSRC = ssrclive
+				outCh <- p
+				break replayLoop //throw away junk, and do scene cut
+			}
+			buf = append(buf, p)
+		}
+	}
+
+	/// XXX testing
+	if false {
+		buf = bufcopy
+		if len(buf) == 0 {
+			// if we get here, there is no one else clearing the broker chan to me
+			// clean it
+			select {
+			default:
+			case <-inCh:
+			}
+		} else {
+			delta = nanotime() - buf[0].now
+		}
+
+		goto replayLoop
+	}
+
+	//live loop
+	pl("### live")
+	for x := range inCh {
+		p := x.(XPacket)
+		p.pkt.SSRC = ssrclive
+		//pl("### live pkt")
+		outCh <- p
 	}
 
 }
