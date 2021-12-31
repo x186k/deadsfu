@@ -6,9 +6,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"embed"
 	"errors"
-	"math/rand"
+	"math"
+	"math/big"
+	mrand "math/rand"
 	"net"
 	"path"
 	"strconv"
@@ -231,6 +234,9 @@ func validateEmbedFiles() {
 }
 
 func init() {
+	bi, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
+	checkFatal(err)
+	mrand.Seed(bi.Int64())
 	validateEmbedFiles()
 }
 
@@ -1775,8 +1781,8 @@ func findserver(inf *log.Logger, dbg *log.Logger, requestChanid string) (ftlserv
 		}
 
 		a := &myFtlServer{}
-		a.audiossrc = uint32(rand.Int63())
-		a.videossrc = uint32(rand.Int63())
+		a.audiossrc = uint32(mrand.Int63())
+		a.videossrc = uint32(mrand.Int63())
 		a.channelid = uint32(tmp64)
 		return a, arr[1]
 	}
