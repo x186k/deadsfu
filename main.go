@@ -2123,28 +2123,26 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 
 	vidSplice := RtpSplicer{}
 
-	for {
+	for m := range pktCh {
 
-		for m := range pktCh {
+		now := nanotime()
 
-			now := nanotime()
+		switch m.typ {
+		case Video:
 
-			switch m.typ {
-			case Video:
+			SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
-				SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
-
-				err := video.WriteRTP(&m.pkt)
-				if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					errlog.Println("closing writer GR:", err.Error())
-					return
-				}
-			case Audio:
-			default:
-				panic("oh no")
+			err := video.WriteRTP(&m.pkt)
+			if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				errlog.Println("closing writer GR:", err.Error())
+				return
 			}
+		case Audio:
+		default:
+			panic("oh no")
 		}
 	}
+
 }
 
 //how do we know to go away?
