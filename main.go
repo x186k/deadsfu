@@ -326,17 +326,21 @@ func main() {
 	checkFatalProhibited = true // make sure we are not called checkFatal after main init
 
 	// block here
-	if *cpuprofile == 0 {
+	if !*cpuprofile {
 		select {}
 	}
 
-	println("profiling enabled, runtime seconds:", *cpuprofile)
+	println("press enter to START profiling")
+	var input string
+	fmt.Scanln(&input)
+	println("profiling started")
 
 	defer profile.Start(profile.CPUProfile).Stop()
 
-	time.Sleep(time.Duration(*cpuprofile) * time.Second)
+	println("press enter to STOP profiling")
+	fmt.Scanln(&input)
 
-	println("profiling done, exit")
+	println("profiling done, exiting")
 }
 
 func handleSetCookieStatsShipper(next http.Handler, url string) http.Handler {

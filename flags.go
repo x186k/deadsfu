@@ -37,7 +37,7 @@ var ftlUdpPort = pflag.Int("ftl-udp-port", 8084, "The UDP port to use for FTL UD
 //var rtpWireshark = pflag.Bool("rtp-wireshark", false, "when on 127.0.0.1, also receive my sent packets")
 var stunServer = pflag.String("stun-server", "stun.l.google.com:19302", "hostname:port of STUN server")
 var htmlSource = pflag.String("html", "", "required. 'internal' suggested. HTML source: internal, none, <file-path>, <url>")
-var cpuprofile = pflag.Int("cpu-profile", 0, "number of seconds to run + turn on profiling")
+var cpuprofile = pflag.Bool("profile", false, "Enable Go runtime profiling. Developer tool. Press enter to start/stop on console")
 var pprofFlag = pflag.Bool("pprof", false, "enable pprof based profiling on :6060")
 
 //var idleExitDuration = pflag.Duration("idle-exit-duration", time.Duration(0), `If there is no input video for duration, exit process/container. eg: '1h' one hour, '30m': 30 minutes`)
