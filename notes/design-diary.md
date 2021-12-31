@@ -638,3 +638,12 @@ maintaining ES constistency easier.
 
 
 
+## 12/30/21 design/implement the "replay & cut-on-kf join"
+
+1. replay captured-so-far GOP
+2. play live delayed until KF detected
+3. switch to live source
+  
+
+
+
