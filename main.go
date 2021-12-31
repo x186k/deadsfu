@@ -1409,6 +1409,8 @@ func noSignalSwitchGr(liveCh <-chan rtp.Packet, noSignalCh <-chan rtp.Packet, ou
 	}
 }
 
+var _ = sendREMB
+
 func sendREMB(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) error {
 	return peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.ReceiverEstimatedMaximumBitrate{Bitrate: 10000000, SenderSSRC: uint32(track.SSRC())}})
 }
