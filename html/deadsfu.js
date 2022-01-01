@@ -121,7 +121,11 @@ window.onload = async function () {
     async function rxtxTimeoutCallback() {
 
         let rates = await whipwhap.helperGetRxTxRate(pc)
-        rxtxSpan.textContent = `${rates.rxrate}/${rates.txrate} rx/tx kbps`
+        let qualityLim = ''
+        if (rates.qualityLimitation == true) {
+            qualityLim = 'QL'
+        }
+        rxtxSpan.textContent = `${rates.rxrate}/${rates.txrate} rx/tx kbps ${qualityLim}`
 
         if (pc.signalingState == 'closed') {
             //this two lines are a desparate way to handle the pixelbook
