@@ -68,11 +68,12 @@ func (b *PgopBroker) Start() {
 				}
 				for msgCh := range subs {
 					// msgCh is buffered, use non-blocking send to protect the broker:
-					select {
-					case msgCh <- m:
-					default:
-						pl("dropped packet/msg")
-					}
+					// select {
+					// case msgCh <- m:
+					// default:
+					// 	pl("dropped packet/msg")
+					// }
+					msgCh <- m
 				}
 			default:
 				panic("xpacket only")
