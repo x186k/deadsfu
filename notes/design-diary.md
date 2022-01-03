@@ -767,4 +767,11 @@ My solution to most of these problems, is the XBroker, a fan-out broadcast broke
 which not only can send RTP packets down channels, but also manages synchronous-like
 writing of RTP packets to WebRTC/Pion tracks.
 
+To reiterate why I am implementing the XBroker:
+
+- I feel that switching is an important and differentiating feature
+- I feel high-performance independent-graph-RX is an important and differentiating feature
+- While switching and independent-graph-RX can be done using mutexs, I feel better about a channel-based approach.
+
+
 
