@@ -749,12 +749,22 @@ set of GRs and chans.
 But! if your SFU implements switching between any two arbitrary two RX tracks,
 this presents an issue. Now you must move TX tracks from one RX graph (chans/GRs) to another
 RX graph. 
+
+One way to make switching simple is to handle all switching on a single GR.
+The issue here is you create a bottle neck, through with all RX traffic must flow.
+This can severly limit total aggregate RX packet bandwidth.
+That's a reasonable design decision, if you can accept the costs.
+
+But, if you want to have independent GR/chans handling RX->TX packet flows, 
+to reach the highest levels of RX bandwidth, you must find another way
+of moving TX tracks between RX->TX graphs.
+
 Conceptually this is not tough, but when you do this you must also: make sure not
 to send any packet twice, nor drop any RX packet on it's way to the TX.
 You also want to do this without long locks on the RX->TX graphs also.
 
 My solution to most of these problems, is the XBroker, a fan-out broadcast broker,
-which not only can send RTP packets down channels, but also manages synchronous
+which not only can send RTP packets down channels, but also manages synchronous-like
 writing of RTP packets to WebRTC/Pion tracks.
 
 
