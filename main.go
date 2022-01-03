@@ -832,7 +832,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
-			go switchReplayPGOPAndJumpCutOnKF(pcDone, videoTrack, link.pgopBroker)
+			go replayGOPJumpCut(pcDone, videoTrack, link.pgopBroker)
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
@@ -2149,7 +2149,7 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
 
-func switchReplayPGOPAndJumpCutOnKF(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
+func replayGOPJumpCut(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
 	pl("started videoWriter()")
 
 	outCh := make(chan XPacket, 1) // XXX is 1 or 0 best?
