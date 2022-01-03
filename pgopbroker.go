@@ -51,16 +51,17 @@ func (b *PgopBroker) Start() {
 			switch m := mm.(type) {
 			case XPacket:
 				if m.typ == Video { // save video GOPs
-					if len(buf) > 50000 { //oversize protection
+					if len(buf) > 50000 { //oversize protection // XXX >cap(buf)
 						buf = nil
 					}
 					if m.keyframe {
-						buf = make([]XPacket, 0, 100)
+						buf = make([]XPacket, 0, 100) // XXX pool?
+
 					}
 					if buf != nil {
 						buf = append(buf, m)
 					}
-					//XXXX remove me
+
 					// this sanity check moved to the receiving side
 					// if len(buf) > 0 && !buf[0].keyframe {
 					// 	panic("replay must begin with KF, or be empty")
