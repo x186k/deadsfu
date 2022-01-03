@@ -2171,21 +2171,6 @@ func switchReplayPGOPAndJumpCutOnKF(pcDone <-chan struct{}, video *webrtc.TrackL
 	var delta int64
 	var ssrclive uint32 = uint32(mrand.Int63())
 
-	testing := true //TESTING VIDEO ONLY
-	bufcopy := buf
-
-	if testing {
-		for i := range buf {
-			if buf[i].typ != Video {
-
-				copy(buf[i:], buf[i+1:])
-				buf[len(buf)-1] = XPacket{}
-				buf = buf[:len(buf)-1]
-
-			}
-		}
-	}
-
 	pl("got n packets for replay", len(buf))
 	if len(buf) > 0 {
 		delta = nanotime() - buf[0].now // alternative: linear regression
@@ -2208,7 +2193,7 @@ func switchReplayPGOPAndJumpCutOnKF(pcDone <-chan struct{}, video *webrtc.TrackL
 		log.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
 
-replayLoop:
+replayPGOP:  //PGOP is partial GOP
 
 	// replay loop
 
@@ -2234,28 +2219,14 @@ replayLoop:
 				pl("### switch to live")
 				p.pkt.SSRC = ssrclive
 				outCh <- p
-				break replayLoop //throw away junk, and do scene cut
+				break replayPGOP //throw away junk, and do scene cut
 			}
 			buf = append(buf, p)
 		}
 	}
 
-	/// XXX testing
-	if false {
-		buf = bufcopy
-		if len(buf) == 0 {
-			// if we get here, there is no one else clearing the broker chan to me
-			// clean it
-			select {
-			default:
-			case <-inCh:
-			}
-		} else {
-			delta = nanotime() - buf[0].now
-		}
+// Partial GOP is over, switch to LIVE!
 
-		goto replayLoop
-	}
 
 	//live loop
 	pl("### live")
