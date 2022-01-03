@@ -2,22 +2,26 @@ package main
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
 
-// the Partial GOP Broker
-// can publish/broadcast pkts
-// but can also serve up the current GOP so far
-type PgopBroker struct {
+/*
+The XBroker does these things:
+- does broadcast fan-out of rtp packets to Go channels
+- does broadcast fan-out of rtp packets to Pion Tracks
+- records GOPs from keyframe, and shares the PGOP or GOP-so-far with Subscribers
+*/
+
+type XBroker struct {
 	stopCh    chan struct{}
 	publishCh chan xany
 	subCh     chan chan xany
 	unsubCh   chan chan xany
 }
 
-type xany interface{}
+type xany interface{} // go 1.18 is here soon
 
-var _ = NewPgopBroker
+var _ = NewXBroker
 
-func NewPgopBroker() *PgopBroker {
-	return &PgopBroker{
+func NewXBroker() *XBroker {
+	return &XBroker{
 		stopCh:    make(chan struct{}),
 		publishCh: make(chan xany, 1),
 		subCh:     make(chan chan xany, 1),
@@ -25,7 +29,7 @@ func NewPgopBroker() *PgopBroker {
 	}
 }
 
-func (b *PgopBroker) Start() {
+func (b *XBroker) Start() {
 
 	var buf []XPacket = nil
 
@@ -83,20 +87,20 @@ func (b *PgopBroker) Start() {
 	}
 }
 
-func (b *PgopBroker) Stop() {
+func (b *XBroker) Stop() {
 	close(b.stopCh)
 }
 
-func (b *PgopBroker) Subscribe(msgCh chan xany) {
+func (b *XBroker) Subscribe(msgCh chan xany) {
 	//msgCh := make(chan XPacket, 5)
 	b.subCh <- msgCh
 }
 
-func (b *PgopBroker) UnsubscribeClose(msgCh chan xany) {
+func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
 	close(msgCh)
 	b.unsubCh <- msgCh
 }
 
-func (b *PgopBroker) Publish(msg XPacket) {
+func (b *XBroker) Publish(msg XPacket) {
 	b.publishCh <- msg
 }

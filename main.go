@@ -106,7 +106,7 @@ type myFtlServer struct {
 type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
-	pgopBroker  *PgopBroker
+	pgopBroker  *XBroker
 }
 
 var roomMap = make(map[string]*roomState)
@@ -670,7 +670,7 @@ func getRoomState(roomname string) *roomState {
 		link = &roomState{
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
-			pgopBroker:  NewPgopBroker(),
+			pgopBroker:  NewXBroker(),
 		}
 
 		go link.pgopBroker.Start()
@@ -1322,7 +1322,7 @@ func ingressOnTrack(
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *PgopBroker, typ XPacketType) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *XBroker, typ XPacketType) {
 
 	for {
 
@@ -2134,7 +2134,7 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
 
-func replayGOPJumpCut(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *PgopBroker) {
+func replayGOPJumpCut(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *XBroker) {
 	pl("started videoWriter()")
 
 	outCh := make(chan XPacket, 1) // XXX is 1 or 0 best?
