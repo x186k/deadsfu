@@ -781,21 +781,6 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	// this will never fire, because the subscriber only receives.
 	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { panic("never") })
 
-	// // blocking is okay
-	// link.addVideoTrackCh <- MsgTxTrackAddDel{
-	// 	txt: &TxTrack{
-	// 		track:   track,
-	// 		splicer: RtpSplicer{},
-	// 	},
-	// 	result: resultCh,
-	// }
-	// // foof xxx we need to save this somewhere
-	// <-resultCh
-
-	// link.newSubCh <- MsgNewSubscriber{
-	// 	video: videoTrack,
-	// }
-
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
 	// Create answer
