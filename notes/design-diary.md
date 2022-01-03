@@ -734,7 +734,7 @@ Maybe TxTrack gets a new 'owner' field, an int or point,
 updated with sync/atomic.CompareAndSwap
 Maybe each room has a 'vidtx []*TxTrack', and 'vidtxmu sync.Mutex'
 
-## 1/3/22 Why implementing high through RX AND switching is hard
+## 1/3/22 Why combining high throughput AND room-switching is hard
 
 Generally, when you implement an WebRTC SFU you end up with rtp packet flows from
 receivers to transmitters. A number of things may happen along these flows, 
