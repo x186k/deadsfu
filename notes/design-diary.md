@@ -738,7 +738,7 @@ Maybe each room has a 'vidtx []*TxTrack', and 'vidtxmu sync.Mutex'
 
 Generally, when you implement an WebRTC SFU you end up with rtp packet flows from
 receivers to transmitters. A number of things may happen along these flows, 
-like idle detection, etc. In these flows might consist of goroutines (GRs) and channels (chans).
+like idle detection, etc. In Go these flows might consist of goroutines (GRs) and channels (chans).
 For performance reasons, it's nice to have different GRs and chans for
 each of the different rx rooms or tracks.
 
