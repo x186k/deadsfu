@@ -647,3 +647,95 @@ maintaining ES constistency easier.
 
 
 
+## 12/31/21 Switching a track from room-A to room-B on B's next keyframe
+
+goroutine names:
+liveWriterGr() - send packets from a chan to a *webrtc.TrackStaticLocal
+subscriberGr() - mediates the switching of tracks between rooms/sources
+
+1. subscriberGr() receives a message asking to switch subX to room-B
+2. subscriberGr() knows subX is currently on room-A, so
+3. subscriberGr sends a sync messages asking liveWriterGr for 'A' to stop now. This message doesn't need a return message because it was sent sync. subscriberGr() knows when the message has been sent, that no Linux write() is in progress, or will occur again. The beauty of sync messages.
+4. subscriberGr now 
+5. ISSUE: we need to make sure subscriberGr 'sees' the same packet 'vision' as liveWriterGr for 'A', we know this will be true if the broker feeding the GRs, is completely synchronous. 
+
+## 1/1/22 Redo/ Switching track from roomA to roomB on B's next keyframe
+*this is the design necessary for a multiple input-graph design*
+
+names:
+subGr() the subscriber's goroutine, controls switching and does some pkt
+forwarding
+twGr() the track-writer goroutine: sends one packet to a group of Tracks, could be one, none, or 100,000. also called a room below
+
+Short summary of track switch (room A to room B)
+1. request via http becomes chan msg
+2. subGr() makes twGr-roomA() give up the track
+3. subGr() starts forwarding packets for the track, itself
+4. subGr() sends a sync msg to twGr-vid-roomB() to take track upon nextKF
+5. subGr() sends a sync msg to twGr-aud-roomB() to take track immediately
+
+Detailed steps of track switch (room A to room B)
+1. http request comes in which is turned into a channel msg
+2. subGr() gets the 'switch to B please' request
+3. subGr knows the track is currently on roomA
+4. subGr sends a 'relinquish' message to the broker above it.
+5. Rooma will get the relinquish message and stop writing, and remove the track
+6. subGr will get the relinquish msg it sent it the broker, and start forwarding packets (it takes ownership)
+7. subGr will forward packets, and try at the same time to send a sync 'take-on-keyframe' message to roomB's track writer.
+8. When roomB's track writer sees a keyframe, it will process all the pending 'take-on-keyframe' messages and take ownership of those tracks and start writing
+
+Is all this necessary? No, if you don't mind all room input running through a single GR/channel path, which means room-input performance can only hit a fraction of it's possible PPS rates vs seperate room-input graphs.
+
+You can eliminate all this work, if you don't support switching. But that sucks.
+
+You could also put each *webrtc.Track in it's own goroutine.
+Which helps simplify everything, but not by much.
+(so your passing ownership of channels now, not webrtc.Track or TxTrack)
+It also means your doing super-quick OS writes and AES/GCM per channel message, so your work/message ratio is super low, and inappropriate for channels (IMO).
+So, I think this is the best route for doing 1,000,000 os-writes() + aes/GCM per chan-msg sent at the end of the graph.
+
+So, the bottom line is:
+- You can remove switching, and this work goes away
+- You can consolidate all input packet flows through the same GR's/chans, and this work goes away
+
+Some units calculations:
+c@macmini ~> units -1v '1sec / 200ns * 2000bits'
+        Definition: 1e+10 bit
+If you have a single input graph, and each read takes 200ns (and your pipelined, and the chan stuff is same speed or faster), and each packet is 2000bits, then
+you can handle 1e10 bits of ingress. or 10gigabit
+which is about 1000 10megabit inputs, or 100 100megabit inputs. (8K?)
+So, if you implement multi-graph input pipelines, that might go up
+by 4x or 10x, which is really probably limited by ethernet input hardware
+except for special built boxes.
+
+Another calc:
+c@macmini ~> units -1v '1sec / 200ns * (500byte)'
+        Definition: 2e+10 bit
+So, at 200ns/rx-pkt, with 500byte per-packet len, that gives you 20gbps.
+
+
+## 1/1/22 I really don't want to give up on multi-graph input
+
+Could be nice to benchmark some really high throughput on a super-system.
+
+## 1/1/22 Maybe mutexes, not channels for changing ownership of tracks
+
+One thing to note: waiting for keyframes is maybe not necessary,
+as if we are using replay&cut switching, there is not really a keyframe
+wait.
+but there is still the issue of going from subGr() to the
+liveWriterGr()
+
+Maybe each TxTrack has a mutex? Probably not necessary.
+Maybe each []TxTrack has a mutex. Probably better.
+The subGr needs a *TxTrack so we can do the map-less removal.
+
+Maybe TxTrack gets a new 'owner' field, an int or point,
+updated with sync/atomic.CompareAndSwap
+Maybe each room has a 'vidtx []*TxTrack', and 'vidtxmu sync.Mutex'
+
+
+
+
+
+
