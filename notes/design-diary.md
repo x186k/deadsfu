@@ -734,8 +734,27 @@ Maybe TxTrack gets a new 'owner' field, an int or point,
 updated with sync/atomic.CompareAndSwap
 Maybe each room has a 'vidtx []*TxTrack', and 'vidtxmu sync.Mutex'
 
+## 1/3/22 Why implementing high through RX AND switching is hard
 
+Generally, when you implement an WebRTC SFU you end up with rtp packet flows from
+receivers to transmitters. A number of things may happen along these flows, 
+like idle detection, etc. In these flows might consist of goroutines (GRs) and channels (chans).
+For performance reasons, it's nice to have different GRs and chans for
+each of the different rx rooms or tracks.
 
+That means there is not a single set of GRs and chans for all your RX traffic, and
+you can handle much more RX traffic than if all RX traffic is handled by a single
+set of GRs and chans.
 
+But! if your SFU implements switching between any two arbitrary two RX tracks,
+this presents an issue. Now you must move TX tracks from one RX graph (chans/GRs) to another
+RX graph. 
+Conceptually this is not tough, but when you do this you must also: make sure not
+to send any packet twice, nor drop any RX packet on it's way to the TX.
+You also want to do this without long locks on the RX->TX graphs also.
+
+My solution to most of these problems, is the XBroker, a fan-out broadcast broker,
+which not only can send RTP packets down channels, but also manages synchronous
+writing of RTP packets to WebRTC/Pion tracks.
 
 
