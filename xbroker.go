@@ -101,8 +101,8 @@ func (b *XBroker) Start() {
 
 				for txt := range tracks {
 
-					SpliceRTP(&txt.splicer, &m.pkt, nanotime(), int64(txt.clockrate)) // writes all over m.pkt.Header
-					//pl(999, m.pkt)
+					SpliceRTP(&txt.splicer, &m.pkt, m.now, int64(txt.clockrate)) // writes all over m.pkt.Header
+					//pl(999, m.pkt.SSRC, m.pkt.SequenceNumber, len(tracks))
 					err := txt.track.WriteRTP(&m.pkt) // faster than packet.Write()
 					if err == io.ErrClosedPipe {
 						panic("unexpected ErrClosedPipe")
