@@ -87,8 +87,9 @@ type RtpSplicer struct {
 
 // size optimized, not readability
 type TxTrack struct {
-	track   *webrtc.TrackLocalStaticRTP
-	splicer RtpSplicer
+	track     *webrtc.TrackLocalStaticRTP
+	splicer   RtpSplicer
+	clockrate int
 }
 
 type myFtlServer struct {
@@ -106,7 +107,7 @@ type myFtlServer struct {
 type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
-	pgopBroker  *XBroker
+	xBroker     *XBroker
 }
 
 var roomMap = make(map[string]*roomState)
@@ -670,10 +671,10 @@ func getRoomState(roomname string) *roomState {
 		link = &roomState{
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
-			pgopBroker:  NewXBroker(),
+			xBroker:     NewXBroker(),
 		}
 
-		go link.pgopBroker.Start()
+		go link.xBroker.Start()
 
 		roomMapMutex.Lock()
 		roomMap[roomname] = link
@@ -817,7 +818,13 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
-			go replayGOPJumpCut(pcDone, videoTrack, link.pgopBroker)
+			//go replayGOPJumpCut(pcDone, videoTrack, link.xBroker)
+			txt := TxTrack{
+				track:     videoTrack,
+				splicer:   RtpSplicer{},
+				clockrate: 90000,
+			}
+			link.xBroker.subTrCh <- &txt
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
@@ -1268,7 +1275,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, link.pgopBroker, Audio)
+		inboundTrackReader(track, track.Codec().ClockRate, link.xBroker, Audio)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1305,7 +1312,7 @@ func ingressOnTrack(
 			// 	return
 			// }
 
-			time.Sleep(10 * time.Second)
+			time.Sleep(3 * time.Second)
 		}
 	}()
 
@@ -1316,7 +1323,7 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, link.pgopBroker, Video)
+	inboundTrackReader(track, track.Codec().ClockRate, link.xBroker, Video)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
@@ -2178,7 +2185,7 @@ func replayGOPJumpCut(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP,
 		log.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
 
-replayPGOP:  //PGOP is partial GOP
+replayPGOP: //PGOP is partial GOP
 
 	// replay loop
 
@@ -2210,8 +2217,7 @@ replayPGOP:  //PGOP is partial GOP
 		}
 	}
 
-// Partial GOP is over, switch to LIVE!
-
+	// Partial GOP is over, switch to LIVE!
 
 	//live loop
 	pl("### live")

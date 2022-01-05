@@ -1,5 +1,9 @@
 package main
 
+import (
+	"io"
+)
+
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
 
 /*
@@ -12,8 +16,10 @@ The XBroker does these things:
 type XBroker struct {
 	stopCh    chan struct{}
 	publishCh chan xany
-	subCh     chan chan xany
-	unsubCh   chan chan xany
+	subChCh   chan chan xany
+	unsubChCh chan chan xany
+	subTrCh   chan *TxTrack
+	unsubTrCh chan *TxTrack
 }
 
 type xany interface{} // go 1.18 is here soon
@@ -24,8 +30,10 @@ func NewXBroker() *XBroker {
 	return &XBroker{
 		stopCh:    make(chan struct{}),
 		publishCh: make(chan xany, 1),
-		subCh:     make(chan chan xany, 1),
-		unsubCh:   make(chan chan xany, 1),
+		subChCh:   make(chan chan xany, 1),
+		unsubChCh: make(chan chan xany, 1),
+		subTrCh:   make(chan *TxTrack), // MUST! BE UNBUF
+		unsubTrCh: make(chan *TxTrack), // MUST! BE UNBUF
 	}
 }
 
@@ -33,13 +41,16 @@ func (b *XBroker) Start() {
 
 	var buf []XPacket = nil
 
-	subs := map[chan xany]struct{}{}
+	subs := make(map[chan xany]struct{})
+
+	tracks := make(map[*TxTrack]struct{})
+
 	for {
 		select {
 		case <-b.stopCh:
 			return
 
-		case msgCh := <-b.subCh:
+		case msgCh := <-b.subChCh:
 			subs[msgCh] = struct{}{}
 			if buf != nil {
 				msgCh <- buf
@@ -47,13 +58,14 @@ func (b *XBroker) Start() {
 				msgCh <- []XPacket{}
 			}
 
-		case msgCh := <-b.unsubCh:
+		case msgCh := <-b.unsubChCh:
 			delete(subs, msgCh)
 
 		case mm := <-b.publishCh:
 
 			switch m := mm.(type) {
 			case XPacket:
+				// STEP1: we save video XPacket's in the gop-so-far
 				if m.typ == Video { // save video GOPs
 					if len(buf) > 50000 { //oversize protection // XXX >cap(buf)
 						buf = nil
@@ -71,6 +83,7 @@ func (b *XBroker) Start() {
 					// 	panic("replay must begin with KF, or be empty")
 					// }
 				}
+				//STEP2 we send it to all chan-subscribers
 				for msgCh := range subs {
 					// msgCh is buffered, use non-blocking send to protect the broker:
 					// select {
@@ -80,9 +93,33 @@ func (b *XBroker) Start() {
 					// }
 					msgCh <- m
 				}
+				//STEP3 send the packet to tracks
+
+				if m.typ != Video { // save video GOPs
+					break
+				}
+
+				for txt := range tracks {
+
+					SpliceRTP(&txt.splicer, &m.pkt, nanotime(), int64(txt.clockrate)) // writes all over m.pkt.Header
+					//pl(999, m.pkt)
+					err := txt.track.WriteRTP(&m.pkt) // faster than packet.Write()
+					if err == io.ErrClosedPipe {
+						panic("unexpected ErrClosedPipe")
+					} else if err != nil {
+						errlog.Println(err.Error())
+					}
+
+				}
+
 			default:
 				panic("xpacket only")
 			}
+		case txt := <-b.subTrCh:
+			tracks[txt] = struct{}{}
+
+		case txt := <-b.unsubTrCh:
+			delete(tracks, txt)
 		}
 	}
 }
@@ -93,12 +130,12 @@ func (b *XBroker) Stop() {
 
 func (b *XBroker) Subscribe(msgCh chan xany) {
 	//msgCh := make(chan XPacket, 5)
-	b.subCh <- msgCh
+	b.subChCh <- msgCh
 }
 
 func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
 	close(msgCh)
-	b.unsubCh <- msgCh
+	b.unsubChCh <- msgCh
 }
 
 func (b *XBroker) Publish(msg XPacket) {
