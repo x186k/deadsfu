@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"sync"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -18,8 +19,9 @@ type XBroker struct {
 	publishCh chan xany
 	subChCh   chan chan xany
 	unsubChCh chan chan xany
-	subTrCh   chan *TxTrack
-	unsubTrCh chan *TxTrack
+
+	txtsMu sync.Mutex
+	txts   map[*TxTrack]struct{}
 }
 
 type xany interface{} // go 1.18 is here soon
@@ -32,8 +34,7 @@ func NewXBroker() *XBroker {
 		publishCh: make(chan xany, 1),
 		subChCh:   make(chan chan xany, 1),
 		unsubChCh: make(chan chan xany, 1),
-		subTrCh:   make(chan *TxTrack), // MUST! BE UNBUF
-		unsubTrCh: make(chan *TxTrack), // MUST! BE UNBUF
+		txts:      make(map[*TxTrack]struct{}),
 	}
 }
 
@@ -42,8 +43,6 @@ func (b *XBroker) Start() {
 	var buf []XPacket = nil
 
 	subs := make(map[chan xany]struct{})
-
-	tracks := make(map[*TxTrack]struct{})
 
 	for {
 		select {
@@ -99,27 +98,30 @@ func (b *XBroker) Start() {
 					break
 				}
 
-				for txt := range tracks {
+				b.txtsMu.Lock()
+				//pl(len(b.txts))
 
-					SpliceRTP(&txt.splicer, &m.pkt, m.now, int64(txt.clockrate)) // writes all over m.pkt.Header
-					//pl(999, m.pkt.SSRC, m.pkt.SequenceNumber, len(tracks))
-					err := txt.track.WriteRTP(&m.pkt) // faster than packet.Write()
+				for txt := range b.txts {
+					copy := m.pkt
+
+					// if you accidentially pass a copy of the first param, seqno gunna always be one/wrong on other side
+					SpliceRTP(&txt.splicer, &copy, m.now, int64(txt.clockrate)) // writes all over m.pkt.Header
+					//pl(888,m.pkt.SequenceNumber,m.pkt.Timestamp,len(b.txts))
+
+					err := txt.track.WriteRTP(&copy) // faster than packet.Write()
 					if err == io.ErrClosedPipe {
 						panic("unexpected ErrClosedPipe")
 					} else if err != nil {
 						errlog.Println(err.Error())
 					}
-
 				}
+
+				b.txtsMu.Unlock()
 
 			default:
 				panic("xpacket only")
 			}
-		case txt := <-b.subTrCh:
-			tracks[txt] = struct{}{}
 
-		case txt := <-b.unsubTrCh:
-			delete(tracks, txt)
 		}
 	}
 }
@@ -140,4 +142,20 @@ func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
 
 func (b *XBroker) Publish(msg XPacket) {
 	b.publishCh <- msg
+}
+
+func (b *XBroker) AddTrack(txt *TxTrack) {
+	b.txtsMu.Lock()
+	b.txts[txt] = struct{}{}
+	b.txtsMu.Unlock()
+}
+
+func (b *XBroker) DelTrack(txt *TxTrack) {
+
+	b.txtsMu.Lock()
+	if _, ok := b.txts[txt]; !ok {
+		panic("broker.deltrack on no such track")
+	}
+	delete(b.txts, txt)
+	b.txtsMu.Unlock()
 }

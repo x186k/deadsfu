@@ -813,18 +813,20 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	pcDone, connected := waitPeerconnClosed("sub", link, peerConnection)
 
+	txt := &TxTrack{
+		track:     videoTrack,
+		splicer:   RtpSplicer{},
+		clockrate: 90000,
+	}
+
 	go func() {
 		conn, ok := <-connected
 
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 			//go replayGOPJumpCut(pcDone, videoTrack, link.xBroker)
-			txt := TxTrack{
-				track:     videoTrack,
-				splicer:   RtpSplicer{},
-				clockrate: 90000,
-			}
-			link.xBroker.subTrCh <- &txt
+
+			link.xBroker.AddTrack(txt)
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
@@ -833,6 +835,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
 	<-pcDone
 	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
+	link.xBroker.DelTrack(txt)
 
 	return nil
 }
