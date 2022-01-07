@@ -1564,7 +1564,7 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 // This grabs mutex after doing a fast, non-mutexed check for applicability
 
 // p gets modified
-func SpliceRTP(s *RtpSplicer, p *rtp.Packet, unixnano int64, rtphz int64) {
+func (s *RtpSplicer) SpliceRTP(p *rtp.Packet, unixnano int64, rtphz int64) {
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
@@ -1947,7 +1947,7 @@ func writerWorker() {
 
 		for _, tr := range m.tracks {
 
-			SpliceRTP(&tr.splicer, &m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
+			tr.splicer.SpliceRTP(&m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
 
 			err := tr.track.WriteRTP(&m.pkt) // faster than packet.Write()
 			if err == io.ErrClosedPipe {
@@ -2003,7 +2003,7 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 					// from the prior track. watch two no-signal tabs on the same room
 					// after reverting this to see the issue
 					copy := m
-					SpliceRTP(&txt.splicer, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
+					txt.splicer.SpliceRTP(&copy, now, int64(clockrate)) // writes all over m.pkt.Header
 					//pline(txt.splicer.lastSN, txt.splicer.lastTS)
 					err := txt.track.WriteRTP(&copy) // faster than packet.Write()
 					if err == io.ErrClosedPipe {
@@ -2125,7 +2125,7 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 		switch m.typ {
 		case Video:
 
-			SpliceRTP(&vidSplice, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+			vidSplice.SpliceRTP(&m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
 			err := video.WriteRTP(&m.pkt)
 			if err != nil && !errors.Is(err, io.ErrClosedPipe) {
