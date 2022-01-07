@@ -20,7 +20,7 @@ type XBroker struct {
 	txts   map[*TxTrack]struct{}
 }
 
-type XBrokerMsgStop struct{} // https://goplay.tools/snippet/9K4u1ESBg6A
+// https://goplay.tools/snippet/9K4u1ESBg6A
 type XBrokerMsgSub chan xany
 type XBrokerMsgUnSub chan xany
 
@@ -53,8 +53,7 @@ func (b *XBroker) Start() {
 			}
 		case XBrokerMsgUnSub:
 			delete(subs, m)
-		case XBrokerMsgStop:
-			return
+
 		case XPacket:
 			// STEP1: we save video XPacket's in the gop-so-far
 			if m.typ == Video { // save video GOPs
