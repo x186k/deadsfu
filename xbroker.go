@@ -2,8 +2,6 @@ package main
 
 import (
 	"sync"
-
-	"github.com/pion/webrtc/v3"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -16,10 +14,10 @@ The XBroker does these things:
 */
 
 type XBroker struct {
-	msgCh        chan xany
-	handoverTrCh chan *webrtc.TrackLocalStaticRTP
-	txtsMu       sync.Mutex
-	txts         map[*TxTrack]struct{}
+	msgCh          chan xany
+	takeOnKeyframe chan *TxTrack
+	txtsMu         sync.Mutex
+	txts           map[*TxTrack]struct{}
 }
 
 // https://goplay.tools/snippet/9K4u1ESBg6A
@@ -30,9 +28,9 @@ type xany interface{} // go 1.18 is here soon
 
 func NewXBroker() *XBroker {
 	return &XBroker{
-		msgCh:        make(chan xany, 1),
-		handoverTrCh: make(chan *webrtc.TrackLocalStaticRTP), // must be unbuffered!
-		txts:         make(map[*TxTrack]struct{}),
+		msgCh:          make(chan xany, 1),
+		takeOnKeyframe: make(chan *TxTrack), // must be unbuffered!
+		txts:           make(map[*TxTrack]struct{}),
 	}
 }
 
@@ -109,13 +107,14 @@ func (b *XBroker) Stop() {
 	close(b.msgCh)
 }
 
-func (b *XBroker) Subscribe(msgCh chan xany) {
-	//msgCh := make(chan XPacket, 5)
+func (b *XBroker) Subscribe(n int) chan xany {
+	msgCh := make(chan xany, 5)
 	b.msgCh <- XBrokerMsgSub(msgCh)
+	return msgCh
 }
 
-func (b *XBroker) Unsubscribe(msgCh chan xany) {
-	//close(msgCh)
+func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
+	close(msgCh)
 	b.msgCh <- XBrokerMsgUnSub(msgCh)
 }
 
