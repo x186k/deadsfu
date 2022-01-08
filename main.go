@@ -91,6 +91,14 @@ type TxTrack struct {
 	clockrate int
 }
 
+func (txt *TxTrack) SpliceWriteRTP(p XPacket) {
+	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, p.now, int64(txt.clockrate))
+}
+
+func (txt *TxTrack) SpliceWriteRTPNow(p XPacket, now int64) {
+	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, now, int64(txt.clockrate))
+}
+
 type myFtlServer struct {
 	badrtp    int
 	badssrc   int
@@ -817,7 +825,6 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		splicer:   RtpSplicer{},
 		clockrate: 90000,
 	}
-	_ = txt
 
 	go func() {
 		conn, ok := <-connected
@@ -825,16 +832,8 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			//go subscriberGr(pcDone, videoTrack, link.xBroker)
-			inCh := make(chan xany, 5)
-			defer close(inCh) // lifo
+			go subscriberGr(pcDone, txt, link.xBroker)
 
-			link.xBroker.Subscribe(inCh)
-			defer link.xBroker.Unsubscribe(inCh) // lifo
-
-			go replayGOPJumpCut(inCh, videoTrack)
-			<-pcDone
-			//link.xBroker.AddTrack(txt)
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
@@ -1574,7 +1573,7 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 // This grabs mutex after doing a fast, non-mutexed check for applicability
 
 // p gets modified
-func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p *rtp.Packet, unixnano int64, rtphz int64) {
+func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p rtp.Packet, unixnano int64, rtphz int64) {
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
@@ -1608,7 +1607,7 @@ func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p *rtp.Pack
 	//I had believed it was possible to see: io.ErrClosedPipe {
 	// but I no longer believe this to be true
 	// if it turns out I can see those, we will need to adjust
-	err := trk.WriteRTP(p)
+	err := trk.WriteRTP(&p)
 	if err != nil {
 		panic(err)
 	}
@@ -1965,7 +1964,7 @@ func writerWorker() {
 
 		for _, tr := range m.tracks {
 
-			tr.splicer.SpliceWriteRTP(tr.track, &m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
+			tr.splicer.SpliceWriteRTP(tr.track, m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
 			// if err == io.ErrClosedPipe {
 			// 	closed = append(closed, &tr)
 
@@ -2016,8 +2015,8 @@ func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, d
 					// each rather, the timestamp/seqno updated packet gets used
 					// from the prior track. watch two no-signal tabs on the same room
 					// after reverting this to see the issue
-					copy := m
-					txt.splicer.SpliceWriteRTP(txt.track, &copy, now, int64(clockrate)) // writes all over m.pkt.Header
+					//copy := m
+					txt.splicer.SpliceWriteRTP(txt.track, m, now, int64(clockrate)) // writes all over m.pkt.Header
 					// if err == io.ErrClosedPipe {
 					// 	// delete slice trick
 					// 	a[i] = a[len(a)-1]
@@ -2131,7 +2130,7 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 		switch m.typ {
 		case Video:
 
-			vidSplice.SpliceWriteRTP(video, &m.pkt, now, int64(90000)) // writes all over m.pkt.Header
+			vidSplice.SpliceWriteRTP(video, m.pkt, now, int64(90000)) // writes all over m.pkt.Header
 
 		case Audio:
 		default:
@@ -2144,11 +2143,8 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 //how do we know to go away?
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
-func replayGOPJumpCut(inCh <-chan xany, video *webrtc.TrackLocalStaticRTP) {
+func replayGOPJumpCut(inCh <-chan xany, txt *TxTrack) {
 	pl("started videoWriter()")
-
-	outCh := make(chan XPacket, 1) // XXX is 1 or 0 best?
-	go trackWriterBasicGr(video, outCh)
 
 	buf := (<-inCh).([]XPacket) // ha ha ha! wait till they get generics! lol
 
@@ -2195,14 +2191,20 @@ replayPGOP: //PGOP is partial GOP
 
 		select {
 		case <-time.NewTimer(time.Duration(sleep)).C:
-			outCh <- buf[0]
+			p := buf[0]
+			//pl(txt.clockrate)
+			if p.typ != Video {
+				continue
+			}
+			txt.splicer.SpliceWriteRTP(txt.track, p.pkt, nanotime(), int64(txt.clockrate))
+			//outCh <- buf[0]
 			buf = buf[1:]
 		case x := <-inCh:
 			p := x.(XPacket)
 			if p.keyframe {
 				pl("### switch to live")
 				p.pkt.SSRC = ssrclive
-				outCh <- p
+
 				break replayPGOP //throw away junk, and do scene cut
 			}
 			buf = append(buf, p)
@@ -2214,32 +2216,33 @@ replayPGOP: //PGOP is partial GOP
 	//live loop
 	pl("### live")
 	for x := range inCh {
-		//pl("livexx")
+		pl("livexx")
 		p := x.(XPacket)
 		p.pkt.SSRC = ssrclive
 		//pl("### live pkt")
-		outCh <- p
+		//outCh <- p
+		//pl(p.typ, p.pkt)
+		if p.typ != Video {
+			continue
+		}
+		txt.splicer.SpliceWriteRTP(txt.track, p.pkt, nanotime(), int64(txt.clockrate))
 	}
-
 }
 
 var _ = subscriberGr
 
-func subscriberGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *XBroker) {
+func subscriberGr(pcDone <-chan struct{}, txt *TxTrack, b *XBroker) {
 	pl("started subscriberGr()")
 
 	inCh := make(chan xany, 5)
+	defer close(inCh) // lifo
+
 	b.Subscribe(inCh)
-	defer b.Unsubscribe(inCh)
+	defer b.Unsubscribe(inCh) // lifo
 
-	go replayGOPJumpCut(inCh, video)
+	go replayGOPJumpCut(inCh, txt)
 
-	go func() {
-		// we do this on a seperate GR, so read loop below can be a for range, not select
-		//wait until peer connection is closed
-		<-pcDone
-		//broker.UnsubscribeClose(inCh)
-		//close(outCh)
-	}()
+	// wait for PeerConn end of life
+	<-pcDone
 
 }
