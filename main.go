@@ -216,7 +216,7 @@ func checkFatal(err error) {
 var _ = pl
 
 func pl(a ...interface{}) {
-	b := fmt.Sprint("pline:", a)
+	b := fmt.Sprint(a...)
 	_ = log.Output(2, b)
 }
 
