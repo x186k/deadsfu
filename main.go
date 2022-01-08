@@ -2196,7 +2196,7 @@ replayPGOP: //PGOP is partial GOP
 			if p.typ != Video {
 				continue
 			}
-			txt.splicer.SpliceWriteRTP(txt.track, p.pkt, nanotime(), int64(txt.clockrate))
+			txt.SpliceWriteRTPNow(p, nanotime())
 			//outCh <- buf[0]
 			buf = buf[1:]
 		case x := <-inCh:
@@ -2216,7 +2216,7 @@ replayPGOP: //PGOP is partial GOP
 	//live loop
 	pl("### live")
 	for x := range inCh {
-		pl("livexx")
+		//pl("livexx")
 		p := x.(XPacket)
 		p.pkt.SSRC = ssrclive
 		//pl("### live pkt")
@@ -2225,7 +2225,7 @@ replayPGOP: //PGOP is partial GOP
 		if p.typ != Video {
 			continue
 		}
-		txt.splicer.SpliceWriteRTP(txt.track, p.pkt, nanotime(), int64(txt.clockrate))
+		txt.SpliceWriteRTPNow(p, nanotime())
 	}
 }
 
