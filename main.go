@@ -2199,7 +2199,10 @@ replayPGOP: //PGOP is partial GOP
 			txt.SpliceWriteRTPNow(p, nanotime())
 			//outCh <- buf[0]
 			buf = buf[1:]
-		case x := <-inCh:
+		case x, open := <-inCh:
+			if !open {
+				return
+			}
 			p := x.(XPacket)
 			if p.keyframe {
 				pl("### switch to live")
