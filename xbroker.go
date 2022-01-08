@@ -96,15 +96,9 @@ func (b *XBroker) Start() {
 				copy := m.pkt
 
 				// if you accidentially pass a copy of the first param, seqno gunna always be one/wrong on other side
-				SpliceRTP(&txt.splicer, &copy, m.now, int64(txt.clockrate)) // writes all over m.pkt.Header
+				txt.splicer.SpliceWriteRTP(txt.track, &copy, m.now, int64(txt.clockrate)) // writes all over m.pkt.Header
 				//pl(888,m.pkt.SequenceNumber,m.pkt.Timestamp,len(b.txts))
 
-				err := txt.track.WriteRTP(&copy) // faster than packet.Write()
-				if err == io.ErrClosedPipe {
-					panic("unexpected ErrClosedPipe")
-				} else if err != nil {
-					errlog.Println(err.Error())
-				}
 			}
 
 			b.txtsMu.Unlock()
