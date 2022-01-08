@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"sync"
 )
 
@@ -25,8 +24,6 @@ type XBrokerMsgSub chan xany
 type XBrokerMsgUnSub chan xany
 
 type xany interface{} // go 1.18 is here soon
-
-var _ = NewXBroker
 
 func NewXBroker() *XBroker {
 	return &XBroker{
@@ -91,7 +88,7 @@ func (b *XBroker) Start() {
 
 			b.txtsMu.Lock()
 			//pl(len(b.txts))
-
+			//now := nanotime()
 			for txt := range b.txts {
 				copy := m.pkt
 
@@ -116,8 +113,8 @@ func (b *XBroker) Subscribe(msgCh chan xany) {
 	b.msgCh <- XBrokerMsgSub(msgCh)
 }
 
-func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
-	close(msgCh)
+func (b *XBroker) Unsubscribe(msgCh chan xany) {
+	//close(msgCh)
 	b.msgCh <- XBrokerMsgUnSub(msgCh)
 }
 
