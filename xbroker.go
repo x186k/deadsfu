@@ -2,6 +2,8 @@ package main
 
 import (
 	"sync"
+
+	"github.com/pion/webrtc/v3"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -14,9 +16,10 @@ The XBroker does these things:
 */
 
 type XBroker struct {
-	msgCh  chan xany
-	txtsMu sync.Mutex
-	txts   map[*TxTrack]struct{}
+	msgCh        chan xany
+	handoverTrCh chan *webrtc.TrackLocalStaticRTP
+	txtsMu       sync.Mutex
+	txts         map[*TxTrack]struct{}
 }
 
 // https://goplay.tools/snippet/9K4u1ESBg6A
@@ -27,8 +30,9 @@ type xany interface{} // go 1.18 is here soon
 
 func NewXBroker() *XBroker {
 	return &XBroker{
-		msgCh: make(chan xany, 1),
-		txts:  make(map[*TxTrack]struct{}),
+		msgCh:        make(chan xany, 1),
+		handoverTrCh: make(chan *webrtc.TrackLocalStaticRTP), // must be unbuffered!
+		txts:         make(map[*TxTrack]struct{}),
 	}
 }
 
@@ -90,12 +94,9 @@ func (b *XBroker) Start() {
 			//pl(len(b.txts))
 			//now := nanotime()
 			for txt := range b.txts {
-				copy := m.pkt
 
-				// if you accidentially pass a copy of the first param, seqno gunna always be one/wrong on other side
-				txt.splicer.SpliceWriteRTP(txt.track, &copy, m.now, int64(txt.clockrate)) // writes all over m.pkt.Header
 				//pl(888,m.pkt.SequenceNumber,m.pkt.Timestamp,len(b.txts))
-
+				txt.SpliceWriteRTP(m)
 			}
 
 			b.txtsMu.Unlock()
