@@ -8,7 +8,6 @@ import (
 	"context"
 	crand "crypto/rand"
 	"embed"
-	"errors"
 	"math"
 	"math/big"
 	mrand "math/rand"
@@ -818,24 +817,35 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		splicer:   RtpSplicer{},
 		clockrate: 90000,
 	}
+	_ = txt
 
 	go func() {
 		conn, ok := <-connected
 
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
-			//go replayGOPJumpCut(pcDone, videoTrack, link.xBroker)
 
-			link.xBroker.AddTrack(txt)
+			//go subscriberGr(pcDone, videoTrack, link.xBroker)
+			inCh := make(chan xany, 5)
+			defer close(inCh) // lifo
+
+			link.xBroker.Subscribe(inCh)
+			defer link.xBroker.Unsubscribe(inCh) // lifo
+
+			go replayGOPJumpCut(inCh, videoTrack)
+			<-pcDone
+			//link.xBroker.AddTrack(txt)
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
+
 	}()
 
 	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
 	<-pcDone
 	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
-	link.xBroker.DelTrack(txt)
+
+	//link.xBroker.DelTrack(txt)
 
 	return nil
 }
@@ -2134,23 +2144,11 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 //how do we know to go away?
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
-
-func replayGOPJumpCut(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *XBroker) {
+func replayGOPJumpCut(inCh <-chan xany, video *webrtc.TrackLocalStaticRTP) {
 	pl("started videoWriter()")
 
 	outCh := make(chan XPacket, 1) // XXX is 1 or 0 best?
 	go trackWriterBasicGr(video, outCh)
-
-	inCh := make(chan xany, 5)
-	b.Subscribe(inCh)
-
-	go func() {
-		// we do this on a seperate GR, so read loop below can be a for range, not select
-		//wait until peer connection is closed
-		<-pcDone
-		b.UnsubscribeClose(inCh)
-		close(outCh)
-	}()
 
 	buf := (<-inCh).([]XPacket) // ha ha ha! wait till they get generics! lol
 
@@ -2216,10 +2214,32 @@ replayPGOP: //PGOP is partial GOP
 	//live loop
 	pl("### live")
 	for x := range inCh {
+		//pl("livexx")
 		p := x.(XPacket)
 		p.pkt.SSRC = ssrclive
 		//pl("### live pkt")
 		outCh <- p
 	}
+
+}
+
+var _ = subscriberGr
+
+func subscriberGr(pcDone <-chan struct{}, video *webrtc.TrackLocalStaticRTP, b *XBroker) {
+	pl("started subscriberGr()")
+
+	inCh := make(chan xany, 5)
+	b.Subscribe(inCh)
+	defer b.Unsubscribe(inCh)
+
+	go replayGOPJumpCut(inCh, video)
+
+	go func() {
+		// we do this on a seperate GR, so read loop below can be a for range, not select
+		//wait until peer connection is closed
+		<-pcDone
+		//broker.UnsubscribeClose(inCh)
+		//close(outCh)
+	}()
 
 }
