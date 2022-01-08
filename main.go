@@ -1594,6 +1594,14 @@ func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p *rtp.Pack
 	s.lastTS = p.Timestamp
 	s.lastSN = p.SequenceNumber
 	s.lastSSRC = p.SSRC
+
+	//I had believed it was possible to see: io.ErrClosedPipe {
+	// but I no longer believe this to be true
+	// if it turns out I can see those, we will need to adjust
+	err := trk.WriteRTP(p)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // isH264Keyframe detects when an RFC6184 payload contains an H264 SPS (8)
