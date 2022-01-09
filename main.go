@@ -2232,20 +2232,28 @@ replayPGOP: //PGOP is partial GOP
 	}
 }
 
-var _ = subscriberGr
+}
 
-func subscriberGr(pcDone <-chan struct{}, txt *TxTrack, b *XBroker) {
-	pl("started subscriberGr()")
+func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrack, b *XBroker) {
+	pl("started subscriberGr()", unsafe.Pointer(txt))
+	defer pl("ending subscriberGr()", unsafe.Pointer(txt))
 
-	inCh := make(chan xany, 5)
-	defer close(inCh) // lifo
+	done := make(chan struct{})       //unbuf!
+	go replayGOPJumpCut(done, b, txt) //ending this must be sync!
 
-	b.Subscribe(inCh)
-	defer b.Unsubscribe(inCh) // lifo
+X:
+	for {
+		select {
+		case a := <-subCh:
+			close(done)
+			done = make(chan struct{})
+			go replayGOPJumpCut(done, a.xBroker, txt)
 
-	go replayGOPJumpCut(inCh, txt)
+		case <-pcDone:
+			break X
+		}
+	}
 
-	// wait for PeerConn end of life
-	<-pcDone
+	close(done)
 
 }
