@@ -110,11 +110,10 @@ func (b *XBroker) Stop() {
 func (b *XBroker) Subscribe(n int) chan xany {
 	msgCh := make(chan xany, 5)
 	b.msgCh <- XBrokerMsgSub(msgCh)
-	return msgCh
 }
 
-func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
-	close(msgCh)
+func (b *XBroker) Unsubscribe(msgCh chan xany) {
+	//close(msgCh)
 	b.msgCh <- XBrokerMsgUnSub(msgCh)
 }
 
