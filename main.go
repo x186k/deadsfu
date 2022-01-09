@@ -399,6 +399,20 @@ func handleSDPWarning(next http.Handler) http.Handler {
 	})
 }
 
+var subCh chan *roomState = make(chan *roomState)
+
+func switchHandler(rw http.ResponseWriter, r *http.Request) {
+
+	name := r.URL.Query().Get("room")
+	a := getRoomState(name)
+	select {
+	case subCh <- a:
+		println("sent")
+	default:
+		println("not sent")
+	}
+}
+
 func setupMux() (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
@@ -410,6 +424,8 @@ func setupMux() (*http.ServeMux, error) {
 	if len(*dialUpstreamUrlFlag) == 0 {
 		mux.Handle(whipPath, commonPubSubHandler(pubHandler))
 	}
+
+	mux.HandleFunc("/switch", switchHandler)
 
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
 	httpsPrefix := strings.HasPrefix(*htmlSource, "https://")
@@ -832,7 +848,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			go subscriberGr(pcDone, txt, link.xBroker)
+			go subGr(pcDone, subCh, txt, link.xBroker)
 
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
