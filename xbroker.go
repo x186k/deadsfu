@@ -107,8 +107,8 @@ func (b *XBroker) Stop() {
 	close(b.msgCh)
 }
 
-func (b *XBroker) Subscribe(n int) chan xany {
-	msgCh := make(chan xany, 5)
+func (b *XBroker) Subscribe(msgCh chan xany) {
+	//msgCh := make(chan XPacket, 5)
 	b.msgCh <- XBrokerMsgSub(msgCh)
 }
 
