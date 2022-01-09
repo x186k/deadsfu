@@ -773,5 +773,13 @@ To reiterate why I am implementing the XBroker:
 - I feel high-performance independent-graph-RX is an important and differentiating feature
 - While switching and independent-graph-RX can be done using mutexs, I feel better about a channel-based approach.
 
+## 1/8/2022 Switching decisions: ingress fan out uses chans or RingBuffs
 
+## 1/8/2022 Switching decisions: TxTrack aquisition uses Mutexes
 
+## 1/8/2022 Switch from one Gopreplay to another Gopreplay
+
+- subGr gets request
+- subGr sends single msg to broker closing/removing/adding-new
+- Using this method/manner the elementary stream consistency is maintained. 
+- subGr may need to check time-of-last-keyframe and reject the switch or delay it for devices sensitive to too many keyframes (ipad/iphone)
