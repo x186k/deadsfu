@@ -2143,8 +2143,17 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 //how do we know to go away?
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
-func replayGOPJumpCut(inCh <-chan xany, txt *TxTrack) {
-	pl("started videoWriter()")
+// NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
+// so, done must be sync chan
+func gopReplay(done chan struct{}, b *XBroker, txt *TxTrack) {
+	pl("replayGOPJumpCut() start")
+	defer pl("replayGOPJumpCut() end")
+
+	inCh := make(chan xany, 5)
+	defer close(inCh)
+
+	b.Subscribe(inCh)
+	defer b.Unsubscribe(inCh) // lifo
 
 	buf := (<-inCh).([]XPacket) // ha ha ha! wait till they get generics! lol
 
@@ -2205,12 +2214,14 @@ replayPGOP: //PGOP is partial GOP
 			}
 			p := x.(XPacket)
 			if p.keyframe {
-				pl("### switch to live")
+				pl("### switch to live-live")
 				p.pkt.SSRC = ssrclive
 
 				break replayPGOP //throw away junk, and do scene cut
 			}
 			buf = append(buf, p)
+		case <-done:
+			return
 		}
 	}
 
@@ -2218,19 +2229,23 @@ replayPGOP: //PGOP is partial GOP
 
 	//live loop
 	pl("### live")
-	for x := range inCh {
-		//pl("livexx")
-		p := x.(XPacket)
-		p.pkt.SSRC = ssrclive
-		//pl("### live pkt")
-		//outCh <- p
-		//pl(p.typ, p.pkt)
-		if p.typ != Video {
-			continue
+	for {
+		select {
+		case x := <-inCh:
+			//pl("livexx")
+			p := x.(XPacket)
+			p.pkt.SSRC = ssrclive
+			//pl("### live pkt")
+			//outCh <- p
+			//pl(p.typ, p.pkt)
+			if p.typ != Video {
+				continue
+			}
+			txt.SpliceWriteRTPNow(p, nanotime())
+		case <-done:
+			return
 		}
-		txt.SpliceWriteRTPNow(p, nanotime())
 	}
-}
 
 }
 
