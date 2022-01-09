@@ -2254,7 +2254,7 @@ func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrack, b *XBroker
 	defer pl("ending subscriberGr()", unsafe.Pointer(txt))
 
 	done := make(chan struct{})       //unbuf!
-	go replayGOPJumpCut(done, b, txt) //ending this must be sync!
+	go gopReplay(done, b, txt) //ending this must be sync!
 
 X:
 	for {
@@ -2262,7 +2262,7 @@ X:
 		case a := <-subCh:
 			close(done)
 			done = make(chan struct{})
-			go replayGOPJumpCut(done, a.xBroker, txt)
+			go gopReplay(done, a.xBroker, txt)
 
 		case <-pcDone:
 			break X
