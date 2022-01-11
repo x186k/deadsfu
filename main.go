@@ -2161,15 +2161,13 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // so, we can add a ctx or done channel to the front of these params.
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
-func gopReplay(done chan struct{}, b *XBroker, txt *TxTrack) {
+func gopReplay(done chan struct{}, brk *XBroker, txt *TxTrack) {
 	pl("replayGOPJumpCut() start")
 	defer pl("replayGOPJumpCut() end")
 
 	inCh := make(chan xany, 5)
-	defer close(inCh)
-
-	b.Subscribe(inCh)
-	defer b.Unsubscribe(inCh) // lifo
+	brk.Subscribe(inCh)
+	defer brk.UnsubscribeClose(inCh) // lifo
 
 	buf := (<-inCh).([]XPacket) // ha ha ha! wait till they get generics! lol
 
@@ -2198,10 +2196,16 @@ func gopReplay(done chan struct{}, b *XBroker, txt *TxTrack) {
 		log.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
 
-replayPGOP: //PGOP is partial GOP
-
 	// replay loop
 
+	// this would queue up the switch in the broker
+	// the issue, though, this approach is not synchronous
+	// wrt this GR.
+	// This GR might do a write() after the broker
+	// thinks it has ownership of the track
+	// brk.AddTrackOnNextKeyframe(done, txt)
+
+replayPGOP: //PGOP is partial GOP
 	for {
 		sleep := int64(time.Hour)
 
@@ -2221,25 +2225,37 @@ replayPGOP: //PGOP is partial GOP
 			if p.typ != Video {
 				continue
 			}
+			p.pkt.SSRC = ssrclive
 			txt.SpliceWriteRTPNow(p, nanotime())
 			//outCh <- buf[0]
 			buf = buf[1:]
+
 		case x, open := <-inCh:
 			if !open {
+				pl(1515)
 				return
 			}
 			p := x.(XPacket)
 			if p.keyframe {
-				pl("### switch to live-live")
-				p.pkt.SSRC = ssrclive
+				pl("gopreplay got kf, seqno:", p.pkt.SequenceNumber)
 
 				break replayPGOP //throw away junk, and do scene cut
 			}
 			buf = append(buf, p)
+
+		case brk.onKeyframeCh <- txt: // broker now owns track
+			pl("gopreplay sent track :", unsafe.Pointer(txt))
+			return
+
 		case <-done:
 			return
+
 		}
+
 	}
+
+	// This is where we want to end and return
+	// track writing to a 'bulk-writer' GR
 
 	// Partial GOP is over, switch to LIVE!
 
@@ -2258,6 +2274,11 @@ replayPGOP: //PGOP is partial GOP
 				continue
 			}
 			txt.SpliceWriteRTPNow(p, nanotime())
+
+		case brk.onKeyframeCh <- txt: // broker now owns track
+			pl(1212)
+			return
+
 		case <-done:
 			return
 		}
@@ -2269,8 +2290,8 @@ func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrack, b *XBroker
 	pl("started subscriberGr()", unsafe.Pointer(txt))
 	defer pl("ending subscriberGr()", unsafe.Pointer(txt))
 
-	done := make(chan struct{})       //unbuf!
-	go gopReplay(done, b, txt) //ending this must be sync!
+	done := make(chan struct{}) //unbuf!
+	go gopReplay(done, b, txt)  //ending this must be sync!
 
 X:
 	for {
