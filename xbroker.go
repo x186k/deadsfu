@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"unsafe"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -14,10 +15,10 @@ The XBroker does these things:
 */
 
 type XBroker struct {
-	msgCh          chan xany
-	takeOnKeyframe chan *TxTrack
-	txtsMu         sync.Mutex
-	txts           map[*TxTrack]struct{}
+	msgCh        chan xany
+	onKeyframeCh chan *TxTrack // must be unbuffered!
+	txtsMu       sync.Mutex
+	txts         map[*TxTrack]struct{}
 }
 
 // https://goplay.tools/snippet/9K4u1ESBg6A
@@ -28,9 +29,9 @@ type xany interface{} // go 1.18 is here soon
 
 func NewXBroker() *XBroker {
 	return &XBroker{
-		msgCh:          make(chan xany, 1),
-		takeOnKeyframe: make(chan *TxTrack), // must be unbuffered!
-		txts:           make(map[*TxTrack]struct{}),
+		msgCh:        make(chan xany, 1),
+		onKeyframeCh: make(chan *TxTrack), // must be unbuffered!
+		txts:         make(map[*TxTrack]struct{}),
 	}
 }
 
@@ -51,6 +52,7 @@ func (b *XBroker) Start() {
 				m <- []XPacket{}
 			}
 		case XBrokerMsgUnSub:
+			close(m)
 			delete(subs, m)
 
 		case XPacket:
@@ -72,6 +74,24 @@ func (b *XBroker) Start() {
 				// 	panic("replay must begin with KF, or be empty")
 				// }
 			}
+
+			// STEP2 sync recv new track messages
+
+			if m.typ == Video && m.keyframe {
+				pl("xbroker got keyframe seqno:",m.pkt.SequenceNumber)
+			recvNewTracks:
+				// this rare, so I can live with select cost
+				for {
+					select {
+					case z := <-b.onKeyframeCh:
+						b.AddTrack(z)
+						pl("xbroker got track :",unsafe.Pointer(z))
+					default:
+						break recvNewTracks
+					}
+				}
+			}
+
 			//STEP2 we send it to all chan-subscribers
 			for msgCh := range subs {
 				// msgCh is buffered, use non-blocking send to protect the broker:
@@ -112,7 +132,7 @@ func (b *XBroker) Subscribe(msgCh chan xany) {
 	b.msgCh <- XBrokerMsgSub(msgCh)
 }
 
-func (b *XBroker) Unsubscribe(msgCh chan xany) {
+func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
 	//close(msgCh)
 	b.msgCh <- XBrokerMsgUnSub(msgCh)
 }
