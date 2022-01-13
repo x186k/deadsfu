@@ -115,21 +115,6 @@ type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 	xBroker     *XBroker
-	live        *SubList // writes allowed when this lock taken
-	pending     *SubList // writes not allowed when this taken
-}
-
-type SubList struct {
-	mu   sync.Mutex
-	subs map[*Subscriber]struct{}
-}
-
-type Subscriber struct {
-	mu      sync.Mutex
-	video   TxTrack
-	audio   TxTrack
-	live    *SubList
-	pending *SubList
 }
 
 var roomMap = make(map[string]*roomState)
@@ -2323,16 +2308,4 @@ X:
 
 	close(done)
 
-}
-
-// set of outbound/tx tracks associated with subscriber
-type TxSet struct {
-	aud TxTrack
-	vid TxTrack
-}
-
-// a group of aud/vid tracks for more than one subscriber
-type TxGroup struct {
-	mu     sync.Mutex          // held during map changes AND during WriteRTP
-	tracks map[*TxSet]struct{} //
 }
