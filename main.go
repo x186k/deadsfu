@@ -878,7 +878,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			go subGr(pcDone, subCh, txset, link.xBroker)
+			subGr(pcDone, subCh, txset, link.xBroker)
 
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
