@@ -886,9 +886,9 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	}()
 
-	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
+	//dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
 	<-pcDone
-	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
+	//dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
 
 	//link.xBroker.DelTrack(txt)
 
@@ -2192,14 +2192,14 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
 func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
-	pl("replayGOPJumpCut() start")
-	defer pl("replayGOPJumpCut() end")
+	dbg.switching.Print("replayGOPJumpCut() start")
+	defer dbg.switching.Print("replayGOPJumpCut() end")
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
 	var tmpVidSSRC uint32 = uint32(mrand.Int63())
 
-	pl("got n packets for replay", len(buf))
+	//dbg.switching.Print("got n packets for replay", len(buf))
 	if len(buf) > 0 {
 		delta = nanotime() - buf[0].now // alternative: linear regression
 
@@ -2218,7 +2218,7 @@ func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
 			}
 			lastts = v.pkt.Timestamp
 		}
-		log.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
+		dbg.switching.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
 
 	// delay received packets from broker
@@ -2253,18 +2253,13 @@ replayPGOP: //PGOP is partial GOP
 
 		case p, open := <-inCh:
 			if !open {
-
-				pl("gopReplay EOF now!=0")
-				return
+				panic("closed chan without eof")
 			}
 			if p.now == 0 {
-				pl("gopReplay EOF now==0")
 				return
-
 			}
 			if p.keyframe {
-				pl("gopreplay got kf, seqno:", p.pkt.SequenceNumber)
-
+				//dbg.switching.Print("gopreplay got kf, seqno:", p.pkt.SequenceNumber)
 				break replayPGOP //throw away junk, and do scene cut
 			}
 			buf = append(buf, p)
@@ -2276,8 +2271,8 @@ replayPGOP: //PGOP is partial GOP
 }
 
 func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrackSet, b *XBroker) {
-	pl("started subscriberGr()", unsafe.Pointer(txt))
-	defer pl("ending subscriberGr()", unsafe.Pointer(txt))
+	dbg.switching.Print("started subscriberGr()", unsafe.Pointer(txt))
+	defer dbg.switching.Print("ending subscriberGr()", unsafe.Pointer(txt))
 
 	b.Subscribe(txt)
 X:
