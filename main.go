@@ -2161,15 +2161,9 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // so, we can add a ctx or done channel to the front of these params.
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
-func gopReplay(done chan struct{}, brk *XBroker, txt *TxTrack) {
+func gopReplay(inCh chan XPacket, txt *TxTrack, buf []XPacket) {
 	pl("replayGOPJumpCut() start")
 	defer pl("replayGOPJumpCut() end")
-
-	inCh := make(chan xany, 5)
-	brk.Subscribe(inCh)
-	defer brk.UnsubscribeClose(inCh) // lifo
-
-	buf := (<-inCh).([]XPacket) // ha ha ha! wait till they get generics! lol
 
 	var delta int64
 	var ssrclive uint32 = uint32(mrand.Int63())
@@ -2196,14 +2190,7 @@ func gopReplay(done chan struct{}, brk *XBroker, txt *TxTrack) {
 		log.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
 
-	// replay loop
-
-	// this would queue up the switch in the broker
-	// the issue, though, this approach is not synchronous
-	// wrt this GR.
-	// This GR might do a write() after the broker
-	// thinks it has ownership of the track
-	// brk.AddTrackOnNextKeyframe(done, txt)
+	// delay received packets from broker
 
 replayPGOP: //PGOP is partial GOP
 	for {
@@ -2230,12 +2217,17 @@ replayPGOP: //PGOP is partial GOP
 			//outCh <- buf[0]
 			buf = buf[1:]
 
-		case x, open := <-inCh:
+		case p, open := <-inCh:
 			if !open {
-				pl(1515)
+
+				pl("gopReplay EOF now!=0")
 				return
 			}
-			p := x.(XPacket)
+			if p.now == 0 {
+				pl("gopReplay EOF now==0")
+				return
+
+			}
 			if p.keyframe {
 				pl("gopreplay got kf, seqno:", p.pkt.SequenceNumber)
 
@@ -2243,45 +2235,8 @@ replayPGOP: //PGOP is partial GOP
 			}
 			buf = append(buf, p)
 
-		case brk.onKeyframeCh <- txt: // broker now owns track
-			pl("gopreplay sent track :", unsafe.Pointer(txt))
-			return
-
-		case <-done:
-			return
-
 		}
 
-	}
-
-	// This is where we want to end and return
-	// track writing to a 'bulk-writer' GR
-
-	// Partial GOP is over, switch to LIVE!
-
-	//live loop
-	pl("### live")
-	for {
-		select {
-		case x := <-inCh:
-			//pl("livexx")
-			p := x.(XPacket)
-			p.pkt.SSRC = ssrclive
-			//pl("### live pkt")
-			//outCh <- p
-			//pl(p.typ, p.pkt)
-			if p.typ != Video {
-				continue
-			}
-			txt.SpliceWriteRTPNow(p, nanotime())
-
-		case brk.onKeyframeCh <- txt: // broker now owns track
-			pl(1212)
-			return
-
-		case <-done:
-			return
-		}
 	}
 
 }
@@ -2290,22 +2245,17 @@ func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrack, b *XBroker
 	pl("started subscriberGr()", unsafe.Pointer(txt))
 	defer pl("ending subscriberGr()", unsafe.Pointer(txt))
 
-	done := make(chan struct{}) //unbuf!
-	go gopReplay(done, b, txt)  //ending this must be sync!
-
+	b.Subscribe(txt)
 X:
 	for {
 		select {
 		case a := <-subCh:
-			close(done)
-			done = make(chan struct{})
-			go gopReplay(done, a.xBroker, txt)
+			b.Unsubscribe(txt)
+			b = a.xBroker
+			b.Subscribe(txt)
 
 		case <-pcDone:
 			break X
 		}
 	}
-
-	close(done)
-
 }

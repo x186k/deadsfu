@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync"
 	"unsafe"
 )
 
@@ -15,57 +14,71 @@ The XBroker does these things:
 */
 
 type XBroker struct {
-	msgCh        chan xany
-	onKeyframeCh chan *TxTrack // must be unbuffered!
-	txtsMu       sync.Mutex
-	txts         map[*TxTrack]struct{}
+	msgCh chan xany
 }
-
-// https://goplay.tools/snippet/9K4u1ESBg6A
-type XBrokerMsgSub chan xany
-type XBrokerMsgUnSub chan xany
 
 type xany interface{} // go 1.18 is here soon
 
+type XBrokerMsgSub *TxTrack
+type XBrokerMsgUnSub *TxTrack
+
 func NewXBroker() *XBroker {
 	return &XBroker{
-		msgCh:        make(chan xany, 1),
-		onKeyframeCh: make(chan *TxTrack), // must be unbuffered!
-		txts:         make(map[*TxTrack]struct{}),
+		msgCh: make(chan xany), // must be unbuf/sync!
 	}
 }
 
 func (b *XBroker) Start() {
 
-	var buf []XPacket = nil
+	var buf []XPacket = make([]XPacket, 0)
 
-	subs := make(map[chan xany]struct{})
+	// tracks are kept here before keyframe while forwarding to a chan
+	subs := make(map[*TxTrack]chan XPacket)
+
+	// tracks are moved here after keyframe for direct writing by myself
+	txtr := make(map[*TxTrack]struct{})
 
 	for mm := range b.msgCh {
 
 		switch m := mm.(type) {
 		case XBrokerMsgSub:
-			subs[m] = struct{}{}
-			if buf != nil {
-				m <- buf
-			} else {
-				m <- []XPacket{}
+			_, ok := subs[m]
+			if ok {
+				panic("can't add pre existing")
 			}
-		case XBrokerMsgUnSub:
-			close(m)
-			delete(subs, m)
+			ch := make(chan XPacket) //must be unbuf!
+			subs[m] = ch
 
+			go gopReplay(ch, m, buf) //ending this must be sync!, all writes must be complete!
+
+		case XBrokerMsgUnSub:
+			_, ok := subs[m]
+			if ok { // found track in chan map
+				subs[m] <- XPacket{now: 0} // synchronous EOF message
+				close(subs[m])             // closing is not sync, thats why we send an EOF before this
+				delete(subs, m)
+			} else {
+				_, ok := txtr[m]
+				if !ok {
+					panic("not found on either map!")
+				}
+				delete(txtr, m)
+			}
 		case XPacket:
+			// TESTING, vid only
+			if m.typ != Video { // save video GOPs
+				break
+			}
+
 			// STEP1: we save video XPacket's in the gop-so-far
 			if m.typ == Video { // save video GOPs
 				if len(buf) > 50000 { //oversize protection // XXX >cap(buf)
-					buf = nil
+					buf = make([]XPacket, 0)
 				}
 				if m.keyframe {
-					buf = make([]XPacket, 0, 100) // XXX pool?
-
-				}
-				if buf != nil {
+					buf = make([]XPacket, 1, 300) // XXX pool? or clear slice
+					buf[0] = m
+				} else if len(buf) > 0 {
 					buf = append(buf, m)
 				}
 
@@ -78,46 +91,29 @@ func (b *XBroker) Start() {
 			// STEP2 sync recv new track messages
 
 			if m.typ == Video && m.keyframe {
-				pl("xbroker got keyframe seqno:",m.pkt.SequenceNumber)
-			recvNewTracks:
-				// this rare, so I can live with select cost
-				for {
-					select {
-					case z := <-b.onKeyframeCh:
-						b.AddTrack(z)
-						pl("xbroker got track :",unsafe.Pointer(z))
-					default:
-						break recvNewTracks
-					}
+				pl("keyframe on broker:", unsafe.Pointer(b))
+
+				//we do these as two fors, because the compiler will optimize the 2nd for
+				for k, v := range subs {
+					txtr[k] = struct{}{}
+					subs[k] <- XPacket{now: 0} // synchronous EOF message
+					close(v)
+				}
+				for k := range subs { // https://go.dev/doc/go1.11#performance-compiler
+					delete(subs, k)
 				}
 			}
 
 			//STEP2 we send it to all chan-subscribers
-			for msgCh := range subs {
-				// msgCh is buffered, use non-blocking send to protect the broker:
-				// select {
-				// case msgCh <- m:
-				// default:
-				// 	pl("dropped packet/msg")
-				// }
-				msgCh <- m
+			for _, ch := range subs {
+				// should this be non-blocking?
+				ch <- m
 			}
+
 			//STEP3 send the packet to tracks
-
-			if m.typ != Video { // save video GOPs
-				break
-			}
-
-			b.txtsMu.Lock()
-			//pl(len(b.txts))
-			//now := nanotime()
-			for txt := range b.txts {
-
-				//pl(888,m.pkt.SequenceNumber,m.pkt.Timestamp,len(b.txts))
+			for txt := range txtr {
 				txt.SpliceWriteRTP(m)
 			}
-
-			b.txtsMu.Unlock()
 
 		}
 	}
@@ -127,32 +123,15 @@ func (b *XBroker) Stop() {
 	close(b.msgCh)
 }
 
-func (b *XBroker) Subscribe(msgCh chan xany) {
+func (b *XBroker) Subscribe(tr *TxTrack) {
 	//msgCh := make(chan XPacket, 5)
-	b.msgCh <- XBrokerMsgSub(msgCh)
+	b.msgCh <- XBrokerMsgSub(tr)
 }
 
-func (b *XBroker) UnsubscribeClose(msgCh chan xany) {
-	//close(msgCh)
-	b.msgCh <- XBrokerMsgUnSub(msgCh)
+func (b *XBroker) Unsubscribe(tr *TxTrack) {
+	b.msgCh <- XBrokerMsgUnSub(tr)
 }
 
 func (b *XBroker) Publish(msg XPacket) {
 	b.msgCh <- msg
-}
-
-func (b *XBroker) AddTrack(txt *TxTrack) {
-	b.txtsMu.Lock()
-	b.txts[txt] = struct{}{}
-	b.txtsMu.Unlock()
-}
-
-func (b *XBroker) DelTrack(txt *TxTrack) {
-
-	b.txtsMu.Lock()
-	if _, ok := b.txts[txt]; !ok {
-		panic("broker.deltrack on no such track")
-	}
-	delete(b.txts, txt)
-	b.txtsMu.Unlock()
 }
