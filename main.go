@@ -91,11 +91,25 @@ type TxTrack struct {
 	clockrate int
 }
 
-func (txt *TxTrack) SpliceWriteRTP(p XPacket) {
-	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, p.now, int64(txt.clockrate))
+func (txt *TxTrack) SpliceWriteRTP(p XPacket, now int64) {
+	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, now, int64(txt.clockrate))
 }
 
-func (txt *TxTrack) SpliceWriteRTPNow(p XPacket, now int64) {
+type TxTrackSet struct {
+	aud TxTrack
+	vid TxTrack
+}
+
+func (txset *TxTrackSet) SpliceWriteRTP(p XPacket, now int64) {
+	var txt *TxTrack
+	switch p.typ {
+	case Audio:
+		txt = &txset.aud
+	case Video:
+		txt = &txset.vid
+	default:
+		panic("bad p.typ")
+	}
 	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, now, int64(txt.clockrate))
 }
 
@@ -836,11 +850,18 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	pcDone, connected := waitPeerconnClosed("sub", link, peerConnection)
 
-	txt := &TxTrack{
+	vid := TxTrack{
 		track:     videoTrack,
 		splicer:   RtpSplicer{},
 		clockrate: 90000,
 	}
+	aud := TxTrack{
+		track:     audioTrack,
+		splicer:   RtpSplicer{},
+		clockrate: 48000,
+	}
+
+	txset := &TxTrackSet{aud, vid}
 
 	go func() {
 		conn, ok := <-connected
@@ -848,7 +869,7 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		if conn && ok {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			go subGr(pcDone, subCh, txt, link.xBroker)
+			go subGr(pcDone, subCh, txset, link.xBroker)
 
 		} else {
 			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
@@ -2161,12 +2182,13 @@ func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
 // so, we can add a ctx or done channel to the front of these params.
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
-func gopReplay(inCh chan XPacket, txt *TxTrack, buf []XPacket) {
+func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
 	pl("replayGOPJumpCut() start")
 	defer pl("replayGOPJumpCut() end")
 
 	var delta int64
-	var ssrclive uint32 = uint32(mrand.Int63())
+	var tmpAudSSRC uint32 = uint32(mrand.Int63())
+	var tmpVidSSRC uint32 = uint32(mrand.Int63())
 
 	pl("got n packets for replay", len(buf))
 	if len(buf) > 0 {
@@ -2209,11 +2231,14 @@ replayPGOP: //PGOP is partial GOP
 		case <-time.NewTimer(time.Duration(sleep)).C:
 			p := buf[0]
 			//pl(txt.clockrate)
-			if p.typ != Video {
-				continue
+			switch p.typ {
+			case Audio:
+				p.pkt.SSRC = tmpAudSSRC
+			case Video:
+				p.pkt.SSRC = tmpVidSSRC
 			}
-			p.pkt.SSRC = ssrclive
-			txt.SpliceWriteRTPNow(p, nanotime())
+			txset.SpliceWriteRTP(p, nanotime())
+
 			//outCh <- buf[0]
 			buf = buf[1:]
 
@@ -2241,7 +2266,7 @@ replayPGOP: //PGOP is partial GOP
 
 }
 
-func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrack, b *XBroker) {
+func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrackSet, b *XBroker) {
 	pl("started subscriberGr()", unsafe.Pointer(txt))
 	defer pl("ending subscriberGr()", unsafe.Pointer(txt))
 

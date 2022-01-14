@@ -1,8 +1,6 @@
 package main
 
-import (
-	"unsafe"
-)
+import ()
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
 
@@ -19,8 +17,8 @@ type XBroker struct {
 
 type xany interface{} // go 1.18 is here soon
 
-type XBrokerMsgSub *TxTrack
-type XBrokerMsgUnSub *TxTrack
+type XBrokerMsgSub *TxTrackSet
+type XBrokerMsgUnSub *TxTrackSet
 
 func NewXBroker() *XBroker {
 	return &XBroker{
@@ -33,10 +31,10 @@ func (b *XBroker) Start() {
 	var buf []XPacket = make([]XPacket, 0)
 
 	// tracks are kept here before keyframe while forwarding to a chan
-	subs := make(map[*TxTrack]chan XPacket)
+	subs := make(map[*TxTrackSet]chan XPacket)
 
 	// tracks are moved here after keyframe for direct writing by myself
-	txtr := make(map[*TxTrack]struct{})
+	txtr := make(map[*TxTrackSet]struct{})
 
 	for mm := range b.msgCh {
 
@@ -66,9 +64,9 @@ func (b *XBroker) Start() {
 			}
 		case XPacket:
 			// TESTING, vid only
-			if m.typ != Video { // save video GOPs
-				break
-			}
+			// if m.typ != Video { // save video GOPs
+			// 	break
+			// }
 
 			// STEP1: we save video XPacket's in the gop-so-far
 			if m.typ == Video { // save video GOPs
@@ -91,7 +89,7 @@ func (b *XBroker) Start() {
 			// STEP2 sync recv new track messages
 
 			if m.typ == Video && m.keyframe {
-				pl("keyframe on broker:", unsafe.Pointer(b))
+				//pl("keyframe on broker:", unsafe.Pointer(b))
 
 				//we do these as two fors, because the compiler will optimize the 2nd for
 				for k, v := range subs {
@@ -112,9 +110,8 @@ func (b *XBroker) Start() {
 
 			//STEP3 send the packet to tracks
 			for txt := range txtr {
-				txt.SpliceWriteRTP(m)
+				txt.SpliceWriteRTP(m, m.now)
 			}
-
 		}
 	}
 }
@@ -123,12 +120,12 @@ func (b *XBroker) Stop() {
 	close(b.msgCh)
 }
 
-func (b *XBroker) Subscribe(tr *TxTrack) {
+func (b *XBroker) Subscribe(tr *TxTrackSet) {
 	//msgCh := make(chan XPacket, 5)
 	b.msgCh <- XBrokerMsgSub(tr)
 }
 
-func (b *XBroker) Unsubscribe(tr *TxTrack) {
+func (b *XBroker) Unsubscribe(tr *TxTrackSet) {
 	b.msgCh <- XBrokerMsgUnSub(tr)
 }
 
