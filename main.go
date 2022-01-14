@@ -2284,6 +2284,7 @@ X:
 			b.Subscribe(txt)
 
 		case <-pcDone:
+			b.Unsubscribe(txt)
 			break X
 		}
 	}
