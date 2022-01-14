@@ -168,7 +168,15 @@ var idleMediaPackets []rtp.Packet
 const logFlags = log.Lmicroseconds | log.LUTC | log.Lshortfile | log.Lmsgprefix
 
 var dbg = struct {
-	url, media, https, ice, main, ftl, ddns, peerConn FastLogger
+	url       FastLogger
+	media     FastLogger
+	https     FastLogger
+	ice       FastLogger
+	main      FastLogger
+	ftl       FastLogger
+	ddns      FastLogger
+	peerConn  FastLogger
+	switching FastLogger
 }{}
 var dbgMap = map[string]*FastLogger{
 	"url":            &dbg.url,
@@ -179,6 +187,7 @@ var dbgMap = map[string]*FastLogger{
 	"ftl":            &dbg.ftl,
 	"ddns":           &dbg.ddns,
 	"peer-conn":      &dbg.peerConn,
+	"switching":      &dbg.switching,
 }
 
 var errlog = log.New(os.Stderr, "errlog", logFlags)
