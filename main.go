@@ -2162,30 +2162,6 @@ type XPacket struct {
 	replay   bool
 }
 
-var _ = trackWriterBasicGr
-
-func trackWriterBasicGr(video *webrtc.TrackLocalStaticRTP, pktCh chan XPacket) {
-	pl("startec videoWriter()")
-
-	vidSplice := RtpSplicer{}
-
-	for m := range pktCh {
-
-		now := nanotime()
-
-		switch m.typ {
-		case Video:
-
-			vidSplice.SpliceWriteRTP(video, m.pkt, now, int64(90000)) // writes all over m.pkt.Header
-
-		case Audio:
-		default:
-			panic("oh no")
-		}
-	}
-
-}
-
 //how do we know to go away?
 // the broker gets created at room-creation-time, and never goes away!
 // so, we can add a ctx or done channel to the front of these params.
