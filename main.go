@@ -1072,56 +1072,6 @@ func idleMediaLoader() {
 
 }
 
-var _ = noSignalGeneratorGr
-
-func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
-
-	fps := 5
-	seqno := uint16(0)
-	tstotal := uint32(0)
-
-	basetime := time.Now()
-
-	framedur90 := uint32(90000 / fps)
-
-	pktsDur90 := idleMediaPackets[len(idleMediaPackets)-1].Timestamp - idleMediaPackets[0].Timestamp
-
-	totalDur90 := pktsDur90/framedur90*framedur90 + framedur90
-
-	for {
-
-		for _, pkt := range idleMediaPackets {
-
-			pkt.SSRC = 0xdeadbeef
-
-			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
-			tsdelta := pkt.Timestamp - idleMediaPackets[0].Timestamp
-
-			tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
-
-			when := basetime.Add(tsdeltaDur)
-
-			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
-
-			pkt.SequenceNumber = seqno
-			seqno++
-			pkt.Timestamp = tsdelta + tstotal
-
-			//copy := pkt // critical!, we must make a copy!
-			//actuall, the downstreams shouldn't be effing with this!
-			//blocking is okay
-			idleCh <- pkt
-
-		}
-
-		tstotal += totalDur90
-		basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
-
-		time.Sleep(time.Until(basetime))
-
-	}
-}
-
 func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 	// var sps rtp.Packet
 	// var pps rtp.Packet
@@ -1417,6 +1367,56 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *X
 			replay:   false,
 		}
 		broker.Publish(xp)
+
+	}
+}
+
+var _ = noSignalGeneratorGr
+
+func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
+
+	fps := 5
+	seqno := uint16(0)
+	tstotal := uint32(0)
+
+	basetime := time.Now()
+
+	framedur90 := uint32(90000 / fps)
+
+	pktsDur90 := idleMediaPackets[len(idleMediaPackets)-1].Timestamp - idleMediaPackets[0].Timestamp
+
+	totalDur90 := pktsDur90/framedur90*framedur90 + framedur90
+
+	for {
+
+		for _, pkt := range idleMediaPackets {
+
+			pkt.SSRC = 0xdeadbeef
+
+			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
+			tsdelta := pkt.Timestamp - idleMediaPackets[0].Timestamp
+
+			tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
+
+			when := basetime.Add(tsdeltaDur)
+
+			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
+
+			pkt.SequenceNumber = seqno
+			seqno++
+			pkt.Timestamp = tsdelta + tstotal
+
+			//copy := pkt // critical!, we must make a copy!
+			//actuall, the downstreams shouldn't be effing with this!
+			//blocking is okay
+			idleCh <- pkt
+
+		}
+
+		tstotal += totalDur90
+		basetime = basetime.Add(time.Duration(totalDur90) * time.Second / 90000)
+
+		time.Sleep(time.Until(basetime))
 
 	}
 }
