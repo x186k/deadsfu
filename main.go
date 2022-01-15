@@ -55,10 +55,6 @@ import (
 	"unsafe"
 )
 
-// Make goimports import the unsafe package, which is required to be able
-// to use //go:linkname
-//var _ = unsafe.Sizeof(0)
-
 //go:noescape
 //go:linkname nanotime runtime.nanotime
 func nanotime() int64
@@ -1981,176 +1977,12 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 	return dotFileHidingFile{file}, err
 }
 
-type MsgTxTrackAddDel struct {
-	txt    *TxTrack
-	result chan<- *TxTrack
-}
-
-type MsgWorker struct {
-	pkt       rtp.Packet
-	tracks    []TxTrack
-	now       int64
-	clockrate int64
-}
-
-var writerWorkerInCh chan MsgWorker = make(chan MsgWorker, 100)
-var writerWorkerOutCh chan []*TxTrack = make(chan []*TxTrack, 100)
-var writerWorkersLaunched sync.Once
-
-var _ = writerWorker
-
-func writerWorker() {
-
-	for m := range writerWorkerInCh {
-		// 1. The code below will *NOT* write to m.pkt.Raw nor m.pkt.Payload
-		// 2. The code below will write to m.pkt.Header
-		// 3. m.pkt is a value type, so our changes to m.pkt.Header don't affect others
-
-		var closed []*TxTrack
-
-		for _, tr := range m.tracks {
-
-			tr.splicer.SpliceWriteRTP(tr.track, m.pkt, m.now, int64(m.clockrate)) // writes all over m.pkt.Header
-			// if err == io.ErrClosedPipe {
-			// 	closed = append(closed, &tr)
-
-		}
-
-		writerWorkerOutCh <- closed
-
-	}
-}
-
-func launchWriterWorkers() {
-	for j := 0; j < runtime.NumCPU(); j++ {
-		go writerWorker()
-	}
-}
-
-//we start one trackgroupwriter per trackgroup
-var _ = packetToTrackFanOutGr
-
-func packetToTrackFanOutGr(ch chan rtp.Packet, addTrack chan MsgTxTrackAddDel, delTrack chan MsgTxTrackAddDel, clockrate int64) {
-
-	a := make([]TxTrack, 0) // we don't use pointers for memory locality/perf reasons
-
-	// start worker GRs
-	writerWorkersLaunched.Do(launchWriterWorkers)
-
-	// XXX a lot of thought can go into sizing chunks
-	// etc etc etc.
-	// now is not the time to do so.
-	const chunkSize = 10 // send N tracks to the workers
-
-	for {
-		select {
-		case m := <-ch:
-			now := nanotime()
-			xlen := len(a)
-
-			simpleWriter := true
-			if simpleWriter {
-
-				for i := range a {
-					//we have to do this because of our memory locatilty optimization
-					// if we used for _, txt := range, then txt would be a value type, not pointer
-					txt := &a[i]
-
-					// if you don't make a copy here,
-					// rather than the original packet getting used for
-					// each rather, the timestamp/seqno updated packet gets used
-					// from the prior track. watch two no-signal tabs on the same room
-					// after reverting this to see the issue
-					//copy := m
-					txt.splicer.SpliceWriteRTP(txt.track, m, now, int64(clockrate)) // writes all over m.pkt.Header
-					// if err == io.ErrClosedPipe {
-					// 	// delete slice trick
-					// 	a[i] = a[len(a)-1]
-					// 	a[len(a)-1] = TxTrack{}
-					// 	a = a[:len(a)-1]
-					// }
-
-				}
-
-			} else {
-
-				for j := 0; j < xlen; j += chunkSize {
-					end := j + chunkSize
-					if end > xlen {
-						end = xlen
-					}
-					x := a[j:end]
-					writerWorkerInCh <- MsgWorker{m, x, now, int64(clockrate)}
-				}
-
-				for j := 0; j < xlen; j += chunkSize {
-					closedTracks := <-writerWorkerOutCh
-					for _, removed := range closedTracks {
-
-						// delete slice trick
-						*removed = a[len(a)-1]
-						a[len(a)-1] = TxTrack{}
-						a = a[:len(a)-1]
-
-					}
-				}
-
-			}
-
-		case m := <-addTrack:
-			// XXX slow safety check. remove someday: 2031?
-
-			for i := range a {
-				if m.txt == &a[i] {
-					panic("already in slice! bad")
-				}
-			}
-
-			a = append(a, *m.txt)
-
-			select {
-			case m.result <- &TxTrack{}: // there is nothing really to return here!, so we offer zero value
-			default:
-				panic("no reader")
-			}
-
-		case m := <-delTrack:
-			// XXX slow safety check. remove someday: 2031?
-			// make sure pointer lies on our slice.
-			i := 0
-			for i = range a {
-				if m.txt == &a[i] {
-					break //found it
-				}
-			}
-			if i == len(a) { //not found
-				panic("not found")
-			}
-
-			// delete slice trick
-			removed := a[len(a)-1]
-			a[len(a)-1] = TxTrack{}
-			a = a[:len(a)-1]
-
-			select {
-			case m.result <- &removed: // provide the removed TxTrack to sender
-			default:
-				panic("no reader")
-			}
-
-		}
-	}
-
-}
-
 type XPacketType int
 
-var _ = Invalid
-
 const (
-	Invalid XPacketType = iota
-	Video               = iota
-	Audio               = iota
+	_     XPacketType = iota
+	Video             = iota
+	Audio             = iota
 	//Data = iota
 )
 
