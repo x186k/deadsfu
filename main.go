@@ -2054,6 +2054,11 @@ replayPGOP: //PGOP is partial GOP
 			case Video:
 				p.pkt.SSRC = tmpVidSSRC
 			}
+			// you cannot use m.now for the nano timestamp
+			// these packets have been delayed,
+			// and those old timestamps won't play well
+			// when we switch to 'live'
+			// (this would cause a big jump in the timestamps to the splicer)
 			txset.SpliceWriteRTP(p, nanotime())
 
 			//outCh <- buf[0]
