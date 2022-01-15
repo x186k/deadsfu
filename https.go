@@ -10,8 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -25,13 +23,6 @@ type DDNSUnion interface {
 	libdns.RecordAppender
 	libdns.RecordDeleter
 	libdns.RecordSetter
-}
-
-var _ = wrap
-
-func wrap(err error) error {
-	_, fileName, fileLine, _ := runtime.Caller(1)
-	return fmt.Errorf("at %s:%d %w", filepath.Base(fileName), fileLine, err)
 }
 
 func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux) {

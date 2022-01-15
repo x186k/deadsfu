@@ -251,11 +251,11 @@ func pl(a ...interface{}) {
 	_ = log.Output(2, b)
 }
 
-var _ = fileline
+var _ = wrap
 
-func fileline() string {
+func wrap(err error) error {
 	_, fileName, fileLine, _ := runtime.Caller(1)
-	return filepath.Base(fileName) + ":" + strconv.Itoa(fileLine)
+	return fmt.Errorf("at %s:%d %w", filepath.Base(fileName), fileLine, err)
 }
 
 func validateEmbedFiles() {
