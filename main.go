@@ -1623,6 +1623,10 @@ func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p rtp.Packe
 	// 12/30/21 maybe we should use something else other than SSRC transitions?
 	if p.SSRC != s.lastSSRC {
 
+		if unixnano == 0 {
+			panic("unixnano cannot be zero.")
+		}
+
 		td1 := unixnano - s.lastUnixnanosNow // nanos
 		if td1 < 0 {
 			td1 = 0 // be positive or zero! (go monotonic clocks should mean this never happens)
