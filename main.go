@@ -125,6 +125,7 @@ type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 	xBroker     *XBroker
+	readPkts    chan XPacket
 }
 
 var roomMap = make(map[string]*roomState)
@@ -243,7 +244,7 @@ func checkFatal(err error) {
 var _ = pl
 
 func pl(a ...interface{}) {
-	b := fmt.Sprint(a...)
+	b := fmt.Sprintln(a...)
 	_ = log.Output(2, b)
 }
 
@@ -280,7 +281,7 @@ func main() {
 	oneTimeFlagsActions() //if !strings.HasSuffix(os.Args[0], ".test") {
 
 	verifyEmbedFiles()
-	idleMediaLoader()
+	idleMediaPackets = idleMediaLoader()
 
 	go logGoroutineCountToDebugLog()
 
@@ -714,8 +715,12 @@ func getRoomState(roomname string) *roomState {
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
 			xBroker:     NewXBroker(),
+			readPkts:    make(chan XPacket, 5), // can be buffered
 		}
 
+		noSignalCh := make(chan XPacket, 1)
+		go noSignalGeneratorGr(idleMediaPackets, noSignalCh)
+		go noSignalSwitchGr(link.readPkts, noSignalCh, link.xBroker.msgCh)
 		go link.xBroker.Start()
 
 		roomMapMutex.Lock()
@@ -1026,10 +1031,13 @@ func verifyEmbedFiles() {
 
 }
 
-func idleMediaLoader() {
+func idleMediaLoader() []rtp.Packet {
+
+	var rtp []rtp.Packet
+
 	if *idleClipZipfile == "" && *idleClipServerInput == "" {
 
-		idleMediaPackets = readRTPFromZip(idleClipZipBytes)
+		rtp = readRTPFromZip(idleClipZipBytes)
 	} else if *idleClipServerInput != "" {
 
 		inp, err := ioutil.ReadFile(*idleClipServerInput)
@@ -1050,25 +1058,25 @@ func idleMediaLoader() {
 		fmt.Println("response Status:", resp.Status)
 		body, err := ioutil.ReadAll(resp.Body)
 		checkFatal(err)
-		idleMediaPackets = readRTPFromZip(body)
-		log.Println(len(idleMediaPackets), "encoded rtp packets retrieved from", *idleClipServerURL)
+		rtp = readRTPFromZip(body)
+		log.Println(len(rtp), "encoded rtp packets retrieved from", *idleClipServerURL)
 
 	} else if *idleClipZipfile != "" {
 		buf, err := ioutil.ReadFile(*idleClipZipfile)
 		checkFatal(err)
-		idleMediaPackets = readRTPFromZip(buf)
+		rtp = readRTPFromZip(buf)
 
 	} else {
 		panic("badlogic")
 	}
 
-	if len(idleMediaPackets) == 0 {
-		if len(idleMediaPackets) == 0 {
-			checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
-		}
+	if len(rtp) == 0 {
+		checkFatal(fmt.Errorf("embedded idle-clip.zip is zero-length!"))
 	}
 
-	idleMediaPackets = removeH264AccessDelimiterAndSEI(idleMediaPackets)
+	rtp = removeH264AccessDelimiterAndSEI(rtp)
+
+	return rtp
 
 }
 
@@ -1121,7 +1129,7 @@ func dialUpstream(link *roomState) error {
 	dbg.url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link)
+		OnTrack2(peerConnection, track, receiver, link)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1267,7 +1275,7 @@ func text2pcapLog(log *log.Logger, inbuf []byte) {
 // 	text2pcapLog(log, buf.Bytes())
 // }
 
-func ingressOnTrack(
+func OnTrack2(
 	peerConnection *webrtc.PeerConnection,
 	track *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
@@ -1279,7 +1287,7 @@ func ingressOnTrack(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, link.xBroker, Audio)
+		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.readPkts)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1327,13 +1335,13 @@ func ingressOnTrack(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, link.xBroker, Video)
+	inboundTrackReader(track, track.Codec().ClockRate, Video, link.readPkts)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *XBroker, typ XPacketType) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- XPacket) {
 
 	for {
 
@@ -1364,16 +1372,35 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, broker *X
 			pkt:      *p,
 			now:      nanotime(),
 			keyframe: kf,
-			replay:   false,
+			//replay:   false,
 		}
-		broker.Publish(xp)
+
+		ch <- xp
 
 	}
 }
 
-var _ = noSignalGeneratorGr
+func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
 
-func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
+	var xpkts []XPacket
+
+	n := 0
+	for _, p := range idlePkts {
+
+		iskf := isH264Keyframe(p.Payload)
+		xpkt := XPacket{
+			typ:      Video,
+			pkt:      p,
+			now:      0, // not necessary for pre-precorded
+			keyframe: iskf,
+		}
+		if iskf {
+			n++
+		}
+
+		xpkts = append(xpkts, xpkt)
+	}
+	println("num kf", n)
 
 	fps := 5
 	seqno := uint16(0)
@@ -1383,18 +1410,18 @@ func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
 
 	framedur90 := uint32(90000 / fps)
 
-	pktsDur90 := idleMediaPackets[len(idleMediaPackets)-1].Timestamp - idleMediaPackets[0].Timestamp
+	pktsDur90 := xpkts[len(xpkts)-1].pkt.Timestamp - xpkts[0].pkt.Timestamp
 
 	totalDur90 := pktsDur90/framedur90*framedur90 + framedur90
 
 	for {
 
-		for _, pkt := range idleMediaPackets {
+		for _, pkt := range xpkts {
 
-			pkt.SSRC = 0xdeadbeef
+			pkt.pkt.SSRC = 1212121212
 
 			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
-			tsdelta := pkt.Timestamp - idleMediaPackets[0].Timestamp
+			tsdelta := pkt.pkt.Timestamp - xpkts[0].pkt.Timestamp
 
 			tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
 
@@ -1402,9 +1429,9 @@ func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
 
 			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
 
-			pkt.SequenceNumber = seqno
+			pkt.pkt.SequenceNumber = seqno
 			seqno++
-			pkt.Timestamp = tsdelta + tstotal
+			pkt.pkt.Timestamp = tsdelta + tstotal
 
 			//copy := pkt // critical!, we must make a copy!
 			//actuall, the downstreams shouldn't be effing with this!
@@ -1421,9 +1448,7 @@ func noSignalGeneratorGr(idleCh chan<- rtp.Packet) {
 	}
 }
 
-var _ = noSignalSwitchGr
-
-func noSignalSwitchGr(liveCh <-chan rtp.Packet, noSignalCh <-chan rtp.Packet, outCh chan<- rtp.Packet) {
+func noSignalSwitchGr(liveCh <-chan XPacket, noSignalCh <-chan XPacket, outCh chan<- xany) {
 
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool = true
@@ -1435,8 +1460,8 @@ func noSignalSwitchGr(liveCh <-chan rtp.Packet, noSignalCh <-chan rtp.Packet, ou
 			lastVideoRxTime = time.Now()
 
 			if sendingIdleVid {
-				iskeyframe := isH264Keyframe(mm.Payload)
-				if iskeyframe {
+
+				if mm.keyframe {
 					sendingIdleVid = false
 					log.Println("SWITCHING TO INPUT, NOW INPUT VIDEO PRESENT")
 				}
@@ -1451,8 +1476,8 @@ func noSignalSwitchGr(liveCh <-chan rtp.Packet, noSignalCh <-chan rtp.Packet, ou
 			rxActive := time.Since(lastVideoRxTime) <= time.Second
 
 			if !rxActive && !sendingIdleVid {
-				iskeyframe := isH264Keyframe(idle.Payload)
-				if iskeyframe {
+
+				if idle.keyframe {
 					sendingIdleVid = true
 					log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
 				}
@@ -1487,7 +1512,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 	defer peerConnection.Close()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		ingressOnTrack(peerConnection, track, receiver, link)
+		OnTrack2(peerConnection, track, receiver, link)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1644,6 +1669,14 @@ func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p rtp.Packe
 
 	p.Timestamp -= s.tsOffset
 	p.SequenceNumber -= s.snOffset
+
+	// xdbg := true
+	// if xdbg {
+	// 	if p.SSRC != s.lastSSRC && rtphz == 90000 {
+	// 		pl("last ts", s.lastTS, s.lastUnixnanosNow)
+	// 		pl("new ts", p.Timestamp, unixnano)
+	// 	}
+	// }
 
 	s.lastUnixnanosNow = unixnano
 	s.lastTS = p.Timestamp
@@ -1981,22 +2014,24 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 	return dotFileHidingFile{file}, err
 }
 
-type XPacketType int
+type XPacketType int32
 
 const (
 	_            XPacketType = iota
 	Video                    = iota
 	Audio                    = iota
 	Data                     = iota
-	GopReplayEof             = -1
+	GopReplayEof             = -1 // special sentinal to signal to gopReplay to terminate, close is not sync, this is!
 )
+
+var _ = Data
 
 type XPacket struct {
 	typ      XPacketType
 	pkt      rtp.Packet
-	now      int64
 	keyframe bool
-	replay   bool
+	now      int64 //rename to 'arrival' sometime soon
+
 }
 
 //how do we know to go away?
