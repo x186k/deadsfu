@@ -1980,10 +1980,11 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 type XPacketType int
 
 const (
-	_     XPacketType = iota
-	Video             = iota
-	Audio             = iota
-	//Data = iota
+	_            XPacketType = iota
+	Video                    = iota
+	Audio                    = iota
+	Data                     = iota
+	GopReplayEof             = -1
 )
 
 type XPacket struct {
