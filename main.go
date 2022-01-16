@@ -1370,7 +1370,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 		xp := XPacket{
 			typ:      typ,
 			pkt:      *p,
-			now:      nanotime(),
+			arrival:  nanotime(),
 			keyframe: kf,
 			//replay:   false,
 		}
@@ -1391,7 +1391,7 @@ func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
 		xpkt := XPacket{
 			typ:      Video,
 			pkt:      p,
-			now:      0, // not necessary for pre-precorded
+			arrival:  0, // not necessary for pre-precorded
 			keyframe: iskf,
 		}
 		if iskf {
@@ -2030,8 +2030,7 @@ type XPacket struct {
 	typ      XPacketType
 	pkt      rtp.Packet
 	keyframe bool
-	now      int64 //rename to 'arrival' sometime soon
-
+	arrival  int64
 }
 
 //how do we know to go away?
@@ -2049,13 +2048,13 @@ func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
 
 	//dbg.switching.Print("got n packets for replay", len(buf))
 	if len(buf) > 0 {
-		delta = nanotime() - buf[0].now // alternative: linear regression
+		delta = nanotime() - buf[0].arrival // alternative: linear regression
 
 		if !buf[0].keyframe {
 			panic("replay must begin with KF, or be empty")
 		}
 
-		dur := buf[len(buf)-1].now - buf[0].now
+		dur := buf[len(buf)-1].arrival - buf[0].arrival
 		dur2 := time.Duration(dur).Round(time.Second / 100)
 
 		nframe := 0
@@ -2076,7 +2075,7 @@ replayPGOP: //PGOP is partial GOP
 		sleep := int64(time.Hour)
 
 		if len(buf) > 0 {
-			playtime := buf[0].now + delta
+			playtime := buf[0].arrival + delta
 			sleep = playtime - nanotime()
 			sleep += int64(time.Microsecond) // safety measure, so we sleep plenty
 			if sleep < 0 {
