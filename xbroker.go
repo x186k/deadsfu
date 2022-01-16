@@ -109,6 +109,11 @@ func (b *XBroker) Start() {
 			}
 
 			//STEP3 send the packet to tracks
+			// if true && m.typ == Video {
+			// 	//pl("pkt", len(m.pkt.Payload), m.pkt.SSRC, m.keyframe, m.pkt.SequenceNumber, m.pkt.Timestamp)
+			// }
+			if m.typ != Video && m.typ != Audio {
+				panic("invalid xpkt type")
 			}
 			for txt := range txtr {
 				txt.SpliceWriteRTP(m, nanotime())
