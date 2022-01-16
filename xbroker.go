@@ -109,8 +109,10 @@ func (b *XBroker) Start() {
 			}
 
 			//STEP3 send the packet to tracks
+			}
 			for txt := range txtr {
-				txt.SpliceWriteRTP(m, m.now)
+				txt.SpliceWriteRTP(m, nanotime())
+				//pl(txt.vid.splicer.lastUnixnanosNow)
 			}
 		}
 	}
