@@ -1,7 +1,5 @@
 package main
 
-import ()
-
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
 
 /*
