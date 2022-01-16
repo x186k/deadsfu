@@ -52,8 +52,8 @@ func (b *XBroker) Start() {
 		case XBrokerMsgUnSub:
 			_, ok := subs[m]
 			if ok { // found track in chan map
-				subs[m] <- XPacket{now: 0} // synchronous EOF message
-				close(subs[m])             // closing is not sync, thats why we send an EOF before this
+				subs[m] <- XPacket{typ: GopReplayEof} // synchronous EOF message
+				close(subs[m])                        // closing is not sync, thats why we send an EOF before this
 				delete(subs, m)
 			} else {
 				_, ok := txtr[m]
@@ -94,7 +94,7 @@ func (b *XBroker) Start() {
 				//we do these as two fors, because the compiler will optimize the 2nd for
 				for k, v := range subs {
 					txtr[k] = struct{}{}
-					subs[k] <- XPacket{now: 0} // synchronous EOF message
+					subs[k] <- XPacket{typ: GopReplayEof} // synchronous EOF message
 					close(v)
 				}
 				for k := range subs { // https://go.dev/doc/go1.11#performance-compiler

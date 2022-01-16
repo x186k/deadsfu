@@ -2068,7 +2068,7 @@ replayPGOP: //PGOP is partial GOP
 			if !open {
 				panic("closed chan without eof")
 			}
-			if p.now == 0 {
+			if p.typ == GopReplayEof {
 				return
 			}
 			if p.keyframe {
