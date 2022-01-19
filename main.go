@@ -873,11 +873,9 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 
 	}()
 
-	//dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
+	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
 	<-pcDone
-	//dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
-
-	//link.xBroker.DelTrack(txt)
+	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
 
 	return nil
 }
