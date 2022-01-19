@@ -793,20 +793,6 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 	}
 	go processRTCP(rtpSender)
 
-	// XXX for now, we don't do anything with audio
-
-	// resultCh := make(chan *TxTrack)
-	// // blocking is okay
-	// link.addAudioTrackCh <- MsgTxTrackAddDel{
-	// 	txt: &TxTrack{
-	// 		track:   track,
-	// 		splicer: RtpSplicer{},
-	// 	},
-	// 	result: resultCh,
-	// }
-	// // foof xxx we need to save this somewhere
-	// <-resultCh
-
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
 	if err != nil {
 		return err
