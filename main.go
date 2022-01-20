@@ -52,6 +52,8 @@ import (
 
 	"github.com/x186k/deadsfu/ftlserver"
 
+	"github.com/google/uuid"
+
 	"unsafe"
 )
 
@@ -131,6 +133,9 @@ type roomState struct {
 var roomMap = make(map[string]*roomState)
 var roomMapMutex sync.Mutex
 
+var subMap = make(map[uuid.UUID]chan string)
+var subMapMutex sync.Mutex
+
 var dialUpstreamUrl *url.URL
 
 var Version = "version-unset"
@@ -174,6 +179,7 @@ var dbg = struct {
 	ddns      FastLogger
 	peerConn  FastLogger
 	switching FastLogger
+	goroutine FastLogger
 }{}
 var dbgMap = map[string]*FastLogger{
 	"url":            &dbg.url,
@@ -185,6 +191,7 @@ var dbgMap = map[string]*FastLogger{
 	"ddns":           &dbg.ddns,
 	"peer-conn":      &dbg.peerConn,
 	"switching":      &dbg.switching,
+	"goroutine":      &dbg.goroutine,
 }
 
 var errlog = log.New(os.Stderr, "errlog", logFlags)
@@ -419,17 +426,30 @@ func handleSDPWarning(next http.Handler) http.Handler {
 	})
 }
 
-var subCh chan *roomState = make(chan *roomState)
-
 func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
+	a := getSubuuidFromRequest(r)
+	if a == nil {
+		dbg.switching.Println("/switch: invalid uuid passed into request")
+		return
+	}
+
+	subMapMutex.Lock()
+	subGrCh, ok := subMap[*a]
+	subMapMutex.Unlock()
+
+	if !ok { //that subscriber was not found
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: subscriber not found for uuid:", a.String())
+		return
+	}
+
 	name := r.URL.Query().Get("room")
-	a := getRoomState(name)
+
 	select {
-	case subCh <- a:
-		println("sent")
+	case subGrCh <- name:
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: sent request to switch to room:", name)
 	default:
-		println("not sent")
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: NOT! sent request to switch to room:", name)
 	}
 }
 
@@ -646,7 +666,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getRoomState(roomname)
+	link := getRoomOrCreate(roomname)
 
 	dbg.url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
@@ -700,17 +720,22 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func getRoomState(roomname string) *roomState {
-
+func getRoom(roomname string) (*roomState, bool) {
 	if roomname == "" {
 		roomname = "mainroom"
 	}
 
 	roomMapMutex.Lock()
-	link, found := roomMap[roomname]
+	link, ok := roomMap[roomname]
 	roomMapMutex.Unlock()
 
-	if !found {
+	return link, ok
+}
+
+func getRoomOrCreate(roomname string) *roomState {
+	link, ok := getRoom(roomname)
+
+	if !ok {
 		link = &roomState{
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
@@ -749,7 +774,10 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
-func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
+func subHandlerGr(offersdp string,
+	link *roomState,
+	sdpCh chan *webrtc.SessionDescription,
+	subGrCh chan string) error {
 	peerConnection, err := newPeerConnection()
 	if err != nil {
 		return err
@@ -863,19 +891,23 @@ func subHandlerGr(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDe
 		conn, ok := <-connected
 
 		if conn && ok {
-			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
+			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			subGr(pcDone, subCh, txset, link.xBroker)
+			subGr(subGrCh, txset, link.xBroker)
 
 		} else {
-			dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
+			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
 
 	}()
 
-	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
+	dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
+
 	<-pcDone
-	dbg.peerConn.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
+
+	dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
+
+	close(subGrCh)
 
 	return nil
 }
@@ -897,7 +929,18 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getRoomState(roomname)
+	link := getRoomOrCreate(roomname)
+
+	subuuid := getSubuuidFromRequest(r)
+
+	subGrCh := make(chan string, 1)
+
+	if subuuid != nil {
+		//pl("Creating submap entry for ", subuuid.String())
+		subMapMutex.Lock()
+		subMap[*subuuid] = subGrCh
+		subMapMutex.Unlock()
+	}
 
 	dbg.url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
@@ -906,7 +949,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	go func() {
 
-		err := subHandlerGr(string(offersdpbytes), link, sdpCh)
+		err := subHandlerGr(string(offersdpbytes), link, sdpCh, subGrCh)
 		if err != nil {
 			errlog.Println(err.Error())
 			select {
@@ -938,6 +981,24 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		//case <-time.NewTicker(24*time.Hour).C:
 	}
 
+}
+
+func getSubuuidFromRequest(r *http.Request) (subuuid *uuid.UUID) {
+
+	if x := r.URL.Query().Get("subuuid"); x != "" {
+		if x, err := uuid.Parse(x); err == nil {
+			subuuid = &x
+		}
+	}
+	if x := r.Header.Get("X-deadsfu-subuuid"); x != "" {
+		if x, err := uuid.Parse(x); err == nil {
+			if subuuid != nil {
+				log.Println("/whap request provided both subuuid param and header. Ignoring param")
+			}
+			subuuid = &x
+		}
+	}
+	return subuuid
 }
 
 func logTransceivers(tag string, pc *webrtc.PeerConnection) {
@@ -1384,7 +1445,6 @@ func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
 
 		xpkts = append(xpkts, xpkt)
 	}
-	println("num kf", n)
 
 	fps := 5
 	seqno := uint16(0)
@@ -2023,8 +2083,8 @@ type XPacket struct {
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
 func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
-	dbg.switching.Print("replayGOPJumpCut() start")
-	defer dbg.switching.Print("replayGOPJumpCut() end")
+	dbg.goroutine.Print("replayGOPJumpCut() start")
+	defer dbg.goroutine.Print("replayGOPJumpCut() end")
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
@@ -2049,7 +2109,7 @@ func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
 			}
 			lastts = v.pkt.Timestamp
 		}
-		dbg.switching.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
+		dbg.goroutine.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
 
 	// delay received packets from broker
@@ -2106,22 +2166,24 @@ replayPGOP: //PGOP is partial GOP
 
 }
 
-func subGr(pcDone chan struct{}, subCh chan *roomState, txt *TxTrackSet, b *XBroker) {
-	dbg.switching.Print("started subscriberGr()", unsafe.Pointer(txt))
-	defer dbg.switching.Print("ending subscriberGr()", unsafe.Pointer(txt))
+func subGr(subGrCh <-chan string, txt *TxTrackSet, b *XBroker) {
+	dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
+	defer dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
 
 	b.Subscribe(txt)
-X:
-	for {
-		select {
-		case a := <-subCh:
-			b.Unsubscribe(txt)
-			b = a.xBroker
-			b.Subscribe(txt)
+	for newroom := range subGrCh {
 
-		case <-pcDone:
-			b.Unsubscribe(txt)
-			break X
+		link, ok := getRoom(newroom)
+
+		if !ok { //you cannot create rooms this way
+			dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: room not found:", newroom)
+			continue
 		}
+
+		b.Unsubscribe(txt)
+		b = link.xBroker
+		b.Subscribe(txt)
+		dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
 	}
+	b.Unsubscribe(txt)
 }
