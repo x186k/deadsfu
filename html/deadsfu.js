@@ -6,6 +6,13 @@
 
 import * as whipwhap from "./whip-whap-js/whip-whap-js.js"
 
+function uuidv4() {
+    //@ts-ignore
+    return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    )
+}
+
 // Onload, launch send or receive WebRTC session, adding '?send' or '&send' to url will
 // trigger sending
 window.onload = async function () {
@@ -35,10 +42,15 @@ window.onload = async function () {
         roomname = "mainroom"
     }
 
+    let headers = new Headers()
+    if (typeof bearerToken === 'string') { // may be null or undefined
+        headers.set('Authorization', `Bearer ${bearerToken}`)
+    }
+
     if (searchParams.has('send')) {
         let whipUrl = '/whip?room=' + roomname
 
-        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whipUrl, bearerToken))
+        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whipUrl, headers))
 
         /** @type {MediaStream} */
         var mediaStream
@@ -58,7 +70,6 @@ window.onload = async function () {
 
         } else {
 
-
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
                 video1.srcObject = mediaStream
@@ -67,6 +78,7 @@ window.onload = async function () {
                 alert('Camera setup failed:' + error)
                 return
             }
+
         }
 
 
@@ -77,11 +89,20 @@ window.onload = async function () {
         document.title = "Sending"
 
     } else {
+        const uuidRE = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[0-9a-d][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i
+        let subuuid = searchParams.get('subuuid')
+
+        if (!uuidRE.test(subuuid)) {
+            subuuid = uuidv4()
+        }
+
         let whapUrl = '/whap?room=' + roomname
+
+        headers.set('X-deadsfu-subuuid', subuuid) //sfu also accepts param &subuuid=..., but this is more secure
 
         // console.debug(newurl.searchParams.get('room')) // we just pass along 'room'
 
-        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whapUrl, bearerToken))
+        pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whapUrl, headers))
 
         pc.addTransceiver('video', { 'direction': 'recvonly' }) // build sdp
         pc.addTransceiver('audio', { 'direction': 'recvonly' }) // build sdp
