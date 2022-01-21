@@ -46,25 +46,24 @@
         <a href="javascript:void(0)" tabindex="-1" aria-disabled="true">help</a>
       </span>
     </div>
-
   </nav>
 
-    <div class="container">
-      <nav class="navbar pt-0 navbar-expand-lg">
-        <div class="mx-auto order-0">
-          <span id="room-proto" class="navbar-text px-2"> <a href="javascript:void(0)">roomX</a> </span>
-          <span id="room-proto" class="navbar-text px-2"> <a href="javascript:void(0)">roomX</a> </span>
-          <span id="room-proto" class="navbar-text px-2"> <a href="javascript:void(0)">roomX</a> </span>
-        </div>
-      </nav>
+
+  <!-- rooms navbar  -->
+  <nav class="navbar pt-0 navbar-expand-lg">
+    <div class="mx-auto order-0">
+      <span id="switch-proto" class="navbar-text px-2">
+        <a href="javascript:void(0)" onclick="switchRoom(this.id)">roomX</a>
+      </span>
     </div>
+  </nav>
 
 
 
 
-    <!-- removing muted means Safari (maybe others will be black/worn autoplay) -->
-    <!-- you should keep muted attribute present-->
-    <!-- controls helps user turn on audio -->
+
+  <!-- removing muted means Safari (maybe others will be black/worn autoplay) -->
+  <!-- you should keep muted attribute present-->
 
     <div class="text-center">
       <video id="video1" autoplay controls muted width="1024" allowfullscreen />
