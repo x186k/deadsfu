@@ -193,3 +193,19 @@ function fullScreen(vidElement) {
     }
     return false
 }
+
+
+/**
+ * 
+ * @param {string} x
+ */
+function switchRoom(x) {
+    console.log(x)
+    alert(x)
+}
+//@ts-ignore
+window.switchRoom = switchRoom
+
+
+// button.onclick = otherfunction;
+// const xstate = document.getElementById('xstate')
