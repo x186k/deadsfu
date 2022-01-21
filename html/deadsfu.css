@@ -1,0 +1,21 @@
+/* .nav-item a:hover {  cursor: pointer }  */
+/* .nav-link a:hover { cursor: crosshair;} */
+/* this somehow changes the cursor over links in the navbar */
+/* a.nav-link {
+      cursor: default;
+    } */
+
+a {
+    color: #0053fa;
+
+    background-color: transparent;
+    text-decoration: none;
+}
+
+/* override bootstrap button color */
+.btn-primary,
+.btn-primary:hover,
+.btn-primary:active,
+.btn-primary:visited {
+    background-color: #0053fa !important;
+}
