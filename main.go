@@ -724,16 +724,20 @@ func getRoom(roomname string) (*roomState, bool) {
 	if roomname == "" {
 		roomname = "mainroom"
 	}
-
 	roomMapMutex.Lock()
+	defer roomMapMutex.Unlock()
 	link, ok := roomMap[roomname]
-	roomMapMutex.Unlock()
 
 	return link, ok
 }
 
 func getRoomOrCreate(roomname string) *roomState {
-	link, ok := getRoom(roomname)
+	if roomname == "" {
+		roomname = "mainroom"
+	}
+	roomMapMutex.Lock()
+	defer roomMapMutex.Unlock()
+	link, ok := roomMap[roomname]
 
 	if !ok {
 		link = &roomState{
@@ -748,10 +752,7 @@ func getRoomOrCreate(roomname string) *roomState {
 		go noSignalSwitchGr(link.readPkts, noSignalCh, link.xBroker.msgCh)
 		go link.xBroker.Start()
 
-		roomMapMutex.Lock()
 		roomMap[roomname] = link
-		roomMapMutex.Unlock()
-
 	}
 
 	return link
