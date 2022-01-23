@@ -1,47 +1,40 @@
 <!-- omit in toc -->
-## DeadSFU - Console Short Help Page 
+# DeadSFU - Console Short Help Page
 
-- [Full Help Link](#full-help-link)
-- [Basic Operations](#basic-operations)
-  - [Sending Video from Browser](#sending-video-from-browser)
-  - [Receiving Video in Browser](#receiving-video-in-browser)
+<!-- omit in toc -->
+## Table of Contents
+
+- [Link for Full Help Site](#link-for-full-help-site)
+- [Browser Camera Video Sending](#browser-camera-video-sending)
+- [Receiving Video in Browser](#receiving-video-in-browser)
 - [Navigation Bar Explainer](#navigation-bar-explainer)
 
-[DeadSFU] wants to be your dead-simple WebRTC [SFU](#sfu-definition) and video switch.
+DeadSFU is designed as a dead-simple SFU and video switch.  
+[SFU defined here](#sfu-definition) 
 
-## Full Help Link
+## Link for Full Help Site
 
-[DeadSFU] is where the full documentation can be found.  
+[DeadSFU.com] is where the full documentation can be found.  
 This page is just the built-in short help.
 
-## Basic Operations
 
-### Sending Video from Browser
+## Browser Camera Video Sending
+ 
+Browser camera sending *requires* HTTPS access to the SFU.  
+Without HTTPS access to the SFU, camera capture and send will *not* be possible.
 
-#### HTTP Enabled: Camera Send Not-Possible
+HTTPS access can be setup directly in DeadSFU using the `--https-*` flags,
+or by using an HTTPS terminating proxy.
+[Caddy], [nginx], and [Traefik] are a few examples of HTTPS terminating proxys.
 
-`HTTP` can be used _only on Chrome_ to send a warning message video stream from the browser to the SFU. Non-Chrome browsers will not send a video stream.  
-These two links *will not work* when you are *not* running with `HTTP`.
+<https:/send?room=main> can be used to send to the room named 'main'.  
+<https:/send> the default room is 'main', so this also sends to 'main'. 
 
-<http:/?send&room=main> can be used to send to the room named 'main'.  
-<http:/?send> the default room is 'main', so this also sends to 'main'. 
-
-#### HTTPS Enabled: Camera Send Possible
-
-`HTTPS` is required by _the browser_ to capture from your video camera.  
-These two links *will not work* when you are *not* running with `HTTPS`.
-
-<https:/?send&room=main> can be used to send to the room named 'main'.  
-<https:/?send> the default room is 'main', so this also sends to 'main'. 
-
-
-
-### Receiving Video in Browser
+## Receiving Video in Browser
 
 <http:/?room=main> can be used to view the room: 'main'.  
 <http:/> the default room is 'main', so this also views the room: 'main'.  
  
-
 ## Navigation Bar Explainer
 
 <style>
@@ -71,14 +64,11 @@ These two links *will not work* when you are *not* running with `HTTPS`.
   <span class="xtext"> - clickable button to go fullscreen</span>
 </span>
 </li>
-<li><code>0/1500 rx/tx kbps</code> - indicates you are receiving at 1.5mbps</li>
+<li><code>0/1500 rx/tx kbps</code> - indicates you are sending at 1.5mbps</li>
+<li><code>1000/0 rx/tx kbps</code> - indicates you are receiving at 1mbps</li>
 <li><code>connected</code> - indicates the connection state</li>
-<li>All 2nd line words are clickable room names</li>
+<li>All 2nd line links are clickable room names</li>
 </ul>
-
-
-[DeadSFU]: https://deadsfu.com
-[Markdown]: http://daringfireball.net/projects/markdown/
 
 
 
@@ -87,3 +77,12 @@ These two links *will not work* when you are *not* running with `HTTPS`.
 *SFU* - `Selective Forwarding Unit`.  
 A WebRTC SFU is a basic building block of WebRTC systems. An SFU acts as an digital amplifier of sorts.  
 An SFU will receive a media stream, and forward that stream to down-stream receivers. This forwarding/repeating operation may be duplicated and performed for many incoming streams. 
+
+
+
+[DeadSFU]: https://deadsfu.com
+[DeadSFU.com]: https://deadsfu.com
+[Markdown]: http://daringfireball.net/projects/markdown/
+[Caddy]: https://caddyserver.com/
+[nginx]: https://www.nginx.com/
+[Traefik]: https://traefik.io/
