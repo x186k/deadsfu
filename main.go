@@ -440,7 +440,7 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
 	a := getSubuuidFromRequest(r)
 	if a == nil {
-		dbg.switching.Println("/switch: invalid uuid passed into request")
+		dbg.switching.Println("/switchSource: invalid uuid passed into request")
 		return
 	}
 
@@ -449,7 +449,7 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 	subMapMutex.Unlock()
 
 	if !ok { //that subscriber was not found
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: subscriber not found for uuid:", a.String())
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: subscriber not found for uuid:", a.String())
 		return
 	}
 
@@ -457,9 +457,9 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
 	select {
 	case subGrCh <- name:
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: sent request to switch to room:", name)
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: sent request to switch to room:", name)
 	default:
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: NOT! sent request to switch to room:", name)
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: NOT! sent request to switch to room:", name)
 	}
 }
 
@@ -476,7 +476,7 @@ func setupMux() (*http.ServeMux, error) {
 	}
 
 	// room switching request
-	mux.HandleFunc("/switch", switchHandler)
+	mux.HandleFunc("/switchSource", switchHandler)
 	mux.HandleFunc("/getRoomList", getRoomListHandler)
 
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
@@ -2209,7 +2209,7 @@ func subGr(subGrCh <-chan string, txt *TxTrackSet, b *XBroker) {
 		link, ok := getRoom(newroom)
 
 		if !ok { //you cannot create rooms this way
-			dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switch: room not found:", newroom)
+			dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: room not found:", newroom)
 			continue
 		}
 
