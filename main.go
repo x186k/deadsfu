@@ -8,6 +8,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"embed"
+	"encoding/json"
 	"math"
 	"math/big"
 	mrand "math/rand"
@@ -129,6 +130,14 @@ type roomState struct {
 	xBroker     *XBroker
 	readPkts    chan XPacket
 }
+
+type MsgGetRoomList struct {
+	serial int         // serial number from prior request
+	jsonCh chan []byte // channel to return json over
+}
+
+var newRoomNoticeCh = make(chan struct{}, 5) // we never want sender to 'default'
+var getRoomListCh = make(chan MsgGetRoomList, 1)
 
 var roomMap = make(map[string]*roomState)
 var roomMapMutex sync.Mutex
@@ -290,6 +299,7 @@ func main() {
 	verifyEmbedFiles()
 	idleMediaPackets = idleMediaLoader()
 
+	go getRoomListGr()
 	go logGoroutineCountToDebugLog()
 
 	if *dialUpstreamUrlFlag != "" {
@@ -465,7 +475,9 @@ func setupMux() (*http.ServeMux, error) {
 		mux.Handle(whipPath, commonPubSubHandler(pubHandler))
 	}
 
+	// room switching request
 	mux.HandleFunc("/switch", switchHandler)
+	mux.HandleFunc("/getRoomList", getRoomListHandler)
 
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
 	httpsPrefix := strings.HasPrefix(*htmlSource, "https://")
@@ -720,10 +732,21 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func getRoom(roomname string) (*roomState, bool) {
-	if roomname == "" {
-		roomname = "mainroom"
+func fixRoomName(name string) string {
+	//at this time, I have no other constraints of the valid chars
+	//in a room name, we need unicode, yup
+	// and any wacky json should get escaped by the marshaller
+	// https://godocs.io/encoding/json#Marshal
+	if name == "" {
+		name = "mainroom"
 	}
+	return name
+}
+
+func getRoom(roomname string) (*roomState, bool) {
+
+	roomname = fixRoomName(roomname)
+
 	roomMapMutex.Lock()
 	defer roomMapMutex.Unlock()
 	link, ok := roomMap[roomname]
@@ -732,11 +755,13 @@ func getRoom(roomname string) (*roomState, bool) {
 }
 
 func getRoomOrCreate(roomname string) *roomState {
-	if roomname == "" {
-		roomname = "mainroom"
-	}
+
+	roomname = fixRoomName(roomname)
+
+	//everything below here should be FAST
 	roomMapMutex.Lock()
 	defer roomMapMutex.Unlock()
+
 	link, ok := roomMap[roomname]
 
 	if !ok {
@@ -753,6 +778,13 @@ func getRoomOrCreate(roomname string) *roomState {
 		go link.xBroker.Start()
 
 		roomMap[roomname] = link
+	}
+
+	//this is fast due to select with default
+	select {
+	case newRoomNoticeCh <- struct{}{}:
+	default:
+		errlog.Println("cannot send on newRoomCh")
 	}
 
 	return link
@@ -2187,4 +2219,114 @@ func subGr(subGrCh <-chan string, txt *TxTrackSet, b *XBroker) {
 		dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
 	}
 	b.Unsubscribe(txt)
+}
+
+func makeRoomListJson(serial int) []byte {
+
+	type RoomJson struct {
+		Serial int      `json:"serial"`
+		Rooms  []string `json:"rooms"`
+	}
+
+	a := RoomJson{Serial: serial, Rooms: make([]string, 0, 10)}
+
+	roomMapMutex.Lock()
+	for _, v := range roomMap {
+		a.Rooms = append(a.Rooms, v.roomname)
+	}
+	roomMapMutex.Unlock()
+
+	xx, err := json.Marshal(a)
+	if err != nil {
+		errlog.Println(err.Error())
+		return []byte{} // not great, but what else to do?
+	}
+
+	return xx
+}
+
+func getRoomListGr() {
+
+	sendback := func(j []byte, jsnCh chan<- []byte) {
+		select {
+		//the HTTP receiver may be gone, but thats okay
+		case jsnCh <- j:
+			//happy path
+
+		default:
+			//the HTTP receiver may be gone, but thats okay also
+			//we just ignore that it's gone, let the GC do its magic
+		}
+	}
+
+	serial := 100
+
+	x := make([]MsgGetRoomList, 0)
+
+	for {
+		select {
+
+		// this is a request from http for the roomlist
+		case m, ok := <-getRoomListCh:
+
+			if !ok {
+				panic("bad")
+			}
+			if m.serial == serial {
+				dbg.switching.Println("/getRoomList same serial, saving")
+				x = append(x, m)
+			} else {
+				dbg.switching.Println("/getRoomList not same serial, responding")
+				j := makeRoomListJson(serial)
+				sendback(j, m.jsonCh)
+			}
+
+		// this is a notice from internally, the room list has changed
+		case _, ok := <-newRoomNoticeCh:
+			if !ok {
+				panic("bad")
+			}
+
+			serial++
+			j := makeRoomListJson(serial)
+
+			for _, v := range x {
+				sendback(j, v.jsonCh)
+			}
+		}
+	}
+}
+
+func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
+
+	dbg.switching.Println("getRoomListHandler() enter")
+	defer dbg.switching.Println("getRoomListHandler() exit")
+
+	serial := r.URL.Query().Get("serial")
+
+	sno, _ := strconv.Atoi(serial)
+	// we ignore the error, it's okay
+
+	a := make(chan []byte, 1) //we are not the writer, we do not close this
+
+	// we could pass r.Context().Done(), but there is little point
+	b := MsgGetRoomList{
+		serial: sno,
+		jsonCh: a,
+	}
+
+	getRoomListCh <- b
+
+	select {
+	//is the http request is closed?
+	case <-r.Context().Done():
+		return // okay, see you next time!
+
+	case jsn, ok := <-a:
+		if !ok {
+			errlog.Println("unexpected closed response chan")
+		}
+		_, _ = rw.Write(jsn) //an error here might mean the remote is gone, but we want to ignore that
+	}
+
 }
