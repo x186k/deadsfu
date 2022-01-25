@@ -131,13 +131,13 @@ type roomState struct {
 	readPkts    chan XPacket
 }
 
-type MsgGetRoomList struct {
+type MsgGetSourcesList struct {
 	serial int         // serial number from prior request
 	jsonCh chan []byte // channel to return json over
 }
 
 var newRoomNoticeCh = make(chan struct{}, 5) // we never want sender to 'default'
-var getRoomListCh = make(chan MsgGetRoomList, 1)
+var getSourceListCh = make(chan MsgGetSourcesList, 1)
 
 var roomMap = make(map[string]*roomState)
 var roomMapMutex sync.Mutex
@@ -299,7 +299,7 @@ func main() {
 	verifyEmbedFiles()
 	idleMediaPackets = idleMediaLoader()
 
-	go getRoomListGr()
+	go getSourceListGr()
 	go logGoroutineCountToDebugLog()
 
 	if *dialUpstreamUrlFlag != "" {
@@ -477,7 +477,7 @@ func setupMux() (*http.ServeMux, error) {
 
 	// room switching request
 	mux.HandleFunc("/switchSource", switchHandler)
-	mux.HandleFunc("/getRoomList", getRoomListHandler)
+	mux.HandleFunc("/getSourcesList", getSourceListHandler)
 
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
 	httpsPrefix := strings.HasPrefix(*htmlSource, "https://")
@@ -2245,7 +2245,7 @@ func makeRoomListJson(serial int) []byte {
 	return xx
 }
 
-func getRoomListGr() {
+func getSourceListGr() {
 
 	sendback := func(j []byte, jsnCh chan<- []byte) {
 		select {
@@ -2261,22 +2261,22 @@ func getRoomListGr() {
 
 	serial := 100
 
-	x := make([]MsgGetRoomList, 0)
+	x := make([]MsgGetSourcesList, 0)
 
 	for {
 		select {
 
 		// this is a request from http for the roomlist
-		case m, ok := <-getRoomListCh:
+		case m, ok := <-getSourceListCh:
 
 			if !ok {
 				panic("bad")
 			}
 			if m.serial == serial {
-				dbg.switching.Println("/getRoomList same serial, saving")
+				dbg.switching.Println("/getSourceList same serial, saving")
 				x = append(x, m)
 			} else {
-				dbg.switching.Println("/getRoomList not same serial, responding")
+				dbg.switching.Println("/getSourceList not same serial, responding")
 				j := makeRoomListJson(serial)
 				sendback(j, m.jsonCh)
 			}
@@ -2297,10 +2297,10 @@ func getRoomListGr() {
 	}
 }
 
-func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
+func getSourceListHandler(rw http.ResponseWriter, r *http.Request) {
 
-	dbg.switching.Println("getRoomListHandler() enter")
-	defer dbg.switching.Println("getRoomListHandler() exit")
+	dbg.switching.Println("getSourceListHandler() enter")
+	defer dbg.switching.Println("getSourceListHandler() exit")
 
 	serial := r.URL.Query().Get("serial")
 
@@ -2310,12 +2310,12 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 	a := make(chan []byte, 1) //we are not the writer, we do not close this
 
 	// we could pass r.Context().Done(), but there is little point
-	b := MsgGetRoomList{
+	b := MsgGetSourcesList{
 		serial: sno,
 		jsonCh: a,
 	}
 
-	getRoomListCh <- b
+	getSourceListCh <- b
 
 	select {
 	//is the http request is closed?
