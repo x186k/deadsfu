@@ -32,14 +32,26 @@
 
     <nav class="navbar navbar-expand-lg">
       <div class="mx-auto order-0">
+
+
+
+        <style>
+          .xicon,
+          .xtext {
+            vertical-align: middle;
+            display: inline-block;
+          }
+        </style>
+
+
+
         <span class="navbar-text px-2">
           <a id="gofullscreen" href="javascript:void(0)" tabindex="-1" aria-disabled="true">
             <!-- full screen svg -->
-            <svg height="1em" width="1em" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="expand"
-              class="svg-inline--fa fa-expand fa-w-14" role="img" xmlns="http://www.w3.org/2000/svg"
-              viewbox="0 0 448 512">
-              <path fill="currentColor"
-                d="M0 180V56c0-13.3 10.7-24 24-24h124c6.6 0 12 5.4 12 12v40c0 6.6-5.4 12-12 12H64v84c0 6.6-5.4 12-12 12H12c-6.6 0-12-5.4-12-12zM288 44v40c0 6.6 5.4 12 12 12h84v84c0 6.6 5.4 12 12 12h40c6.6 0 12-5.4 12-12V56c0-13.3-10.7-24-24-24H300c-6.6 0-12 5.4-12 12zm148 276h-40c-6.6 0-12 5.4-12 12v84h-84c-6.6 0-12 5.4-12 12v40c0 6.6 5.4 12 12 12h124c13.3 0 24-10.7 24-24V332c0-6.6-5.4-12-12-12zM160 468v-40c0-6.6-5.4-12-12-12H64v-84c0-6.6-5.4-12-12-12H12c-6.6 0-12 5.4-12 12v124c0 13.3 10.7 24 24 24h124c6.6 0 12-5.4 12-12z">
+            <svg class="xicon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+              class="bi bi-fullscreen" viewBox="0 0 16 16">
+              <path stroke="currentColor" stroke-width="1.5"
+                d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4zM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5z">
               </path>
             </svg>
           </a>
@@ -48,6 +60,9 @@
         <span id="xstate" class="navbar-text px-2">disconnected</span>
         <span class="navbar-text px-2">
           <a href="javascript:void(0)" tabindex="-1" aria-disabled="true">help</a>
+        </span>
+        <span class="navbar-text px-2">
+          <a href="javascript:void(0)" tabindex="-1" aria-disabled="true">send</a>
         </span>
       </div>
     </nav>
