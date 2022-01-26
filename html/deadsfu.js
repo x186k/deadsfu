@@ -13,8 +13,7 @@ function uuidv4() {
     )
 }
 
-// Onload, launch send or receive WebRTC session, adding '?send' or '&send' to url will
-// trigger sending
+
 window.onload = async function () {
 
 
@@ -47,7 +46,8 @@ window.onload = async function () {
         headers.set('Authorization', `Bearer ${bearerToken}`)
     }
 
-    if (searchParams.has('send')) {
+
+    if (location.pathname == '/send/' || location.pathname == '/send') {
         let whipUrl = '/whip?room=' + roomname
 
         pc.addEventListener('negotiationneeded', ev => whipwhap.handleNegotiationNeeded(ev, whipUrl, headers))
