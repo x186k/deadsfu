@@ -1,0 +1,10 @@
+https://hjarta.duckdns.org:443
+
+tls {
+	dns duckdns ${DUCKDNS}
+}
+
+#reverse_proxy /pub localhost:8080
+reverse_proxy * localhost:8080
+
+#file_server
