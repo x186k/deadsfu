@@ -440,7 +440,7 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
 	a := getSubuuidFromRequest(r)
 	if a == nil {
-		dbg.switching.Println("/switchSource: invalid uuid passed into request")
+		dbg.switching.Println("/switchRoom: invalid uuid passed into request")
 		return
 	}
 
@@ -449,7 +449,7 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 	subMapMutex.Unlock()
 
 	if !ok { //that subscriber was not found
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: subscriber not found for uuid:", a.String())
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: subscriber not found for uuid:", a.String())
 		return
 	}
 
@@ -457,9 +457,9 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
 	select {
 	case subGrCh <- name:
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: sent request to switch to room:", name)
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: sent request to switch to room:", name)
 	default:
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: NOT! sent request to switch to room:", name)
+		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: NOT! sent request to switch to room:", name)
 	}
 }
 
