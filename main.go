@@ -2209,7 +2209,7 @@ func subGr(subGrCh <-chan string, txt *TxTrackSet, b *XBroker) {
 		link, ok := getRoom(newroom)
 
 		if !ok { //you cannot create rooms this way
-			dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchSource: room not found:", newroom)
+			dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: room not found:", newroom)
 			continue
 		}
 
@@ -2297,7 +2297,7 @@ func getSourceListGr() {
 	}
 }
 
-func getSourceListHandler(rw http.ResponseWriter, r *http.Request) {
+func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 
 	dbg.switching.Println("getSourceListHandler() enter")
 	defer dbg.switching.Println("getSourceListHandler() exit")
