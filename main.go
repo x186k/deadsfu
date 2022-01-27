@@ -476,8 +476,8 @@ func setupMux() (*http.ServeMux, error) {
 	}
 
 	// room switching request
-	mux.HandleFunc("/switchSource", switchHandler)
-	mux.HandleFunc("/getSourcesList", getSourceListHandler)
+	mux.HandleFunc("/switchRoom", switchHandler)
+	mux.HandleFunc("/getRoomList", getRoomListHandler)
 
 	httpPrefix := strings.HasPrefix(*htmlSource, "http://")
 	httpsPrefix := strings.HasPrefix(*htmlSource, "https://")
