@@ -37,9 +37,14 @@ window.onload = async function () {
     let bearerToken = searchParams.get('access_token')
     //let roomname = window.location.pathname
     let roomname = searchParams.get('room')
+    // no, DRY: the go code does this also
+    // if (!roomname) {
+    //     roomname = "mainroom"
+    // }
     if (!roomname) {
-        roomname = "mainroom"
+        roomname = ""
     }
+    //console.log(555, roomname)
 
     let headers = new Headers()
     if (typeof bearerToken === 'string') { // may be null or undefined
@@ -95,6 +100,8 @@ window.onload = async function () {
         if (!uuidRE.test(subuuid)) {
             subuuid = uuidv4()
         }
+        window.location.hash='?subuuid='+subuuid
+        startRoomListFetchLoop(headers, subuuid)
 
         let whapUrl = '/whap?room=' + roomname
 
@@ -196,16 +203,109 @@ function fullScreen(vidElement) {
 
 
 /**
- * 
- * @param {string} x
+* @param {Headers} hdrs could contain 'Authorization'
+ * @param {string} roomname
+ * @param {string} subuuid
  */
-function switchRoom(x) {
-    console.log(x)
-    alert(x)
+function switchRoom(hdrs, roomname, subuuid) {
+    console.debug('** switchroom')
+    let opt = {
+        method: 'GET',
+        headers: hdrs,
+        /** @type RequestCache */  cache: "no-store"
+    }
+
+    var url = new URL('/switchRoom', location.origin)
+    url.searchParams.set('room', roomname)
+    url.searchParams.set('subuuid', subuuid)
+
+    //console.log(8888,url.href)
+    fetch(url.href)
 }
 //@ts-ignore
 window.switchRoom = switchRoom
 
 
-// button.onclick = otherfunction;
-// const xstate = document.getElementById('xstate')
+
+
+/**
+ * @param {Headers} hdrs could contain 'Authorization'
+ * @param {string} subuuid
+ */
+async function startRoomListFetchLoop(hdrs, subuuid) {
+
+    setTimeout(myCallback, 0, 'xx')  //no delay
+
+    /**
+     *  @param {string} serial this number is used to block by server
+     */
+    async function myCallback(serial) {
+        let url = '/getRoomList?serial=' + serial
+
+        let opt = {
+            method: 'GET',
+            headers: hdrs,
+            /** @type RequestCache */  cache: "no-store"
+        }
+
+
+        let resp = { status: -1 }
+        try { // without try/catch, a thrown except from fetch exits our 'thread'
+            //console.log(888, url)
+            resp = await fetch(url, opt)
+        } catch (error) {
+            ;  // not needed console.log(error)
+        }
+        //console.log(111, resp.status)
+        if (resp.status == 200) {
+            let json = await resp.text()
+            let obj = JSON.parse(json)
+            //console.debug('json', json)
+            //console.debug('jsono', obj)
+            updateSourcesNav(hdrs, obj.rooms, subuuid)
+            setTimeout(myCallback, 0, obj.serial)
+        } else {
+            // failure
+            setTimeout(myCallback, 2000) // wait two sec before try again
+        }
+    }
+}
+
+/**
+ * @param {Headers} hdrs could contain 'Authorization'
+ * @param {Array} roomnames
+ * @param {string} subuuid
+ */
+function updateSourcesNav(hdrs, roomnames, subuuid) {
+
+    let p = document.getElementById('sources-proto')
+    let div = document.getElementById("sources-div")
+
+    while (div.firstChild) {
+        div.removeChild(div.firstChild);
+    }
+
+    roomnames.forEach(v => {
+        //console.log(333, v)
+        let b = /** @type HTMLElement */ (p.cloneNode(true))
+        b.id = ''
+        b.hidden = false
+        let bb = /** @type HTMLAnchorElement */ (b.firstChild)
+
+        bb.href = "javascript:void(0)"
+        bb.onclick = function () { switchRoom(hdrs, v, subuuid) }
+        bb.innerText = v
+
+        //console.debug('**', b.outerHTML)
+        //console.debug('**', bb.outerHTML)
+
+        //bb.innerText = v
+        //console.debug(99, bb.innerText)
+        div.appendChild(b)
+
+    });
+
+
+
+}
+
