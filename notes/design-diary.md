@@ -783,3 +783,29 @@ To reiterate why I am implementing the XBroker:
 - subGr sends single msg to broker closing/removing/adding-new
 - Using this method/manner the elementary stream consistency is maintained. 
 - subGr may need to check time-of-last-keyframe and reject the switch or delay it for devices sensitive to too many keyframes (ipad/iphone)
+
+## 1/31/2022 How to implement the new Send menu???
+
+Enabling users to choose and open a new 'send' tab needs three components:
+1. Show existing rooms that are busy/not-avail
+2. Show existing rooms that are open/avail for sending
+3. Show a form element which allows creating a new room
+
+I am template to use Go templating *to avoid repeating* the HTML boilerplate,
+such as the page <head> and pre-body-end <script> blocks.
+
+But, if I use Go templating, it becomes 10x harder for other users to just
+cut & paste the page, edit it, and use it!
+
+SO! *Decision* I will not use Go templating here.
+
+Ideally if I can keep it a single HTML file like it has been,
+this would keep it very simple for prospective devs and users!
+
+So, maybe the best way forward is:
+*Just hand-copy header/footer between index.html and sendselect.html*
+  
+
+
+
+
