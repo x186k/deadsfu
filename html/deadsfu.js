@@ -37,6 +37,7 @@ window.onload = async function () {
     let bearerToken = searchParams.get('access_token')
     //let roomname = window.location.pathname
     let roomname = searchParams.get('room')
+    let mp4 = searchParams.get('mp4')
     // no, DRY: the go code does this also
     // if (!roomname) {
     //     roomname = "mainroom"
@@ -63,18 +64,21 @@ window.onload = async function () {
         //no camera available
         //camera available on localhost in some instances, so https check not reliable
         //if (location.protocol !== 'https:') {
-        if (!navigator.mediaDevices) {
-
-            console.error('Check HTTPS: MDN navigator.mediaDevices not found, camera will not be available')
+        if (mp4) {
+            video1.src = mp4
             video1.loop = true
             video1.crossOrigin = 'anonymous'
-            video1.src = '/no-camera.mp4'
             await video1.play()
             //@ts-ignore
             mediaStream = video1.captureStream()
-
+        } else if (!navigator.mediaDevices) {
+            video1.src = '/no-camera.mp4'
+            video1.loop = true
+            video1.crossOrigin = 'anonymous'
+            await video1.play()
+            //@ts-ignore
+            mediaStream = video1.captureStream()
         } else {
-
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
                 video1.srcObject = mediaStream
@@ -100,7 +104,7 @@ window.onload = async function () {
         if (!uuidRE.test(subuuid)) {
             subuuid = uuidv4()
         }
-        window.location.hash='?subuuid='+subuuid
+        window.location.hash = '?subuuid=' + subuuid
         startRoomListFetchLoop(headers, subuuid)
 
         let whapUrl = '/whap?room=' + roomname
