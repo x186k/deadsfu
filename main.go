@@ -189,6 +189,7 @@ var dbg = struct {
 	peerConn  FastLogger
 	switching FastLogger
 	goroutine FastLogger
+	getstats  FastLogger
 }{}
 var dbgMap = map[string]*FastLogger{
 	"url":            &dbg.url,
@@ -201,6 +202,7 @@ var dbgMap = map[string]*FastLogger{
 	"peer-conn":      &dbg.peerConn,
 	"switching":      &dbg.switching,
 	"goroutine":      &dbg.goroutine,
+	"getstats":       &dbg.getstats,
 }
 
 var errlog = log.New(os.Stderr, "errlog", logFlags)
@@ -290,6 +292,9 @@ func main() {
 	log.SetFlags(logFlags)
 	log.SetPrefix("[log] ")
 	log.SetOutput(os.Stdout)
+
+	// gdbg := os.Getenv("GODEBUG")
+	//  log.Printf("GODEBUG: %v", gdbg)
 
 	println("deadsfu Version " + Version)
 
@@ -1285,7 +1290,7 @@ func dialUpstream(link *roomState) error {
 
 func processRTCP(rtpSender *webrtc.RTPSender) {
 
-	if true {
+	if !dbg.getstats.enabled {
 		rtcpBuf := make([]byte, 1500)
 		for {
 			_, _, rtcpErr := rtpSender.Read(rtcpBuf)
@@ -1301,11 +1306,14 @@ func processRTCP(rtpSender *webrtc.RTPSender) {
 			}
 			if true {
 				for _, pkt := range packets {
-					switch v := pkt.(type) {
+					switch t := pkt.(type) {
 					case *rtcp.SenderReport:
 						//fmt.Printf("rtpSender Sender Report %s \n", v.String())
 					case *rtcp.ReceiverReport:
-						fmt.Printf("rtpSender Receiver Report %s \n", v.String())
+						for _, v := range t.Reports {
+							log.Printf("rcvr report %d total lost %d", v.SSRC, v.TotalLost)
+						}
+						//fmt.Printf("rtpSender Receiver Report %s \n", v.String())
 					case *rtcp.ReceiverEstimatedMaximumBitrate:
 					case *rtcp.PictureLossIndication:
 
