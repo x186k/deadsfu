@@ -179,30 +179,30 @@ var idleMediaPackets []rtp.Packet
 const logFlags = log.Lmicroseconds | log.LUTC | log.Lshortfile | log.Lmsgprefix
 
 var dbg = struct {
-	url       FastLogger
-	media     FastLogger
-	https     FastLogger
-	ice       FastLogger
-	main      FastLogger
-	ftl       FastLogger
-	ddns      FastLogger
-	peerConn  FastLogger
-	switching FastLogger
-	goroutine FastLogger
-	getstats  FastLogger
+	url                 FastLogger
+	media               FastLogger
+	https               FastLogger
+	ice                 FastLogger
+	main                FastLogger
+	ftl                 FastLogger
+	ddns                FastLogger
+	peerConn            FastLogger
+	switching           FastLogger
+	goroutine           FastLogger
+	receiverLostPackets FastLogger
 }{}
 var dbgMap = map[string]*FastLogger{
-	"url":            &dbg.url,
-	"media":          &dbg.media,
-	"https":          &dbg.https,
-	"ice-candidates": &dbg.ice,
-	"main":           &dbg.main,
-	"ftl":            &dbg.ftl,
-	"ddns":           &dbg.ddns,
-	"peer-conn":      &dbg.peerConn,
-	"switching":      &dbg.switching,
-	"goroutine":      &dbg.goroutine,
-	"getstats":       &dbg.getstats,
+	"url":                   &dbg.url,
+	"media":                 &dbg.media,
+	"https":                 &dbg.https,
+	"ice-candidates":        &dbg.ice,
+	"main":                  &dbg.main,
+	"ftl":                   &dbg.ftl,
+	"ddns":                  &dbg.ddns,
+	"peer-conn":             &dbg.peerConn,
+	"switching":             &dbg.switching,
+	"goroutine":             &dbg.goroutine,
+	"receiver-lost-packets": &dbg.receiverLostPackets,
 }
 
 var errlog = log.New(os.Stderr, "errlog", logFlags)
@@ -374,20 +374,6 @@ func main() {
 	//the user can specify zero for port, and Linux/etc will choose a port
 
 	checkFatalProhibited = true // make sure we are not called checkFatal after main init
-
-	if dbg.getstats.enabled {
-		go func() {
-			for {
-				time.Sleep(time.Second * 3)
-				dbg.getstats.Println("msgs", msgLoss.chsubloss)
-				dbg.getstats.Println("msgs", msgLoss.idleSwitchIdleLoss)
-				dbg.getstats.Println("msgs", msgLoss.idleSwitchLiveL)
-				dbg.getstats.Println("msgs", msgLoss.readerLoss)
-
-			}
-
-		}()
-	}
 
 	// block here
 	if !*cpuprofile {
@@ -1304,41 +1290,44 @@ func dialUpstream(link *roomState) error {
 
 func processRTCP(rtpSender *webrtc.RTPSender) {
 
-	if !dbg.getstats.enabled {
-		rtcpBuf := make([]byte, 1500)
+	//simple version
+	if false {
 		for {
-			_, _, rtcpErr := rtpSender.Read(rtcpBuf)
+			_, _, rtcpErr := rtpSender.ReadRTCP()
 			if rtcpErr != nil {
 				return
 			}
 		}
-	} else {
-		for {
-			packets, _, rtcpErr := rtpSender.ReadRTCP()
-			if rtcpErr != nil {
-				return
-			}
-			if true {
-				for _, pkt := range packets {
-					switch t := pkt.(type) {
-					case *rtcp.SenderReport:
-						//fmt.Printf("rtpSender Sender Report %s \n", v.String())
-					case *rtcp.ReceiverReport:
-						for _, v := range t.Reports {
-							log.Printf("rcvr report %d total lost %d", v.SSRC, v.TotalLost)
-						}
-						//fmt.Printf("rtpSender Receiver Report %s \n", v.String())
-					case *rtcp.ReceiverEstimatedMaximumBitrate:
-					case *rtcp.PictureLossIndication:
+	}
 
-					default:
-						// fmt.Printf("foof %#v\n", v)
-						// panic(v)
+	for {
+		packets, _, rtcpErr := rtpSender.ReadRTCP()
+		if rtcpErr != nil {
+			return
+		}
+
+		if dbg.receiverLostPackets.enabled {
+			for _, pkt := range packets {
+				switch t := pkt.(type) {
+				case *rtcp.SenderReport:
+					//fmt.Printf("rtpSender Sender Report %s \n", v.String())
+				case *rtcp.ReceiverReport:
+					for _, v := range t.Reports {
+						log.Printf("rcvr report %d total lost %d", v.SSRC, v.TotalLost)
+						//msgLoss.subpktslost++
 					}
+					//fmt.Printf("rtpSender Receiver Report %s \n", v.String())
+				case *rtcp.ReceiverEstimatedMaximumBitrate:
+				case *rtcp.PictureLossIndication:
+
+				default:
+					// fmt.Printf("foof %#v\n", v)
+					// panic(v)
 				}
 			}
 		}
 	}
+
 }
 
 var _ = text2pcapLog
