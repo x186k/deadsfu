@@ -29,6 +29,9 @@ func (b *XBroker) Start() {
 	var buf []XPacket = make([]XPacket, 0)
 
 	// tracks are kept here before keyframe while forwarding to a chan
+	// this channel must be sync.
+	// we need to be sure when a 'close/done' message is sent here,
+	// nothing else will be written by the chan receiver/GR 
 	subs := make(map[*TxTrackSet]chan XPacket)
 
 	// tracks are moved here after keyframe for direct writing by myself
