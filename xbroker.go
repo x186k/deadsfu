@@ -31,7 +31,7 @@ func (b *XBroker) Start() {
 	// tracks are kept here before keyframe while forwarding to a chan
 	// this channel must be sync.
 	// we need to be sure when a 'close/done' message is sent here,
-	// nothing else will be written by the chan receiver/GR 
+	// nothing else will be written by the chan receiver/GR
 	subs := make(map[*TxTrackSet]chan XPacket)
 
 	// tracks are moved here after keyframe for direct writing by myself
@@ -105,8 +105,16 @@ func (b *XBroker) Start() {
 
 			//STEP2 we send it to all chan-subscribers
 			for _, ch := range subs {
-				// should this be non-blocking?
+
+				// this must be blocking:
+				// this channel must be sync, because we need to make sure reader GRs
+				// are done writing when we send on this chan.
+				// BUT XXX!!!
+				// we really need to send a sync-message, rather than a close
+				// on subscribers to obey the rules of consistent elementary streams!
+				// THIS HAS NOT BEEN IMPLEMENTED YET
 				ch <- m
+
 			}
 
 			//STEP3 send the packet to tracks
