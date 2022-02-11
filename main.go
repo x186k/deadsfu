@@ -375,6 +375,20 @@ func main() {
 
 	checkFatalProhibited = true // make sure we are not called checkFatal after main init
 
+	if dbg.getstats.enabled {
+		go func() {
+			for {
+				time.Sleep(time.Second * 3)
+				dbg.getstats.Println("msgs", msgLoss.chsubloss)
+				dbg.getstats.Println("msgs", msgLoss.idleSwitchIdleLoss)
+				dbg.getstats.Println("msgs", msgLoss.idleSwitchLiveL)
+				dbg.getstats.Println("msgs", msgLoss.readerLoss)
+
+			}
+
+		}()
+	}
+
 	// block here
 	if !*cpuprofile {
 		select {}
