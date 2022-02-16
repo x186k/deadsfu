@@ -15,3 +15,5 @@ cover.out
 deadsfu-out.pcap
 *.pprof
 dist/
+memprofile.out
+profile.out
