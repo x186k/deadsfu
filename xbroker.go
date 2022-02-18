@@ -1,5 +1,9 @@
 package main
 
+import (
+	"log"
+)
+
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
 
 /*
@@ -9,61 +13,68 @@ The XBroker does these things:
 - records GOPs from keyframe, and shares the PGOP or GOP-so-far with Subscribers
 */
 
+const (
+	BrokerInputChannelDepth  = 50
+	BrokerOutputChannelDepth = 50
+)
+
 type XBroker struct {
 	msgCh chan xany
 }
 
 type xany interface{} // go 1.18 is here soon
 
-type XBrokerMsgSub *TxTrackSet
-type XBrokerMsgUnSub *TxTrackSet
+type XBrokerMsgSub chan xany
+type XBrokerMsgUnSub chan xany
 
 func NewXBroker() *XBroker {
 	return &XBroker{
-		msgCh: make(chan xany), // must be unbuf/sync!
+		msgCh: make(chan xany, BrokerInputChannelDepth), // must be unbuf/sync!
+
 	}
 }
 
 func (b *XBroker) Start() {
 
-	var buf []XPacket = make([]XPacket, 0)
+	var buf []*XPacket = make([]*XPacket, 0)
 
-	// tracks are kept here before keyframe while forwarding to a chan
-	// this channel must be sync.
-	// we need to be sure when a 'close/done' message is sent here,
-	// nothing else will be written by the chan receiver/GR
-	subs := make(map[*TxTrackSet]chan XPacket)
+	// this map is how we add/remove subscribers to the broker
+	// the subscribers are identified by a *TxTrackGroup
+	// that's how they are identified when being adding, or being deleting
+	subs := make(map[chan xany]struct{})
 
-	// tracks are moved here after keyframe for direct writing by myself
-	txtr := make(map[*TxTrackSet]struct{})
+	freqtable := make(map[int]int)
+	for i := 0; i <= 5; i++ {
+		freqtable[i] = 0
+	}
 
 	for mm := range b.msgCh {
 
 		switch m := mm.(type) {
 		case XBrokerMsgSub:
-			_, ok := subs[m]
-			if ok {
-				panic("can't add pre existing")
-			}
-			ch := make(chan XPacket) //must be unbuf!
-			subs[m] = ch
 
-			go gopReplay(ch, m, buf) //ending this must be sync!, all writes must be complete!
+			if _, ok := subs[m]; ok {
+				panic("cant add twice")
+			}
+
+			subs[m] = struct{}{}
+
+			m <- buf // new subscribers get a copy of the gop so far
 
 		case XBrokerMsgUnSub:
-			_, ok := subs[m]
-			if ok { // found track in chan map
-				subs[m] <- XPacket{typ: GopReplayEof} // synchronous EOF message
-				close(subs[m])                        // closing is not sync, thats why we send an EOF before this
-				delete(subs, m)
-			} else {
-				_, ok := txtr[m]
-				if !ok {
-					panic("not found on either map!")
-				}
-				delete(txtr, m)
+
+			if _, ok := subs[m]; !ok {
+				panic("not found!")
 			}
-		case XPacket:
+
+			close(m)
+			delete(subs, m)
+
+		case *XPacket:
+			if m.typ != Video && m.typ != Audio {
+				panic("invalid xpkt type")
+			}
+
 			// TESTING, vid only
 			// if m.typ != Video { // save video GOPs
 			// 	break
@@ -72,10 +83,10 @@ func (b *XBroker) Start() {
 			// STEP1: we save video XPacket's in the gop-so-far
 			if m.typ == Video { // save video GOPs
 				if len(buf) > 50000 { //oversize protection // XXX >cap(buf)
-					buf = make([]XPacket, 0)
+					buf = make([]*XPacket, 0)
 				}
 				if m.keyframe {
-					buf = make([]XPacket, 1, 300) // XXX pool? or clear slice
+					buf = make([]*XPacket, 1, 300) // XXX pool? or clear slice
 					buf[0] = m
 				} else if len(buf) > 0 {
 					buf = append(buf, m)
@@ -87,47 +98,41 @@ func (b *XBroker) Start() {
 				// }
 			}
 
-			// STEP2 sync recv new track messages
+			// STEP2, WAS: on-keyframe,
+			// for-each chan-subscr, add the pair to the TxTracks map, close the chan, delete from chan-map
+			// using two for-loops for compiler reasons: https://go.dev/doc/go1.11#performance-compiler
 
-			if m.typ == Video && m.keyframe {
-				//pl("keyframe on broker:", unsafe.Pointer(b))
+			//STEP3 send pkt to each chan
+			// for ch := range subs {
+			// 	select {
+			// 	case ch <- m:
+			// 	default:
+			// 		panic("no")
+			// 	}
+			// }
 
-				//we do these as two fors, because the compiler will optimize the 2nd for
-				for k, v := range subs {
-					txtr[k] = struct{}{}
-					subs[k] <- XPacket{typ: GopReplayEof} // synchronous EOF message
-					close(v)
-				}
-				for k := range subs { // https://go.dev/doc/go1.11#performance-compiler
-					delete(subs, k)
-				}
-			}
-
-			//STEP2 we send it to all chan-subscribers
-			for _, ch := range subs {
-
-				// this must be blocking:
-				// this channel must be sync, because we need to make sure reader GRs
-				// are done writing when we send on this chan.
-				// BUT XXX!!!
-				// we really need to send a sync-message, rather than a close
-				// on subscribers to obey the rules of consistent elementary streams!
-				// THIS HAS NOT BEEN IMPLEMENTED YET
+			for ch := range subs {
 				ch <- m
 
+				if false {
+					l := len(ch)
+					freqtable[l] += 1
+					//pl(unsafe.Pointer(b), l, freqtable[l])
+
+					select {
+					case ch <- m:
+					default:
+						for i := 0; i <= cap(ch); i++ {
+							println("hist ", i, freqtable[i])
+						}
+
+						log.Println(len(ch), cap(ch))
+						panic("blocking send cap=")
+					}
+				}
+
 			}
 
-			//STEP3 send the packet to tracks
-			// if true && m.typ == Video {
-			// 	//pl("pkt", len(m.pkt.Payload), m.pkt.SSRC, m.keyframe, m.pkt.SequenceNumber, m.pkt.Timestamp)
-			// }
-			if m.typ != Video && m.typ != Audio {
-				panic("invalid xpkt type")
-			}
-			for txt := range txtr {
-				txt.SpliceWriteRTP(m, nanotime())
-				//pl(txt.vid.splicer.lastUnixnanosNow)
-			}
 		}
 	}
 }
@@ -136,15 +141,16 @@ func (b *XBroker) Stop() {
 	close(b.msgCh)
 }
 
-func (b *XBroker) Subscribe(tr *TxTrackSet) {
-	//msgCh := make(chan XPacket, 5)
-	b.msgCh <- XBrokerMsgSub(tr)
+func (b *XBroker) Subscribe() chan xany {
+	c := make(chan xany, BrokerOutputChannelDepth)
+	b.msgCh <- XBrokerMsgSub(c)
+	return c
 }
 
-func (b *XBroker) Unsubscribe(tr *TxTrackSet) {
-	b.msgCh <- XBrokerMsgUnSub(tr)
+func (b *XBroker) Unsubscribe(c chan xany) {
+	b.msgCh <- XBrokerMsgUnSub(c)
 }
 
-func (b *XBroker) Publish(msg XPacket) {
+func (b *XBroker) Publish(msg *XPacket) {
 	b.msgCh <- msg
 }

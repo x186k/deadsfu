@@ -85,21 +85,23 @@ type RtpSplicer struct {
 
 // size optimized, not readability
 type TxTrack struct {
-	track     *webrtc.TrackLocalStaticRTP
+	track     WriteRtpIntf
 	splicer   RtpSplicer
 	clockrate int
 }
 
-func (txt *TxTrack) SpliceWriteRTP(p XPacket, now int64) {
+func (txt *TxTrack) SpliceWriteRTP(p *XPacket, now int64) {
 	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, now, int64(txt.clockrate))
 }
 
-type TxTrackSet struct {
+// There is no mutex for this, the parent must be mutexed!
+
+type TxTrackPair struct {
 	aud TxTrack
 	vid TxTrack
 }
 
-func (txset *TxTrackSet) SpliceWriteRTP(p XPacket, now int64) {
+func (txset *TxTrackPair) SpliceWriteRTP(p *XPacket, now int64) {
 	var txt *TxTrack
 	switch p.typ {
 	case Audio:
@@ -128,7 +130,8 @@ type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 	xBroker     *XBroker
-	readPkts    chan XPacket
+	//readPkts    chan xany
+	tracks *TxTracks
 }
 
 type MsgGetSourcesList struct {
@@ -774,12 +777,18 @@ func getRoomOrCreate(roomname string) *roomState {
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
 			xBroker:     NewXBroker(),
-			readPkts:    make(chan XPacket, 5), // can be buffered
+			tracks:      NewTxTracks(),
 		}
 
-		noSignalCh := make(chan XPacket, 1)
-		go noSignalGeneratorGr(idleMediaPackets, noSignalCh)
-		go noSignalSwitchGr(link.readPkts, noSignalCh, link.xBroker.msgCh)
+		ch := link.xBroker.Subscribe()
+		go groupWriter(ch, link.tracks)
+
+		_ = idleMediaPackets
+		_ = noSignalGeneratorGr
+		_ = noSignalSwitchGr
+		// noSignalCh := make(chan XPacket, 1)
+		// go noSignalGeneratorGr(, noSignalCh)
+		// go noSignalSwitchGr(link.readPkts, noSignalCh, link.xBroker.msgCh)
 		go link.xBroker.Start()
 
 		roomMap[roomname] = link
@@ -923,7 +932,7 @@ func subHandlerGr(offersdp string,
 		clockrate: 48000,
 	}
 
-	txset := &TxTrackSet{aud, vid}
+	txset := &TxTrackPair{aud, vid}
 
 	go func() {
 		conn, ok := <-connected
@@ -931,7 +940,7 @@ func subHandlerGr(offersdp string,
 		if conn && ok {
 			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			subGr(subGrCh, txset, link.xBroker)
+			subGr(subGrCh, txset, link)
 
 		} else {
 			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
@@ -1376,7 +1385,7 @@ func OnTrack2(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.readPkts)
+		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker.msgCh)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1424,13 +1433,13 @@ func OnTrack2(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, Video, link.readPkts)
+	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker.msgCh)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
 }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- XPacket) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- xany) {
 
 	for {
 
@@ -1458,13 +1467,13 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 
 		xp := XPacket{
 			typ:      typ,
-			pkt:      *p,
+			pkt:      p,
 			arrival:  nanotime(),
 			keyframe: kf,
 			//replay:   false,
 		}
 
-		ch <- xp
+		ch <- &xp
 
 	}
 }
@@ -1479,7 +1488,7 @@ func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
 		iskf := isH264Keyframe(p.Payload)
 		xpkt := XPacket{
 			typ:      Video,
-			pkt:      p,
+			pkt:      &p,
 			arrival:  0, // not necessary for pre-precorded
 			keyframe: iskf,
 		}
@@ -1728,7 +1737,10 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 // This grabs mutex after doing a fast, non-mutexed check for applicability
 
 // p gets modified
-func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p rtp.Packet, unixnano int64, rtphz int64) {
+func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, porig *rtp.Packet, unixnano int64, rtphz int64) {
+
+	copy := *porig
+	p := &copy
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
@@ -1774,7 +1786,7 @@ func (s *RtpSplicer) SpliceWriteRTP(trk *webrtc.TrackLocalStaticRTP, p rtp.Packe
 	//I had believed it was possible to see: io.ErrClosedPipe {
 	// but I no longer believe this to be true
 	// if it turns out I can see those, we will need to adjust
-	err := trk.WriteRTP(&p)
+	err := trk.WriteRTP(p)
 	if err != nil {
 		panic(err)
 	}
@@ -2105,20 +2117,19 @@ func (fsys dotFileHidingFileSystemPlus) Open(name string) (http.File, error) {
 type XPacketType int32
 
 const (
-	_            XPacketType = iota
-	Video                    = iota
-	Audio                    = iota
-	Data                     = iota
-	GopReplayEof             = -1 // special sentinal to signal to gopReplay to terminate, close is not sync, this is!
+	_     XPacketType = iota
+	Video             = iota
+	Audio             = iota
+	Data              = iota
 )
 
 var _ = Data
 
 type XPacket struct {
-	typ      XPacketType
-	pkt      rtp.Packet
-	keyframe bool
 	arrival  int64
+	pkt      *rtp.Packet
+	typ      XPacketType
+	keyframe bool
 }
 
 //how do we know to go away?
@@ -2126,13 +2137,27 @@ type XPacket struct {
 // so, we can add a ctx or done channel to the front of these params.
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
-func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
+func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 	dbg.goroutine.Print("replayGOPJumpCut() start")
 	defer dbg.goroutine.Print("replayGOPJumpCut() end")
+
+	inCh := xb.Subscribe()
+	defer xb.Unsubscribe(inCh)
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
 	var tmpVidSSRC uint32 = uint32(mrand.Int63())
+
+	xbuf, ok := <-inCh
+	if !ok {
+		return
+	}
+	buf, ok := xbuf.([]*XPacket)
+	if !ok {
+		panic("no")
+	}
+
+	pl("gopreplay got n pkts", len(buf))
 
 	//dbg.switching.Print("got n packets for replay", len(buf))
 	if len(buf) > 0 {
@@ -2158,7 +2183,6 @@ func gopReplay(inCh chan XPacket, txset *TxTrackSet, buf []XPacket) {
 
 	// delay received packets from broker
 
-replayPGOP: //PGOP is partial GOP
 	for {
 		sleep := int64(time.Hour)
 
@@ -2172,6 +2196,9 @@ replayPGOP: //PGOP is partial GOP
 		}
 
 		select {
+		case <-done:
+			return
+
 		case <-time.NewTimer(time.Duration(sleep)).C:
 			p := buf[0]
 			//pl(txt.clockrate)
@@ -2186,50 +2213,76 @@ replayPGOP: //PGOP is partial GOP
 			// and those old timestamps won't play well
 			// when we switch to 'live'
 			// (this would cause a big jump in the timestamps to the splicer)
-			txset.SpliceWriteRTP(p, nanotime())
+
+			now := nanotime()
+
+			//lock
+			t.mu.Lock()
+			if _, ok := t.replay[txt]; !ok {
+				t.mu.Unlock()
+				return
+			}
+			txt.SpliceWriteRTP(p, now)
+			t.mu.Unlock()
+			//unlock
 
 			//outCh <- buf[0]
 			buf = buf[1:]
 
-		case p, open := <-inCh:
+		case pp, open := <-inCh:
 			if !open {
-				panic("closed chan without eof")
-			}
-			if p.typ == GopReplayEof {
 				return
 			}
-			if p.keyframe {
-				//dbg.switching.Print("gopreplay got kf, seqno:", p.pkt.SequenceNumber)
-				break replayPGOP //throw away junk, and do scene cut
+
+			p, ok := pp.(*XPacket)
+			if !ok {
+				panic("no")
 			}
+
+			// if p.keyframe {
+			// 	return
+			// }
 			buf = append(buf, p)
 
 		}
-
 	}
-
 }
 
-func subGr(subGrCh <-chan string, txt *TxTrackSet, b *XBroker) {
+func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 	dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
 	defer dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
 
-	b.Subscribe(txt)
-	for newroom := range subGrCh {
+	// this new track group is for the gop replay
 
-		link, ok := getRoom(newroom)
+	pl()
+	room.tracks.Add(txt)
+	pl()
+	done := make(chan struct{}) // unbuf please
+	go gopReplay(done, room.xBroker, room.tracks, txt)
 
-		if !ok { //you cannot create rooms this way
-			dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: room not found:", newroom)
+	var ok bool
+	var newroom *roomState
+
+	for req := range subGrCh {
+
+		newroom, ok = getRoom(req)
+		if !ok { // no such room
 			continue
 		}
 
-		b.Unsubscribe(txt)
-		b = link.xBroker
-		b.Subscribe(txt)
+		close(done)
+
+		room.tracks.Remove(txt) // remove from current room
+
+		room = newroom
+		room.tracks.Add(txt)
+		done = make(chan struct{})
+		go gopReplay(done, room.xBroker, room.tracks, txt)
+
 		dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
 	}
-	b.Unsubscribe(txt)
+
+	close(done)
 }
 
 func makeRoomListJson(serial int) []byte {
@@ -2340,4 +2393,72 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 		_, _ = rw.Write(jsn) //an error here might mean the remote is gone, but we want to ignore that
 	}
 
+}
+
+func groupWriter(ch chan xany, t *TxTracks) {
+
+	<-ch // discard []xpacket
+
+	for pp := range ch {
+		p := pp.(*XPacket)
+
+		now := nanotime()
+		switch p.typ {
+		case Audio:
+			t.mu.Lock()
+			for k := range t.live {
+				k.aud.SpliceWriteRTP(p, now)
+			}
+			t.mu.Unlock()
+		case Video:
+			t.mu.Lock()
+
+			// if keyframe, move all from pending to live
+			if p.keyframe {
+				for pair := range t.replay {
+					delete(t.replay, pair)
+					t.live[pair] = struct{}{}
+				}
+			}
+
+			// forward to all 'live' tracks
+			for k := range t.live {
+				k.vid.SpliceWriteRTP(p, now)
+			}
+
+			t.mu.Unlock()
+		}
+	//	pl("reading")
+	}
+}
+
+type TxTracks struct {
+	mu     sync.Mutex
+	live   map[*TxTrackPair]struct{}
+	replay map[*TxTrackPair]struct{}
+}
+
+func NewTxTracks() *TxTracks {
+	a := &TxTracks{
+		live:   make(map[*TxTrackPair]struct{}),
+		replay: make(map[*TxTrackPair]struct{}),
+	}
+	return a
+}
+
+func (t *TxTracks) Add(p *TxTrackPair) {
+	t.mu.Lock()
+	t.replay[p] = struct{}{}
+	t.mu.Unlock()
+
+}
+func (t *TxTracks) Remove(p *TxTrackPair) {
+	t.mu.Lock()
+	delete(t.live, p)
+	delete(t.replay, p)
+	t.mu.Unlock()
+}
+
+type WriteRtpIntf interface {
+	WriteRTP(p *rtp.Packet) error
 }
