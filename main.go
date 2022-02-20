@@ -1724,20 +1724,9 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 }
 
 // SpliceRTP
-// this is carefully handcrafted, be careful
-// The packet you provide WILL get modified
-//
-// we may want to investigate adding seqno deltas onto a master counter
-// as a way of making seqno most consistent in the face of lots of switching,
-// and also more robust to seqno bug/jumps on input
-//
-// This grabs mutex after doing a fast, non-mutexed check for applicability
+// *p gets modified/trashed
 
-// p gets modified
-func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, porig *rtp.Packet, unixnano int64, rtphz int64) {
-
-	copy := *porig
-	p := &copy
+func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, p *rtp.Packet, unixnano int64, rtphz int64) {
 
 	// credit to Orlando Co of ion-sfu
 	// for helping me decide to go this route and keep it simple
@@ -2396,6 +2385,8 @@ func groupWriter(ch chan xany, t *TxTracks) {
 
 	<-ch // discard []xpacket
 
+	var rtpPktCopy rtp.Packet
+
 	for pp := range ch {
 		p := pp.(*XPacket)
 
@@ -2404,7 +2395,8 @@ func groupWriter(ch chan xany, t *TxTracks) {
 		case Audio:
 			t.mu.Lock()
 			for k := range t.live {
-				k.aud.SpliceWriteRTP(p, now)
+				rtpPktCopy = *p.pkt
+				k.aud.splicer.SpliceWriteRTP(k.aud.track, &rtpPktCopy, now, int64(k.aud.clockrate))
 			}
 			t.mu.Unlock()
 		case Video:
@@ -2420,12 +2412,13 @@ func groupWriter(ch chan xany, t *TxTracks) {
 
 			// forward to all 'live' tracks
 			for k := range t.live {
-				k.vid.SpliceWriteRTP(p, now)
+				rtpPktCopy = *p.pkt
+				k.vid.splicer.SpliceWriteRTP(k.vid.track, &rtpPktCopy, now, int64(k.vid.clockrate))
 			}
 
 			t.mu.Unlock()
 		}
-	//	pl("reading")
+		//	pl("reading")
 	}
 }
 
