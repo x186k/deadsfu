@@ -90,10 +90,6 @@ type TxTrack struct {
 	clockrate int
 }
 
-func (txt *TxTrack) SpliceWriteRTP(p *XPacket, now int64) {
-	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, now, int64(txt.clockrate))
-}
-
 // There is no mutex for this, the parent must be mutexed!
 
 type TxTrackPair struct {
@@ -101,7 +97,7 @@ type TxTrackPair struct {
 	vid TxTrack
 }
 
-func (txset *TxTrackPair) SpliceWriteRTP(p *XPacket, now int64) {
+func (txset *TxTrackPair) SplicePairWriteRTP(p *XPacket, now int64) {
 	var txt *TxTrack
 	switch p.typ {
 	case Audio:
@@ -111,7 +107,8 @@ func (txset *TxTrackPair) SpliceWriteRTP(p *XPacket, now int64) {
 	default:
 		panic("bad p.typ")
 	}
-	txt.splicer.SpliceWriteRTP(txt.track, p.pkt, now, int64(txt.clockrate))
+	copy := *p.pkt
+	txt.splicer.SpliceWriteRTP(txt.track, &copy, now, int64(txt.clockrate))
 }
 
 type myFtlServer struct {
@@ -2222,7 +2219,7 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 				t.mu.Unlock()
 				return
 			}
-			txt.SpliceWriteRTP(p, now)
+			txt.SplicePairWriteRTP(p, now)
 			t.mu.Unlock()
 			//unlock
 
