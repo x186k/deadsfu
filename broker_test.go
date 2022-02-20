@@ -171,3 +171,17 @@ func benchmarkBrokerWithWriter(b *testing.B, numpairs int) {
 	// }
 	// log.Println("num writes", nn)
 }
+
+func TestNanosecondsPerSubscriberSend(b *testing.T) {
+
+	var r testing.BenchmarkResult
+
+	r = testing.Benchmark(BenchmarkBrokerWithWriter1000PairsPool)
+	r.Extra["ns/send-op"] = float64(r.T) / float64(r.N) / 1000
+	println("1000sends, with pool:", r.String())
+
+	r = testing.Benchmark(BenchmarkBrokerWithWriter1000PairsNoPool)
+	r.Extra["ns/send-op"] = float64(r.T) / float64(r.N) / 1000
+	println("1000sends, without pool:", r.String())
+
+}
