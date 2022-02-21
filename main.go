@@ -1733,6 +1733,7 @@ func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, p *rtp.Packet, unixnano in
 	// code is modeled on code from ion-sfu
 	// 12/30/21 maybe we should use something else other than SSRC transitions?
 	if p.SSRC != s.lastSSRC {
+		s.lastSSRC = p.SSRC
 
 		if unixnano == 0 {
 			panic("unixnano cannot be zero.")
@@ -1767,7 +1768,6 @@ func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, p *rtp.Packet, unixnano in
 	s.lastUnixnanosNow = unixnano
 	s.lastTS = p.Timestamp
 	s.lastSN = p.SequenceNumber
-	s.lastSSRC = p.SSRC
 
 	//I had believed it was possible to see: io.ErrClosedPipe {
 	// but I no longer believe this to be true
@@ -2413,6 +2413,10 @@ func groupWriter(ch chan xany, t *TxTracks) {
 			// forward to all 'live' tracks
 			for k := range t.live {
 				rtpPktCopy = *p.pkt
+				//this is a candidate for heavy optimzation
+				// or hand-assembly, or inlining, etc, if the
+				// per-write WriteRTP() performance ever gets low enough
+				// this is currently at 20ns/loop
 				k.vid.splicer.SpliceWriteRTP(k.vid.track, &rtpPktCopy, now, int64(k.vid.clockrate))
 			}
 
