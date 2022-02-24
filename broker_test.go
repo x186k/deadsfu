@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -37,11 +36,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var pool = sync.Pool{
-	// New optionally specifies a function to generate
-	// a value when Get would otherwise return nil.
-	New: func() interface{} { return new(XPacket) },
-}
+// var pool = sync.Pool{
+// 	// New optionally specifies a function to generate
+// 	// a value when Get would otherwise return nil.
+// 	New: func() interface{} { return new(XPacket) },
+// }
 
 func BenchmarkBrokerNoWrite(b *testing.B) {
 
