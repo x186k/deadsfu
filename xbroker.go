@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"time"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -43,10 +43,11 @@ func (b *XBroker) Start() {
 	// that's how they are identified when being adding, or being deleting
 	subs := make(map[chan xany]struct{})
 
-	freqtable := make(map[int]int)
-	for i := 0; i <= 5; i++ {
-		freqtable[i] = 0
-	}
+	// freqtable := make(map[int]int)
+	// for i := 0; i <= 5; i++ {
+	// 	freqtable[i] = 0
+	// }
+
 
 	for mm := range b.msgCh {
 
@@ -115,24 +116,21 @@ func (b *XBroker) Start() {
 				ch <- m
 
 				if false {
-					l := len(ch)
-					freqtable[l] += 1
+					// l := len(ch)
+					// freqtable[l] += 1
 					//pl(unsafe.Pointer(b), l, freqtable[l])
 
 					select {
 					case ch <- m:
 					default:
-						for i := 0; i <= cap(ch); i++ {
-							println("hist ", i, freqtable[i])
-						}
-
-						log.Println(len(ch), cap(ch))
-						panic("blocking send cap=")
+						// for i := 0; i <= cap(ch); i++ {
+						// 	println("hist ", i, freqtable[i])
+						// }
+						// log.Println(len(ch), cap(ch))
+						panic("blocking send cap hit")
 					}
 				}
-
 			}
-
 		}
 	}
 }
