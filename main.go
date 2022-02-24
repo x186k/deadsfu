@@ -2124,10 +2124,12 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 	if !ok {
 		return
 	}
-	buf, ok := xbuf.([]*XPacket)
+	tmpbuf, ok := xbuf.([]*XPacket)
 	if !ok {
 		panic("no")
 	}
+	buf := make([]*XPacket, len(tmpbuf))
+	copy(buf, tmpbuf)
 
 	pl("gopreplay got n pkts", len(buf))
 
@@ -2171,14 +2173,18 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 		case <-done:
 			return
 
-		case <-time.NewTimer(time.Duration(sleep)).C:
-			p := buf[0]
+		case <-time.NewTimer(time.Duration(sleep)).C: //XXX someday optimize
+			xp := buf[0]
+			buf = buf[1:]
+			copy := *xp.pkt
+			//copy2 := *xp.pkt
+
 			//pl(txt.clockrate)
-			switch p.typ {
+			switch xp.typ {
 			case Audio:
-				p.pkt.SSRC = tmpAudSSRC
+				copy.SSRC = tmpAudSSRC
 			case Video:
-				p.pkt.SSRC = tmpVidSSRC
+				copy.SSRC = tmpVidSSRC
 			}
 			// you cannot use m.now for the nano timestamp
 			// these packets have been delayed,
@@ -2211,8 +2217,6 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 			t.mu.Unlock()
 			//unlock
 
-			//outCh <- buf[0]
-			buf = buf[1:]
 
 		case pp, open := <-inCh:
 			if !open {
