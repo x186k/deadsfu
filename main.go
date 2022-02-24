@@ -97,20 +97,6 @@ type TxTrackPair struct {
 	vid TxTrack
 }
 
-func (txset *TxTrackPair) SplicePairWriteRTP(p *XPacket, now int64) {
-	var txt *TxTrack
-	switch p.typ {
-	case Audio:
-		txt = &txset.aud
-	case Video:
-		txt = &txset.vid
-	default:
-		panic("bad p.typ")
-	}
-	copy := *p.pkt
-	txt.splicer.SpliceWriteRTP(txt.track, &copy, now, int64(txt.clockrate))
-}
-
 type myFtlServer struct {
 	badrtp    int
 	badssrc   int
@@ -2208,7 +2194,20 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 				t.mu.Unlock()
 				return
 			}
-			txt.SplicePairWriteRTP(p, now)
+
+			switch xp.typ {
+			case Audio:
+				txt.aud.splicer.SpliceWriteRTP(txt.aud.track, &copy, now, int64(txt.aud.clockrate))
+			case Video:
+				txt.vid.splicer.SpliceWriteRTP(txt.vid.track, &copy, now, int64(txt.vid.clockrate))
+			default:
+				panic("bad p.typ")
+			}
+
+			if xp.typ == Video {
+				//pl("XXX", copy.SequenceNumber, copy.Timestamp, copy2.SequenceNumber)
+			}
+
 			t.mu.Unlock()
 			//unlock
 
