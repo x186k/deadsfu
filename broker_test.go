@@ -173,33 +173,32 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int, poollike bool) {
 
 	var p *XPacket
 
-	if poollike {
-		p = &XPacket{
-			arrival:  0,
-			pkt:      &rtp.Packet{},
-			typ:      0,
-			keyframe: false,
-		}
-	}
+	// if poollike {
+	// 	p = &XPacket{
+	// 		arrival:  0,
+	// 		pkt:      &rtp.Packet{},
+	// 		typ:      0,
+	// 		keyframe: false,
+	// 	}
+	// }
 
 	for i := 0; i < b.N; i++ {
 		//p := pool.Get().(*XPacket)
 		//p.pkt = &rtp.Packet{}
-		if !poollike {
+		keyframe := false
+		if i%200 == 0 {
+			keyframe = true
+		}
+
+		if true {
 			p = &XPacket{
 				arrival:  0,
 				pkt:      &rtp.Packet{},
-				typ:      0,
-				keyframe: false,
+				typ:      Video,
+				keyframe: keyframe,
 			}
 		}
 
-		p.typ = Video
-		if i%200 == 0 {
-			p.keyframe = true
-		} else {
-			p.keyframe = false
-		}
 		a.Publish(p)
 
 	}
