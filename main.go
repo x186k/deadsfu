@@ -1461,25 +1461,12 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 	}
 }
 
-func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
+func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- xany) {
 
-	var xpkts []XPacket
+	iskf := make([]bool, len(idlePkts))
 
-	n := 0
-	for _, p := range idlePkts {
-
-		iskf := isH264Keyframe(p.Payload)
-		xpkt := XPacket{
-			typ:      Video,
-			pkt:      &p,
-			arrival:  0, // not necessary for pre-precorded
-			keyframe: iskf,
-		}
-		if iskf {
-			n++
-		}
-
-		xpkts = append(xpkts, xpkt)
+	for i, p := range idlePkts {
+		iskf[i] = isH264Keyframe(p.Payload)
 	}
 
 	fps := 5
@@ -1490,18 +1477,26 @@ func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
 
 	framedur90 := uint32(90000 / fps)
 
-	pktsDur90 := xpkts[len(xpkts)-1].pkt.Timestamp - xpkts[0].pkt.Timestamp
+	pktsDur90 := idlePkts[len(idlePkts)-1].Timestamp - idlePkts[0].Timestamp
 
 	totalDur90 := pktsDur90/framedur90*framedur90 + framedur90
 
 	for {
 
-		for _, pkt := range xpkts {
+		for i, pkt := range idlePkts {
 
-			pkt.pkt.SSRC = 1212121212
+			copy := pkt
+			xp := &XPacket{
+				arrival:  nanotime(),
+				pkt:      &copy, //this is a copy from array!
+				typ:      IdleVideo,
+				keyframe: iskf[i],
+			}
+
+			xp.pkt.SSRC = 0xdeadbeef
 
 			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
-			tsdelta := pkt.pkt.Timestamp - xpkts[0].pkt.Timestamp
+			tsdelta := pkt.Timestamp - idlePkts[0].Timestamp
 
 			tsdeltaDur := time.Duration(tsdelta) * time.Second / 90000
 
@@ -1509,14 +1504,23 @@ func noSignalGeneratorGr(idlePkts []rtp.Packet, idleCh chan<- XPacket) {
 
 			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
 
-			pkt.pkt.SequenceNumber = seqno
+			xp.pkt.SequenceNumber = seqno
 			seqno++
-			pkt.pkt.Timestamp = tsdelta + tstotal
+			xp.pkt.Timestamp = tsdelta + tstotal
 
-			//copy := pkt // critical!, we must make a copy!
+			select {
+			case _, ok := <-done:
+				if ok {
+					panic("no")
+				}
+				return
+			default:
+			}
+
+			// critical!, we must make a copy!
 			//actuall, the downstreams shouldn't be effing with this!
 			//blocking is okay
-			idleCh <- pkt
+			idleCh <- xp
 
 		}
 
