@@ -2263,7 +2263,6 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 		}
 
 		close(done)
-
 		room.tracks.Remove(txt) // remove from current room
 
 		room = newroom
@@ -2275,6 +2274,7 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 	}
 
 	close(done)
+	room.tracks.Remove(txt) // remove from current room
 }
 
 func makeRoomListJson(serial int) []byte {
