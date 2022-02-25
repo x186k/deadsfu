@@ -26,6 +26,7 @@ type xany interface{} // go 1.18 is here soon
 
 type XBrokerMsgSub chan xany
 type XBrokerMsgUnSub chan xany
+type XBrokerMsgTick struct{}
 
 func NewXBroker() *XBroker {
 	return &XBroker{
@@ -48,10 +49,29 @@ func (b *XBroker) Start() {
 	// 	freqtable[i] = 0
 	// }
 
+	go func() {
+		for {
+			b.msgCh <- XBrokerMsgTick{}
+			time.Sleep(time.Millisecond * 100)
+		}
+	}()
+
+	var idleDone chan struct{} // buffered NOTOK
+	var lastRx int64 = nanotime()
+	var isIdle bool
 
 	for mm := range b.msgCh {
 
 		switch m := mm.(type) {
+		case XBrokerMsgTick:
+			//pl("tick")
+			if !isIdle && (nanotime()-lastRx > int64(time.Second)) {
+				isIdle = true
+				//pl("->isIdle", isIdle)
+
+				idleDone = make(chan struct{})
+				go noSignalGeneratorGr(idleDone, idleMediaPackets, b.msgCh)
+			}
 		case XBrokerMsgSub:
 
 			if _, ok := subs[m]; ok {
@@ -72,17 +92,24 @@ func (b *XBroker) Start() {
 			delete(subs, m)
 
 		case *XPacket:
-			if m.typ != Video && m.typ != Audio {
+
+			if m.typ != Video && m.typ != Audio && m.typ != IdleVideo {
 				panic("invalid xpkt type")
 			}
 
-			// TESTING, vid only
-			// if m.typ != Video { // save video GOPs
-			// 	break
-			// }
+			if m.typ == Video {
+				lastRx = nanotime()
+				if isIdle {
+					isIdle = false
+					//pl("->isIdle", isIdle)
+					close(idleDone)
+				}
+			} else if m.typ == IdleVideo {
+				m.typ = Video
+			}
 
 			// STEP1: we save video XPacket's in the gop-so-far
-			if m.typ == Video { // save video GOPs
+			if m.typ == Video || m.typ == IdleVideo { // save video GOPs
 				if len(buf) > 50000 { //oversize protection // XXX >cap(buf)
 					buf = make([]*XPacket, 0)
 				}
@@ -103,7 +130,6 @@ func (b *XBroker) Start() {
 			// for-each chan-subscr, add the pair to the TxTracks map, close the chan, delete from chan-map
 			// using two for-loops for compiler reasons: https://go.dev/doc/go1.11#performance-compiler
 
-
 			for ch := range subs {
 
 				select {
@@ -111,7 +137,7 @@ func (b *XBroker) Start() {
 				default:
 					errlog.Println("media discarded, overflow")
 				}
-				
+
 			}
 		}
 	}
