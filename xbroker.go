@@ -103,33 +103,15 @@ func (b *XBroker) Start() {
 			// for-each chan-subscr, add the pair to the TxTracks map, close the chan, delete from chan-map
 			// using two for-loops for compiler reasons: https://go.dev/doc/go1.11#performance-compiler
 
-			//STEP3 send pkt to each chan
-			// for ch := range subs {
-			// 	select {
-			// 	case ch <- m:
-			// 	default:
-			// 		panic("no")
-			// 	}
-			// }
 
 			for ch := range subs {
-				ch <- m
 
-				if false {
-					// l := len(ch)
-					// freqtable[l] += 1
-					//pl(unsafe.Pointer(b), l, freqtable[l])
-
-					select {
-					case ch <- m:
-					default:
-						// for i := 0; i <= cap(ch); i++ {
-						// 	println("hist ", i, freqtable[i])
-						// }
-						// log.Println(len(ch), cap(ch))
-						panic("blocking send cap hit")
-					}
+				select {
+				case ch <- m:
+				default:
+					errlog.Println("media discarded, overflow")
 				}
+				
 			}
 		}
 	}
