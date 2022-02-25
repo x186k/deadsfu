@@ -2136,7 +2136,7 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 	buf := make([]*XPacket, len(tmpbuf))
 	copy(buf, tmpbuf)
 
-	pl("gopreplay got n pkts", len(buf))
+	//pl("gopreplay got n pkts", len(buf))
 
 	//dbg.switching.Print("got n packets for replay", len(buf))
 	if len(buf) > 0 {
@@ -2215,13 +2215,12 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 				panic("bad p.typ")
 			}
 
-			if xp.typ == Video {
-				//pl("XXX", copy.SequenceNumber, copy.Timestamp, copy2.SequenceNumber)
-			}
+			// if xp.typ == Video {
+			// 	pl("XXX", copy.SequenceNumber, copy.Timestamp, copy2.SequenceNumber)
+			// }
 
 			t.mu.Unlock()
 			//unlock
-
 
 		case pp, open := <-inCh:
 			if !open {
@@ -2248,9 +2247,8 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 
 	// this new track group is for the gop replay
 
-	pl()
 	room.tracks.Add(txt)
-	pl()
+
 	done := make(chan struct{}) // unbuf please
 	go gopReplay(done, room.xBroker, room.tracks, txt)
 
