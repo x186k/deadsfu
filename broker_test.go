@@ -118,7 +118,7 @@ func BenchmarkBrokerWithWriter1000PairsNoPool(b *testing.B) {
 	benchmarkBrokerWithWriter(b, 1000, false)
 }
 
-func benchmarkBrokerWithWriter(b *testing.B, numwrites int, poollike bool) {
+func benchmarkBrokerWithWriter(b *testing.B, numwrites int, usepool bool) {
 
 	a := NewXBroker()
 	go a.Start()
@@ -172,14 +172,15 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int, poollike bool) {
 
 	var p *XPacket
 
-	// if poollike {
-	// 	p = &XPacket{
-	// 		arrival:  0,
-	// 		pkt:      &rtp.Packet{},
-	// 		typ:      0,
-	// 		keyframe: false,
-	// 	}
-	// }
+	if usepool {
+		p = xpacketPool.Get().(*XPacket)
+		*p = XPacket{
+			arrival:  0,
+			pkt:      rtp.Packet{},
+			typ:      0,
+			keyframe: false,
+		}
+	}
 
 	for i := 0; i < b.N; i++ {
 		//p := pool.Get().(*XPacket)
@@ -192,7 +193,7 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int, poollike bool) {
 		if true {
 			p = &XPacket{
 				arrival:  0,
-				pkt:      &rtp.Packet{},
+				pkt:      rtp.Packet{},
 				typ:      Video,
 				keyframe: keyframe,
 			}
