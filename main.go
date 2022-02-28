@@ -2407,7 +2407,7 @@ func groupWriter(ch chan xany, t *TxTracks) {
 		case Audio:
 			t.mu.Lock()
 			for k := range t.live {
-				rtpPktCopy = *p.pkt
+				rtpPktCopy = p.pkt
 				k.aud.splicer.SpliceWriteRTP(k.aud.track, &rtpPktCopy, now, int64(k.aud.clockrate))
 			}
 			t.mu.Unlock()
@@ -2435,7 +2435,7 @@ func groupWriter(ch chan xany, t *TxTracks) {
 
 			// forward to all 'live' tracks
 			for k := range t.live {
-				rtpPktCopy = *p.pkt
+				rtpPktCopy = p.pkt
 				//this is a candidate for heavy optimzation
 				// or hand-assembly, or inlining, etc, if the
 				// per-write WriteRTP() performance ever gets low enough
