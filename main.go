@@ -1420,41 +1420,43 @@ func OnTrack2(
 
 }
 
+var xpacketPool = sync.Pool{
+	New: func() interface{} {
+		// The Pool's New function should generally only return pointer
+		// types, since a pointer can be put into the return interface
+		// value without an allocation:
+		return new(XPacket)
+	},
+}
+
 func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- xany) {
 
 	for {
 
-		// .Read() is faster than .ReadRTP()
-		// it may present memory management opportunities also
-		// for today, keep using .ReadRTP()
-		// buf:=make([]byte,1460) //mtu
-		// p,_,err:=rxTrack.Read(buf)
-		p, _, err := rxTrack.ReadRTP()
+		xp := xpacketPool.Get().(*XPacket)
+
+		b := make([]byte, 1460)
+		i, _, err := rxTrack.Read(b) // faster than .ReadRTP()
 		if err == io.EOF {
-			//XXX
-			//pubsub.CloseSubs()
 			return
 		} else if err != nil {
 			errlog.Println(err.Error())
 			return
 		}
 
-		kf := false
-		if typ == Video {
-			kf = isH264Keyframe(p.Payload)
+		//r := &rtp.Packet{}
+		r := &xp.pkt
+		if err := r.Unmarshal(b[:i]); err != nil {
+			errlog.Print("unable to unmarshal on inbound")
+			continue
 		}
 
-		// blocking is okay
+		isvid := typ == Video
+		xp.typ = typ
+		xp.arrival = nanotime()
+		xp.keyframe = isvid && isH264Keyframe(r.Payload)
 
-		xp := XPacket{
-			typ:      typ,
-			pkt:      p,
-			arrival:  nanotime(),
-			keyframe: kf,
-			//replay:   false,
-		}
-
-		ch <- &xp
+		ch <- xp
 
 	}
 }
