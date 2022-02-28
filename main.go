@@ -764,15 +764,13 @@ func getRoomOrCreate(roomname string) *roomState {
 		}
 
 		ch := link.xBroker.Subscribe()
-		go groupWriter(ch, link.tracks)
 
-		_ = idleMediaPackets
-		_ = noSignalGeneratorGr
-		_ = noSignalSwitchGr
-		// noSignalCh := make(chan XPacket, 1)
-		// go noSignalGeneratorGr(, noSignalCh)
-		// go noSignalSwitchGr(link.readPkts, noSignalCh, link.xBroker.msgCh)
 		go link.xBroker.Start()
+		go func() {
+			groupWriter(ch, link.tracks)
+			// return from groupwriter means room has no publisher and no subscribers for too long
+			link.xBroker.Stop()
+		}()
 
 		roomMap[roomname] = link
 	}
@@ -1531,6 +1529,8 @@ func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh cha
 
 	}
 }
+
+var _ = noSignalSwitchGr
 
 func noSignalSwitchGr(liveCh <-chan XPacket, noSignalCh <-chan XPacket, outCh chan<- xany) {
 
@@ -2391,12 +2391,16 @@ func groupWriter(ch chan xany, t *TxTracks) {
 
 	<-ch // discard []xpacket
 
+	lastcheck := nanotime()
+
 	var rtpPktCopy rtp.Packet
 
 	for pp := range ch {
+
 		p := pp.(*XPacket)
 
 		now := nanotime()
+
 		switch p.typ {
 		case Audio:
 			t.mu.Lock()
@@ -2406,6 +2410,15 @@ func groupWriter(ch chan xany, t *TxTracks) {
 			}
 			t.mu.Unlock()
 		case IdleVideo:
+			if now-lastcheck > int64(10*time.Second) {
+				lastcheck = now
+				t.mu.Lock()
+				dead := len(t.live) == 0 && len(t.replay) == 0
+				t.mu.Unlock()
+				if dead {
+					return //room is unused, return from here
+				}
+			}
 			fallthrough
 		case Video:
 			t.mu.Lock()
