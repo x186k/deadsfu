@@ -104,8 +104,6 @@ func (b *XBroker) Start() {
 					//pl("->isIdle", isIdle)
 					close(idleDone)
 				}
-			} else if m.typ == IdleVideo {
-				m.typ = Video
 			}
 
 			// STEP1: we save video XPacket's in the gop-so-far

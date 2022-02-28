@@ -2405,6 +2405,8 @@ func groupWriter(ch chan xany, t *TxTracks) {
 				k.aud.splicer.SpliceWriteRTP(k.aud.track, &rtpPktCopy, now, int64(k.aud.clockrate))
 			}
 			t.mu.Unlock()
+		case IdleVideo:
+			fallthrough
 		case Video:
 			t.mu.Lock()
 
