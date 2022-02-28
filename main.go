@@ -1485,10 +1485,10 @@ func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh cha
 
 		for i, pkt := range idlePkts {
 
-			copy := pkt
-			xp := &XPacket{
+			xp := xpacketPool.Get().(*XPacket)
+			*xp = XPacket{
 				arrival:  nanotime(),
-				pkt:      &copy, //this is a copy from array!
+				pkt:      pkt, //this is a copy from array!
 				typ:      IdleVideo,
 				keyframe: iskf[i],
 			}
