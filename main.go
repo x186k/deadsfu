@@ -2106,7 +2106,7 @@ var _ = Data
 
 type XPacket struct {
 	arrival  int64
-	pkt      *rtp.Packet
+	pkt      rtp.Packet
 	typ      XPacketType
 	keyframe bool
 }
