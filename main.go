@@ -2131,12 +2131,9 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 	if !ok {
 		return
 	}
-	tmpbuf, ok := xbuf.([]*XPacket)
-	if !ok {
-		panic("no")
-	}
-	buf := make([]*XPacket, len(tmpbuf))
-	copy(buf, tmpbuf)
+	buf := xbuf.([]*XPacket)
+
+	numreplay := len(buf)
 
 	//pl("gopreplay got n pkts", len(buf))
 
