@@ -290,7 +290,6 @@ func main() {
 
 	verifyEmbedFiles()
 
-
 	go getSourceListGr()
 	go logGoroutineCountToDebugLog()
 
@@ -1423,75 +1422,24 @@ func OnTrack2(
 
 // var xpacketPool = sync.Pool{
 // 	New: func() interface{} {
-// a := new(XPacket)
-// a.buf = make([]byte, 1460)
-// return a
+// 		a := new(XPacket)
+// 		a.buf = make([]byte, 1460)
+// 		return a
 // 	},
 // }
 
-var xpacketPool = XPool{
-	Pool: sync.Pool{
-		New: func() interface{} {
-			a := new(XPacket)
-			a.buf = make([]byte, 1460)
-			return a
-		},
-	},
-	free:  make(map[interface{}]struct{}),
-	inuse: make(map[interface{}]time.Time),
-}
+func GetXPacket() *XPacket {
+	xp := new(XPacket)
+	xp.buf = make([]byte, 1460)
 
-type XPool struct {
-	mu sync.Mutex
-
-	sync.Pool
-
-	free  map[interface{}]struct{}
-	inuse map[interface{}]time.Time
-	last  time.Time
-}
-
-func (p *XPool) Put(x interface{}) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if _, ok := p.free[x]; ok {
-		panic("put existing")
-	}
-	p.free[x] = struct{}{}
-	delete(p.inuse, x)
-
-	p.Pool.Put(x)
-}
-func (p *XPool) Get() interface{} {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	x := p.Pool.Get()
-
-	delete(p.free, x)
-	p.inuse[x] = time.Now()
-
-	if time.Since(p.last) > 3*time.Second {
-		p.last = time.Now()
-		n := 0
-		for _, v := range p.inuse {
-			if time.Since(v) > time.Second*10 {
-				n++
-			}
-		}
-		log.Printf("%d inuse >10 sec, %d inuse, %d free", n, len(p.inuse), len(p.free))
-	}
-
-	return x
-
+	return xp
 }
 
 func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- xany) {
 
 	for {
 
-		xp := xpacketPool.Get().(*XPacket)
+		xp := GetXPacket()
 
 		i, _, err := rxTrack.Read(xp.buf) // faster than .ReadRTP()
 		if err == io.EOF {
@@ -1542,7 +1490,7 @@ func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh cha
 
 		for i, pkt := range idlePkts {
 
-			xp := xpacketPool.Get().(*XPacket)
+			xp := GetXPacket()
 			*xp = XPacket{
 				arrival:  nanotime(),
 				pkt:      pkt, //this is a copy from array!
@@ -2270,7 +2218,7 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 			case Video:
 				txt.vid.splicer.SpliceWriteRTP(txt.vid.track, &copy, now, int64(txt.vid.clockrate))
 			default:
-				panic("bad p.typ")
+				log.Fatalln("bad p.typ:", xp.typ)
 			}
 
 			// if xp.typ == Video {
@@ -2280,9 +2228,9 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 			t.mu.Unlock()
 
 			// we only return *xpacket to pool from live path
-			if numreplay < 0 {
-				xpacketPool.Put(xp)
-			}
+			// if numreplay < 0 {
+			// 	xpacketPool.Put(xp)
+			// }
 
 		case pp, open := <-inCh:
 			if !open {
