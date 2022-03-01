@@ -115,11 +115,11 @@ func (b *XBroker) Start() {
 			if m.typ == Video || m.typ == IdleVideo { // save video GOPs
 
 				if m.keyframe || tooLarge {
-					for i, v := range buf {
-						xpacketPool.Put(v)
+					for i := range buf {
 						buf[i] = nil
-						buf = buf[0:0]
+						//xpacketPool.Put(v)
 					}
+					buf = buf[0:0]
 					// old buf = make([]*XPacket, 1, 300) // XXX pool? or clear slice
 				}
 				buf = append(buf, m)
@@ -134,15 +134,16 @@ func (b *XBroker) Start() {
 			// for-each chan-subscr, add the pair to the TxTracks map, close the chan, delete from chan-map
 			// using two for-loops for compiler reasons: https://go.dev/doc/go1.11#performance-compiler
 
-			once := true
+			//once := true
 			for ch := range subs {
-				if once {
-					once = false
-				} else {
-					tmp := xpacketPool.Get().(*XPacket)
-					*tmp = *m
-					m = tmp
-				}
+				// if once {
+				// 	once = false
+				// } else {
+				// 	tmp := xpacketPool.Get().(*XPacket)
+				// 	copy := *m
+				// 	*tmp = copy
+				// 	m = tmp
+				// }
 
 				ch <- m
 
