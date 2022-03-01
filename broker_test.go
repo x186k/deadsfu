@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/pion/rtp"
+	//"github.com/x186k/deadsfu"
 )
 
 // c@macmini ~/D/deadsfu (main) [1]> go test -bench='^BenchmarkBrokerWithWriter' . -run='^$' .
@@ -84,70 +85,34 @@ func BenchmarkBrokerNoWrite(b *testing.B) {
 	<-d
 }
 
-type Z struct {
+type DummyWriter struct {
 	//nwrite int
 }
 
-func (z *Z) WriteRTP(p *rtp.Packet) error {
+func (z *DummyWriter) WriteRTP(p *rtp.Packet) error {
 	//z.nwrite++
 	return nil
 }
 
-func BenchmarkBrokerWithWriter1PairsPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 1, true)
-}
-func BenchmarkBrokerWithWriter10PairsPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 10, true)
-}
-func BenchmarkBrokerWithWriter100PairsPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 100, true)
-}
-func BenchmarkBrokerWithWriter1000PairsPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 1000, true)
-}
 func BenchmarkBrokerWithWriter1PairsNoPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 1, false)
+	benchmarkBrokerWithWriter(b, 1)
 }
 func BenchmarkBrokerWithWriter10PairsNoPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 10, false)
+	benchmarkBrokerWithWriter(b, 10)
 }
 func BenchmarkBrokerWithWriter100PairsNoPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 100, false)
+	benchmarkBrokerWithWriter(b, 100)
 }
 func BenchmarkBrokerWithWriter1000PairsNoPool(b *testing.B) {
-	benchmarkBrokerWithWriter(b, 1000, false)
+	benchmarkBrokerWithWriter(b, 1000)
 }
 
-func benchmarkBrokerWithWriter(b *testing.B, numwrites int, usepool bool) {
-
-	a := NewXBroker()
-	go a.Start()
-
-	c := a.Subscribe()
-	<-c
-
-	// pp := sync.Pool{
-	// 	// New optionally specifies a function to generate
-	// 	// a value when Get would otherwise return nil.
-	// 	New: func() interface{} { return new(XPacket) },
-	// }
-
-	d := make(chan struct{})
-	go func() {
-
-		for z := range c {
-
-			zz := z.(*XPacket)
-			//pp.Put(zz)
-			N += int(zz.typ)
-		}
-		close(d)
-	}()
+func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 
 	trks := NewTxTracks()
 
 	for i := 0; i < numwrites; i++ {
-		vidwriter := &Z{}
+		vidwriter := &DummyWriter{}
 		pair := TxTrackPair{
 			aud: TxTrack{
 				track:     vidwriter,
@@ -163,53 +128,53 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int, usepool bool) {
 		trks.Add(&pair)
 	}
 
+	a := NewXBroker()
+	go a.Start()
 	ch := a.Subscribe()
 	go groupWriter(ch, trks)
 
-	//println(88,b.N)
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	var p *XPacket
-
-	if usepool {
-		p = xpacketPool.Get().(*XPacket)
-		*p = XPacket{
-			arrival:  0,
-			pkt:      rtp.Packet{},
-			typ:      0,
-			keyframe: false,
-		}
+	p = &XPacket{
+		arrival:  0,
+		pkt:      rtp.Packet{},
+		typ:      0,
+		keyframe: false,
+		buf:      make([]byte, 1540),
 	}
 
+	// if usepool {
+	// 	p = xpacketPool.Get().(*XPacket)
+	// 	*p = XPacket{
+	// 		arrival:  0,
+	// 		pkt:      rtp.Packet{},
+	// 		typ:      0,
+	// 		keyframe: false,
+	// 	}
+	// }
+
 	for i := 0; i < b.N; i++ {
-		//p := pool.Get().(*XPacket)
-		//p.pkt = &rtp.Packet{}
-		keyframe := false
-		if i%200 == 0 {
-			keyframe = true
+
+		p = &XPacket{
+			arrival:  0,
+			pkt:      rtp.Packet{},
+			typ:      Video,
+			keyframe: false,
 		}
 
-		if true {
-			p = &XPacket{
-				arrival:  0,
-				pkt:      rtp.Packet{},
-				typ:      Video,
-				keyframe: keyframe,
-			}
-		}
+		p.keyframe = i%200 == 0
 
 		a.Publish(p)
 
 	}
 	b.StopTimer()
-	a.Unsubscribe(c)
+	a.Unsubscribe(ch)
 
-	<-d
 	time.Sleep(time.Millisecond * 5) // wait for drain
 
-	durintf :=
-		GetUnexportedField(reflect.ValueOf(b).Elem().FieldByName("duration"))
+	durintf := GetUnexportedField(reflect.ValueOf(b).Elem().FieldByName("duration"))
 	duration := durintf.(time.Duration)
 
 	b.ReportMetric(float64(duration)/float64(b.N)/float64(numwrites), "ns/write")
@@ -226,17 +191,3 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int, usepool bool) {
 func GetUnexportedField(field reflect.Value) interface{} {
 	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
 }
-
-// func TestNanosecondsPerSubscriberSend(b *testing.T) {
-
-// 	var r testing.BenchmarkResult
-
-// 	r = testing.Benchmark(BenchmarkBrokerWithWriter1000PairsPool)
-// 	r.Extra["ns/send-op"] = float64(r.T) / float64(r.N) / 1000
-// 	println("1000sends, with pool:", r.String())
-
-// 	r = testing.Benchmark(BenchmarkBrokerWithWriter1000PairsNoPool)
-// 	r.Extra["ns/send-op"] = float64(r.T) / float64(r.N) / 1000
-// 	println("1000sends, without pool:", r.String())
-
-// }
