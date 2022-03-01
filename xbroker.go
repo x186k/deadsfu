@@ -49,6 +49,7 @@ func (b *XBroker) Start() {
 	// 	freqtable[i] = 0
 	// }
 
+	/// XXX must handle shutdown
 	go func() {
 		for {
 			b.msgCh <- XBrokerMsgTick{}
@@ -110,16 +111,18 @@ func (b *XBroker) Start() {
 			}
 
 			// STEP1: we save video XPacket's in the gop-so-far
+			tooLarge := len(buf) > 50000
 			if m.typ == Video || m.typ == IdleVideo { // save video GOPs
-				if len(buf) > 50000 { //oversize protection // XXX >cap(buf)
-					buf = make([]*XPacket, 0)
+
+				if m.keyframe || tooLarge {
+					for i, v := range buf {
+						xpacketPool.Put(v)
+						buf[i] = nil
+						buf = buf[0:0]
+					}
+					// old buf = make([]*XPacket, 1, 300) // XXX pool? or clear slice
 				}
-				if m.keyframe {
-					buf = make([]*XPacket, 1, 300) // XXX pool? or clear slice
-					buf[0] = m
-				} else if len(buf) > 0 {
-					buf = append(buf, m)
-				}
+				buf = append(buf, m)
 
 				// this sanity check moved to the receiving side
 				// if len(buf) > 0 && !buf[0].keyframe {
