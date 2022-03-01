@@ -80,7 +80,10 @@ func (b *XBroker) Start() {
 
 			subs[m] = struct{}{}
 
-			m <- buf // new subscribers get a copy of the gop so far
+			pktcopy := make([]*XPacket, len(buf))
+			copy(pktcopy, buf)
+
+			m <- pktcopy // new subscribers get a copy of the gop so far
 
 		case XBrokerMsgUnSub:
 
