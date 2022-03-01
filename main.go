@@ -270,6 +270,7 @@ func init() {
 	checkFatal(err)
 	mrand.Seed(bi.Int64())
 	validateEmbedFiles()
+	idleMediaPackets = idleMediaLoader()
 }
 
 func main() {
@@ -288,7 +289,7 @@ func main() {
 	oneTimeFlagsActions() //if !strings.HasSuffix(os.Args[0], ".test") {
 
 	verifyEmbedFiles()
-	idleMediaPackets = idleMediaLoader()
+
 
 	go getSourceListGr()
 	go logGoroutineCountToDebugLog()
