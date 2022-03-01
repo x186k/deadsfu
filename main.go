@@ -1435,8 +1435,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 
 		xp := xpacketPool.Get().(*XPacket)
 
-		b := make([]byte, 1460)
-		i, _, err := rxTrack.Read(b) // faster than .ReadRTP()
+		i, _, err := rxTrack.Read(xp.buf) // faster than .ReadRTP()
 		if err == io.EOF {
 			return
 		} else if err != nil {
@@ -1446,7 +1445,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 
 		//r := &rtp.Packet{}
 		r := &xp.pkt
-		if err := r.Unmarshal(b[:i]); err != nil {
+		if err := r.Unmarshal(xp.buf[:i]); err != nil {
 			errlog.Print("unable to unmarshal on inbound")
 			continue
 		}
@@ -2109,6 +2108,7 @@ type XPacket struct {
 	pkt      rtp.Packet
 	typ      XPacketType
 	keyframe bool
+	buf      []byte
 }
 
 //how do we know to go away?
