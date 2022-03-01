@@ -5,7 +5,7 @@
 // So, the code below is mostly under the MIT license with a
 // sprinkling of Apache 2.0 for flavoring. -Cam
 //
-package main
+package sfu
 
 import (
 	"errors"

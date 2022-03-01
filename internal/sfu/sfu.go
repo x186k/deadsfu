@@ -1,4 +1,4 @@
-package main
+package sfu
 
 //force new build
 
@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
-	"embed"
+
 	"encoding/json"
 	"math"
 	"math/big"
@@ -51,6 +51,7 @@ import (
 	"net/http/httputil"
 	_ "net/http/pprof"
 
+	"github.com/x186k/deadsfu"
 	"github.com/x186k/deadsfu/ftlserver"
 
 	"github.com/google/uuid"
@@ -135,17 +136,7 @@ var dialUpstreamUrl *url.URL
 
 var Version = "version-unset"
 
-//go:embed html
-var htmlContent embed.FS
 
-//go:embed deadsfu-binaries/idle-clip.zip
-var idleClipZipBytes []byte
-
-//go:embed deadsfu-binaries/favicon_io/favicon.ico
-var favicon_ico []byte
-
-//go:embed deadsfu-binaries/deadsfu-camera-not-available.mp4
-var deadsfuCameraNotAvailableMp4 []byte
 
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
@@ -260,7 +251,7 @@ func wrap(err error) error {
 }
 
 func validateEmbedFiles() {
-	if _, err := htmlContent.ReadFile("html/index.html"); err != nil {
+	if _, err := deadsfu.HtmlContent.ReadFile("html/index.html"); err != nil {
 		panic("index.html failed to embed correctly")
 	}
 }
@@ -478,7 +469,7 @@ func setupMux() (*http.ServeMux, error) {
 	if *htmlSource == "none" {
 		return mux, nil
 	} else if *htmlSource == "internal" {
-		f, err := fs.Sub(htmlContent, "html")
+		f, err := fs.Sub(deadsfu.HtmlContent, "html")
 		checkFatal(err) //okay
 
 		fsys := dotFileHidingFileSystemPlus{http.FS(f)}
@@ -516,12 +507,12 @@ func setupMux() (*http.ServeMux, error) {
 	mux.Handle("/", rootmux)
 
 	mux.HandleFunc("/favicon.ico", func(rw http.ResponseWriter, r *http.Request) {
-		readseek := bytes.NewReader(favicon_ico)
+		readseek := bytes.NewReader(deadsfu.Favicon_ico)
 		http.ServeContent(rw, r, "favicon.ico", time.Time{}, readseek)
 	})
 
 	mux.HandleFunc("/no-camera.mp4", func(rw http.ResponseWriter, r *http.Request) {
-		readseek := bytes.NewReader(deadsfuCameraNotAvailableMp4)
+		readseek := bytes.NewReader(deadsfu.DeadsfuCameraNotAvailableMp4)
 		http.ServeContent(rw, r, "/no-camera.mp4", time.Time{}, readseek)
 	})
 
@@ -1090,15 +1081,15 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 }
 
 func verifyEmbedFiles() {
-	if len(idleClipZipBytes) == 0 {
+	if len(deadsfu.IdleClipZipBytes) == 0 {
 		checkFatal(fmt.Errorf("embed idleClipZipBytes is zero-length!"))
 	}
 
-	if len(deadsfuCameraNotAvailableMp4) == 0 {
+	if len(deadsfu.DeadsfuCameraNotAvailableMp4) == 0 {
 		checkFatal(fmt.Errorf("embed deadsfuCameraNotAvailableMp4 is zero-length!"))
 	}
 
-	if len(favicon_ico) == 0 {
+	if len(deadsfu.Favicon_ico) == 0 {
 		checkFatal(fmt.Errorf("embed deadsfuCameraNotAvailableMp4 is zero-length!"))
 	}
 
@@ -1110,7 +1101,7 @@ func idleMediaLoader() []rtp.Packet {
 
 	if *idleClipZipfile == "" && *idleClipServerInput == "" {
 
-		rtp = readRTPFromZip(idleClipZipBytes)
+		rtp = readRTPFromZip(deadsfu.IdleClipZipBytes)
 	} else if *idleClipServerInput != "" {
 
 		inp, err := ioutil.ReadFile(*idleClipServerInput)

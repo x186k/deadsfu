@@ -1,4 +1,4 @@
-package main
+package sfu
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	//this is kinda weird, but works, so we use it.
-	//main "github.com/x186k/deadsfu"
+	"github.com/x186k/deadsfu"
 )
 
 // func TestMain(m *testing.M) {
@@ -58,7 +58,7 @@ func TestPubSub(t *testing.T) {
 
 	pkthash[calccrc(fake)] = 2
 
-	p := readRTPFromZip(idleClipZipBytes)
+	p := readRTPFromZip(deadsfu.IdleClipZipBytes)
 
 	for _, v := range p {
 		raw, err := v.Marshal()
