@@ -58,7 +58,7 @@ func BenchmarkBrokerNoWrite(b *testing.B) {
 
 			zz := z.(*XPacket)
 			//pp.Put(zz)
-			N += int(zz.typ)
+			N += int(zz.Typ)
 		}
 		close(d)
 	}()
@@ -70,11 +70,11 @@ func BenchmarkBrokerNoWrite(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		//p := pp.Get().(*XPacket)
 		p := XPacket{}
-		p.typ = Video
+		p.Typ = Video
 		if i%200 == 0 {
-			p.keyframe = true
+			p.Keyframe = true
 		} else {
-			p.keyframe = false
+			p.Keyframe = false
 		}
 		a.Publish(&p)
 
@@ -138,11 +138,11 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 
 	var p *XPacket
 	p = &XPacket{
-		arrival:  0,
-		pkt:      rtp.Packet{},
-		typ:      0,
-		keyframe: false,
-		buf:      make([]byte, 1540),
+		Arrival:  0,
+		Pkt:      rtp.Packet{},
+		Typ:      0,
+		Keyframe: false,
+		Buf:      make([]byte, 1540),
 	}
 
 	// if usepool {
@@ -158,13 +158,13 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 	for i := 0; i < b.N; i++ {
 
 		p = &XPacket{
-			arrival:  0,
-			pkt:      rtp.Packet{},
-			typ:      Video,
-			keyframe: false,
+			Arrival:  0,
+			Pkt:      rtp.Packet{},
+			Typ:      Video,
+			Keyframe: false,
 		}
 
-		p.keyframe = i%200 == 0
+		p.Keyframe = i%200 == 0
 
 		a.Publish(p)
 

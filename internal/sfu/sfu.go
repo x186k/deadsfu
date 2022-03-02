@@ -1421,7 +1421,7 @@ func OnTrack2(
 
 func GetXPacket() *XPacket {
 	xp := new(XPacket)
-	xp.buf = make([]byte, 1460)
+	xp.Buf = make([]byte, 1460)
 
 	return xp
 }
@@ -1432,7 +1432,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 
 		xp := GetXPacket()
 
-		i, _, err := rxTrack.Read(xp.buf) // faster than .ReadRTP()
+		i, _, err := rxTrack.Read(xp.Buf) // faster than .ReadRTP()
 		if err == io.EOF {
 			return
 		} else if err != nil {
@@ -1441,16 +1441,16 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 		}
 
 		//r := &rtp.Packet{}
-		r := &xp.pkt
-		if err := r.Unmarshal(xp.buf[:i]); err != nil {
+		r := &xp.Pkt
+		if err := r.Unmarshal(xp.Buf[:i]); err != nil {
 			errlog.Print("unable to unmarshal on inbound")
 			continue
 		}
 
 		isvid := typ == Video
-		xp.typ = typ
-		xp.arrival = nanotime()
-		xp.keyframe = isvid && isH264Keyframe(r.Payload)
+		xp.Typ = typ
+		xp.Arrival = nanotime()
+		xp.Keyframe = isvid && isH264Keyframe(r.Payload)
 
 		ch <- xp
 
@@ -1483,13 +1483,13 @@ func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh cha
 
 			xp := GetXPacket()
 			*xp = XPacket{
-				arrival:  nanotime(),
-				pkt:      pkt, //this is a copy from array!
-				typ:      IdleVideo,
-				keyframe: iskf[i],
+				Arrival:  nanotime(),
+				Pkt:      pkt, //this is a copy from array!
+				Typ:      IdleVideo,
+				Keyframe: iskf[i],
 			}
 
-			xp.pkt.SSRC = 0xdeadbeef
+			xp.Pkt.SSRC = 0xdeadbeef
 
 			// rollover should be okay for uint32: https://play.golang.org/p/VeIBZgorleL
 			tsdelta := pkt.Timestamp - idlePkts[0].Timestamp
@@ -1500,9 +1500,9 @@ func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh cha
 
 			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
 
-			xp.pkt.SequenceNumber = seqno
+			xp.Pkt.SequenceNumber = seqno
 			seqno++
-			xp.pkt.Timestamp = tsdelta + tstotal
+			xp.Pkt.Timestamp = tsdelta + tstotal
 
 			select {
 			case _, ok := <-done:
@@ -1543,7 +1543,7 @@ func noSignalSwitchGr(liveCh <-chan XPacket, noSignalCh <-chan XPacket, outCh ch
 
 			if sendingIdleVid {
 
-				if mm.keyframe {
+				if mm.Keyframe {
 					sendingIdleVid = false
 					log.Println("SWITCHING TO INPUT, NOW INPUT VIDEO PRESENT")
 				}
@@ -1559,7 +1559,7 @@ func noSignalSwitchGr(liveCh <-chan XPacket, noSignalCh <-chan XPacket, outCh ch
 
 			if !rxActive && !sendingIdleVid {
 
-				if idle.keyframe {
+				if idle.Keyframe {
 					sendingIdleVid = true
 					log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
 				}
@@ -2101,11 +2101,11 @@ const (
 var _ = Data
 
 type XPacket struct {
-	arrival  int64
-	pkt      rtp.Packet
-	typ      XPacketType
-	keyframe bool
-	buf      []byte
+	Arrival  int64
+	Pkt      rtp.Packet
+	Typ      XPacketType
+	Keyframe bool
+	Buf      []byte
 }
 
 //how do we know to go away?
@@ -2136,22 +2136,22 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 
 	//dbg.switching.Print("got n packets for replay", len(buf))
 	if len(buf) > 0 {
-		delta = nanotime() - buf[0].arrival // alternative: linear regression
+		delta = nanotime() - buf[0].Arrival // alternative: linear regression
 
-		if !buf[0].keyframe {
+		if !buf[0].Keyframe {
 			panic("replay must begin with KF, or be empty")
 		}
 
-		dur := buf[len(buf)-1].arrival - buf[0].arrival
+		dur := buf[len(buf)-1].Arrival - buf[0].Arrival
 		dur2 := time.Duration(dur).Round(time.Second / 100)
 
 		nframe := 0
-		lastts := buf[0].pkt.Timestamp
+		lastts := buf[0].Pkt.Timestamp
 		for _, v := range buf {
-			if lastts != v.pkt.Timestamp {
+			if lastts != v.Pkt.Timestamp {
 				nframe += 1
 			}
-			lastts = v.pkt.Timestamp
+			lastts = v.Pkt.Timestamp
 		}
 		dbg.goroutine.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
 	}
@@ -2162,7 +2162,7 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 		sleep := int64(time.Hour)
 
 		if len(buf) > 0 {
-			playtime := buf[0].arrival + delta
+			playtime := buf[0].Arrival + delta
 			sleep = playtime - nanotime()
 			sleep += int64(time.Microsecond) // safety measure, so we sleep plenty
 			if sleep < 0 {
@@ -2178,11 +2178,11 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 			xp := buf[0]
 			buf = buf[1:]
 			numreplay--
-			copy := xp.pkt
+			copy := xp.Pkt
 			//copy2 := *xp.pkt
 
 			//pl(txt.clockrate)
-			switch xp.typ {
+			switch xp.Typ {
 			case Audio:
 				copy.SSRC = tmpAudSSRC
 			case Video:
@@ -2203,13 +2203,13 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 				return
 			}
 
-			switch xp.typ {
+			switch xp.Typ {
 			case Audio:
 				txt.aud.splicer.SpliceWriteRTP(txt.aud.track, &copy, now, int64(txt.aud.clockrate))
 			case Video:
 				txt.vid.splicer.SpliceWriteRTP(txt.vid.track, &copy, now, int64(txt.vid.clockrate))
 			default:
-				log.Fatalln("bad p.typ:", xp.typ)
+				log.Fatalln("bad p.typ:", xp.Typ)
 			}
 
 			// if xp.typ == Video {
@@ -2402,11 +2402,11 @@ func groupWriter(ch chan xany, t *TxTracks) {
 
 		now := nanotime()
 
-		switch p.typ {
+		switch p.Typ {
 		case Audio:
 			t.mu.Lock()
 			for k := range t.live {
-				rtpPktCopy = p.pkt
+				rtpPktCopy = p.Pkt
 				k.aud.splicer.SpliceWriteRTP(k.aud.track, &rtpPktCopy, now, int64(k.aud.clockrate))
 			}
 			t.mu.Unlock()
@@ -2425,7 +2425,7 @@ func groupWriter(ch chan xany, t *TxTracks) {
 			t.mu.Lock()
 
 			// if keyframe, move all from pending to live
-			if p.keyframe {
+			if p.Keyframe {
 				for pair := range t.replay {
 					delete(t.replay, pair)
 					t.live[pair] = struct{}{}
@@ -2434,7 +2434,7 @@ func groupWriter(ch chan xany, t *TxTracks) {
 
 			// forward to all 'live' tracks
 			for k := range t.live {
-				rtpPktCopy = p.pkt
+				rtpPktCopy = p.Pkt
 				//this is a candidate for heavy optimzation
 				// or hand-assembly, or inlining, etc, if the
 				// per-write WriteRTP() performance ever gets low enough

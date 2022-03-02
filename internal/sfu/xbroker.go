@@ -97,11 +97,11 @@ func (b *XBroker) Start() {
 
 		case *XPacket:
 
-			if m.typ != Video && m.typ != Audio && m.typ != IdleVideo {
+			if m.Typ != Video && m.Typ != Audio && m.Typ != IdleVideo {
 				panic("invalid xpkt type")
 			}
 
-			if m.typ == Video {
+			if m.Typ == Video {
 				lastRx = nanotime()
 				if isIdle {
 					isIdle = false
@@ -112,9 +112,9 @@ func (b *XBroker) Start() {
 
 			// STEP1: we save video XPacket's in the gop-so-far
 			tooLarge := len(buf) > 50000
-			if m.typ == Video || m.typ == IdleVideo { // save video GOPs
+			if m.Typ == Video || m.Typ == IdleVideo { // save video GOPs
 
-				if m.keyframe || tooLarge {
+				if m.Keyframe || tooLarge {
 					for i := range buf {
 						buf[i] = nil
 						//xpacketPool.Put(v)
