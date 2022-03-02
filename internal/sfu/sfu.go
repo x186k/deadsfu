@@ -256,7 +256,7 @@ func validateEmbedFiles() {
 	}
 }
 
-func init() {
+func Init() {
 	bi, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
 	checkFatal(err)
 	mrand.Seed(bi.Int64())
@@ -264,7 +264,7 @@ func init() {
 	idleMediaPackets = idleMediaLoader()
 }
 
-func main() {
+func Main() {
 	var err error
 
 	log.SetFlags(logFlags)
