@@ -50,14 +50,10 @@ func BenchmarkAllocPool(b *testing.B) {
 
 var Pub int64
 
-
-
-
-
 func BenchmarkAllocQuasiPool10(b *testing.B) {
-	const nn=10
+	const nn = 10
 
-	a:=make([]*sfu.XPacket,b.N)
+	a := make([]*sfu.XPacket, b.N)
 
 	var x [nn][1540]byte
 	var y [nn]sfu.XPacket
@@ -71,16 +67,16 @@ func BenchmarkAllocQuasiPool10(b *testing.B) {
 		}
 
 		obj := y[N%nn]
-		a[N]=&obj
+		a[N] = &obj
 		obj.Buf = x[N%nn][:]
 		_ = obj
 		Pub += int64(obj.Buf[0])
 	}
 }
 func BenchmarkAllocQuasiPool1000(b *testing.B) {
-	const nn=1000
+	const nn = 1000
 
-	a:=make([]*sfu.XPacket,b.N)
+	a := make([]*sfu.XPacket, b.N)
 
 	var x [nn][1540]byte
 	var y [nn]sfu.XPacket
@@ -94,18 +90,17 @@ func BenchmarkAllocQuasiPool1000(b *testing.B) {
 		}
 
 		obj := y[N%nn]
-		a[N]=&obj
+		a[N] = &obj
 		obj.Buf = x[N%nn][:]
 		_ = obj
 		Pub += int64(obj.Buf[0])
 	}
 }
 
-
 func BenchmarkAllocQuasiPool10000(b *testing.B) {
-	const nn=10000
+	const nn = 10000
 
-	a:=make([]*sfu.XPacket,b.N)
+	a := make([]*sfu.XPacket, b.N)
 
 	var x [nn][1540]byte
 	var y [nn]sfu.XPacket
@@ -119,7 +114,7 @@ func BenchmarkAllocQuasiPool10000(b *testing.B) {
 		}
 
 		obj := y[N%nn]
-		a[N]=&obj
+		a[N] = &obj
 		obj.Buf = x[N%nn][:]
 		_ = obj
 		Pub += int64(obj.Buf[0])

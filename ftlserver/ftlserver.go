@@ -23,11 +23,11 @@ const (
 	// FTL_INGEST_RESP_OK                      = 200
 	// FTL_INGEST_RESP_PING                    = 201
 	// FTL_INGEST_RESP_BAD_REQUEST             = 400 // The handshake was not formatted correctly
-	FTL_INGEST_RESP_UNAUTHORIZED            = 401 // This channel id is not authorized to stream
+	FTL_INGEST_RESP_UNAUTHORIZED = 401 // This channel id is not authorized to stream
 	// FTL_INGEST_RESP_OLD_VERSION             = 402 // This ftl api version is no longer supported
 	// FTL_INGEST_RESP_AUDIO_SSRC_COLLISION    = 403
 	// FTL_INGEST_RESP_VIDEO_SSRC_COLLISION    = 404
-	FTL_INGEST_RESP_INVALID_STREAM_KEY      = 405 // The corresponding channel does not match this key
+	FTL_INGEST_RESP_INVALID_STREAM_KEY = 405 // The corresponding channel does not match this key
 	// FTL_INGEST_RESP_CHANNEL_IN_USE          = 406 // The channel ID successfully authenticated however it is already actively streaming
 	// FTL_INGEST_RESP_REGION_UNSUPPORTED      = 407 // Streaming from this country or region is not authorized by local governments
 	// FTL_INGEST_RESP_NO_MEDIA_TIMEOUT        = 408

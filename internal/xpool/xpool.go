@@ -4,10 +4,8 @@ import (
 	"log"
 	"sync"
 	"time"
-
 	//"github.com/x186k/deadsfu"
 )
-
 
 var _ = XPool{
 	Pool: sync.Pool{

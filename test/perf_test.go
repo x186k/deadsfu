@@ -151,19 +151,14 @@ func BenchmarkSpliceStack(b *testing.B) {
 
 type Pptr *rtp.Packet
 
-
-func TestX(t*testing.T) {
+func TestX(t *testing.T) {
 	var i *rtp.Packet
 
-
-	fmt.Fprintln(os.Stderr,9999)
+	fmt.Fprintln(os.Stderr, 9999)
 	fmt.Printf("Size of *rtp.packet (reflect.TypeOf.Size): %d\n", reflect.TypeOf(i).Size())
 	fmt.Printf("Size of *rtp.packet  (unsafe.Sizeof): %d\n", unsafe.Sizeof(i))
 
 	var j rtp.Packet
 	fmt.Printf("Size of rtp.packet (reflect.TypeOf.Size): %d\n", reflect.TypeOf(j).Size())
-    fmt.Printf("Size of rtp.packet  (unsafe.Sizeof): %d\n", unsafe.Sizeof(j))
+	fmt.Printf("Size of rtp.packet  (unsafe.Sizeof): %d\n", unsafe.Sizeof(j))
 }
-
-
-

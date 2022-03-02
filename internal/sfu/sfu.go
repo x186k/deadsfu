@@ -136,8 +136,6 @@ var dialUpstreamUrl *url.URL
 
 var Version = "version-unset"
 
-
-
 var peerConnectionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
 		{
