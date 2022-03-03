@@ -1455,7 +1455,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 	}
 }
 
-func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- xany) {
+func noSignalGeneratorGr(doneUnbuf <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- xany) {
 
 	iskf := make([]bool, len(idlePkts))
 
@@ -1496,25 +1496,25 @@ func noSignalGeneratorGr(done <-chan struct{}, idlePkts []rtp.Packet, idleCh cha
 
 			when := basetime.Add(tsdeltaDur)
 
-			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
-
 			xp.Pkt.SequenceNumber = seqno
 			seqno++
 			xp.Pkt.Timestamp = tsdelta + tstotal
 
+			time.Sleep(time.Until(when)) //time.when() should be zero if when < time.now()
+
+			idleCh <- xp // downstreams shouldn't touch XPacket contents
+
+			// put termination check after send to better detect races
+			// (dont minimize race period, maximize it)
+			// ~4 ns
 			select {
-			case _, ok := <-done:
-				if ok {
-					panic("no")
+			case _, ok := <-doneUnbuf:
+				if !ok {
+					panic("closing not permitted")
 				}
 				return
 			default:
 			}
-
-			// critical!, we must make a copy!
-			//actuall, the downstreams shouldn't be effing with this!
-			//blocking is okay
-			idleCh <- xp
 
 		}
 
