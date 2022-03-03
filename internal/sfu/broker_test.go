@@ -143,7 +143,6 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 		Pkt:      rtp.Packet{},
 		Typ:      0,
 		Keyframe: false,
-		Buf:      make([]byte, 1540),
 	}
 
 	// if usepool {
