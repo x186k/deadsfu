@@ -33,6 +33,7 @@ import (
 var N int
 
 func TestMain(m *testing.M) {
+	idleMediaPackets = idleMediaLoader()
 	log.SetFlags(log.Lshortfile)
 	os.Exit(m.Run())
 }
