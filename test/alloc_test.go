@@ -4,12 +4,21 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/pion/rtp"
 	"github.com/x186k/deadsfu/internal/sfu"
 )
 
+type XXPacket struct {
+	Arrival  int64
+	Pkt      rtp.Packet
+	Typ      sfu.XPacketType
+	Keyframe bool
+	Buf      []byte
+}
+
 func BenchmarkAllocStack(b *testing.B) {
 	for N := 0; N < b.N; N++ {
-		// a := sfu.XPacket{}
+		// a := XXPacket{}
 		// a.Buf = make([]byte, 1460)
 		a := foo()
 
@@ -17,11 +26,11 @@ func BenchmarkAllocStack(b *testing.B) {
 	}
 }
 
-var obj sfu.XPacket
+var obj XXPacket
 
-func foo() sfu.XPacket {
-	a := sfu.XPacket{}
-	a.Buf = make([]byte, 1460)
+func foo() XXPacket {
+	a := XXPacket{}
+	//a.Buf = make([]byte, 1460)
 	return a
 }
 
@@ -42,7 +51,7 @@ var bytePool = sync.Pool{
 
 func BenchmarkAllocPool(b *testing.B) {
 	for N := 0; N < b.N; N++ {
-		obj := bytePool.Get().(*sfu.XPacket)
+		obj := bytePool.Get().(*XXPacket)
 		_ = obj
 		bytePool.Put(obj)
 	}
@@ -53,17 +62,17 @@ var Pub int64
 func BenchmarkAllocQuasiPool10(b *testing.B) {
 	const nn = 10
 
-	a := make([]*sfu.XPacket, b.N)
+	a := make([]*XXPacket, b.N)
 
 	var x [nn][1540]byte
-	var y [nn]sfu.XPacket
+	var y [nn]XXPacket
 
 	b.ResetTimer()
 	for N := 0; N < b.N; N++ {
 
 		if N%nn == 0 {
 			x = [nn][1540]byte{}
-			y = [nn]sfu.XPacket{}
+			y = [nn]XXPacket{}
 		}
 
 		obj := y[N%nn]
@@ -76,17 +85,17 @@ func BenchmarkAllocQuasiPool10(b *testing.B) {
 func BenchmarkAllocQuasiPool1000(b *testing.B) {
 	const nn = 1000
 
-	a := make([]*sfu.XPacket, b.N)
+	a := make([]*XXPacket, b.N)
 
 	var x [nn][1540]byte
-	var y [nn]sfu.XPacket
+	var y [nn]XXPacket
 
 	b.ResetTimer()
 	for N := 0; N < b.N; N++ {
 
 		if N%nn == 0 {
 			x = [nn][1540]byte{}
-			y = [nn]sfu.XPacket{}
+			y = [nn]XXPacket{}
 		}
 
 		obj := y[N%nn]
@@ -100,17 +109,17 @@ func BenchmarkAllocQuasiPool1000(b *testing.B) {
 func BenchmarkAllocQuasiPool10000(b *testing.B) {
 	const nn = 10000
 
-	a := make([]*sfu.XPacket, b.N)
+	a := make([]*XXPacket, b.N)
 
 	var x [nn][1540]byte
-	var y [nn]sfu.XPacket
+	var y [nn]XXPacket
 
 	b.ResetTimer()
 	for N := 0; N < b.N; N++ {
 
 		if N%nn == 0 {
 			x = [nn][1540]byte{}
-			y = [nn]sfu.XPacket{}
+			y = [nn]XXPacket{}
 		}
 
 		obj := y[N%nn]
