@@ -14,8 +14,8 @@ The XBroker does these things:
 */
 
 const (
-	BrokerInputChannelDepth  = 50
-	BrokerOutputChannelDepth = 50
+	BrokerInputChannelDepth  = 2
+	BrokerOutputChannelDepth = 2
 )
 
 type XBroker struct {
