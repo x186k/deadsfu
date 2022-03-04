@@ -145,6 +145,7 @@ var peerConnectionConfig = webrtc.Configuration{
 
 //var rtpoutConn *net.UDPConn
 
+var _ = idleMediaPackets
 var idleMediaPackets []rtp.Packet
 
 // logging notes
@@ -751,21 +752,9 @@ func getRoomOrCreate(roomname string) *roomState {
 			tracks:      NewTxTracks(),
 		}
 
-		ch := link.xBroker.Subscribe() // XXX could block!
-
-		// doneSync := make(chan struct{})
-
-		// nosigCh := make(chan *XPacket, 1)
-		// go noSignalGeneratorGr(doneSync, idleMediaPackets, nosigCh)
-		// //go noSignalSwitchGr(ch,)
-
 		go link.xBroker.Start()
+		ch, _ := link.xBroker.Subscribe() //can't block
 		go groupWriter(ch, link.tracks)
-		// go func() {
-
-		// 	// return from groupwriter means room has no publisher and no subscribers for too long
-		// 	link.xBroker.Stop()
-		// }()
 
 		roomMap[roomname] = link
 	}
@@ -1361,7 +1350,7 @@ func OnTrack2(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker.msgCh)
+		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker.inCh)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1409,7 +1398,7 @@ func OnTrack2(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker.msgCh)
+	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker.inCh)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
@@ -1423,7 +1412,7 @@ func OnTrack2(
 // 	},
 // }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- xany) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- *XPacket) {
 
 	for {
 		xp := new(XPacket)
@@ -1454,7 +1443,9 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 	}
 }
 
-func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- xany) {
+var _ = noSignalGeneratorGr
+
+func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- *XPacket) {
 
 	iskf := make([]bool, len(idlePkts))
 
@@ -1526,7 +1517,7 @@ func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh
 
 var _ = noSignalSwitchGr
 
-func noSignalSwitchGr(liveCh <-chan XPacket, noSignalCh <-chan XPacket, outCh chan<- xany) {
+func noSignalSwitchGr(liveCh <-chan *XPacket, noSignalCh <-chan *XPacket, outCh chan<- *XPacket) {
 
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool = true
@@ -2112,18 +2103,12 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 	dbg.goroutine.Print("replayGOPJumpCut() start")
 	defer dbg.goroutine.Print("replayGOPJumpCut() end")
 
-	inCh := xb.Subscribe()
+	inCh, buf := xb.Subscribe()
 	defer xb.Unsubscribe(inCh)
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
 	var tmpVidSSRC uint32 = uint32(mrand.Int63())
-
-	xbuf, ok := <-inCh
-	if !ok {
-		return
-	}
-	buf := xbuf.([]*XPacket)
 
 	numreplay := len(buf)
 
@@ -2223,15 +2208,10 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 				return
 			}
 
-			p, ok := pp.(*XPacket)
-			if !ok {
-				panic("no")
-			}
-
 			// if p.keyframe {
 			// 	return
 			// }
-			buf = append(buf, p)
+			buf = append(buf, pp)
 
 		}
 	}
@@ -2383,17 +2363,11 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func groupWriter(ch chan xany, t *TxTracks) {
-
-	<-ch // discard []xpacket
-
-	lastcheck := nanotime()
+func groupWriter(ch chan *XPacket, t *TxTracks) {
 
 	var rtpPktCopy rtp.Packet
 
-	for pp := range ch {
-
-		p := pp.(*XPacket)
+	for p := range ch {
 
 		now := nanotime()
 
@@ -2405,30 +2379,25 @@ func groupWriter(ch chan xany, t *TxTracks) {
 				k.aud.splicer.SpliceWriteRTP(k.aud.track, &rtpPktCopy, now, int64(k.aud.clockrate))
 			}
 			t.mu.Unlock()
-		case IdleVideo:
-			if now-lastcheck > int64(10*time.Second) {
-				lastcheck = now
-				t.mu.Lock()
-				dead := len(t.live) == 0 && len(t.replay) == 0
-				t.mu.Unlock()
-				if dead {
-					return //room is unused, return from here
-				}
-			}
-			fallthrough
+
 		case Video:
+
 			t.mu.Lock()
 
 			// if keyframe, move all from pending to live
 			if p.Keyframe {
+
 				for pair := range t.replay {
 					delete(t.replay, pair)
 					t.live[pair] = struct{}{}
 				}
 			}
 
+			//pl(5,len(t.live),len(t.replay))
+
 			// forward to all 'live' tracks
 			for k := range t.live {
+
 				rtpPktCopy = p.Pkt
 				//this is a candidate for heavy optimzation
 				// or hand-assembly, or inlining, etc, if the
