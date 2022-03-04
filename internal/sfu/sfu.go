@@ -1417,20 +1417,13 @@ func OnTrack2(
 // 	},
 // }
 
-func GetXPacket() *XPacket {
-	xp := new(XPacket)
-	xp.Buf = make([]byte, 1460)
-
-	return xp
-}
-
 func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- xany) {
 
 	for {
+		xp := new(XPacket)
+		buf := make([]byte, 1460)
 
-		xp := GetXPacket()
-
-		i, _, err := rxTrack.Read(xp.Buf) // faster than .ReadRTP()
+		i, _, err := rxTrack.Read(buf) // faster than .ReadRTP()
 		if err == io.EOF {
 			return
 		} else if err != nil {
@@ -1440,7 +1433,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 
 		//r := &rtp.Packet{}
 		r := &xp.Pkt
-		if err := r.Unmarshal(xp.Buf[:i]); err != nil {
+		if err := r.Unmarshal(buf[:i]); err != nil {
 			errlog.Print("unable to unmarshal on inbound")
 			continue
 		}
