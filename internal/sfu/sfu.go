@@ -114,8 +114,7 @@ type roomState struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 	xBroker     *XBroker
-	//readPkts    chan xany
-	tracks *TxTracks
+	tracks      *TxTracks
 }
 
 type MsgGetSourcesList struct {
@@ -1448,7 +1447,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 	}
 }
 
-func noSignalGeneratorGr(doneUnbuf <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- xany) {
+func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- xany) {
 
 	iskf := make([]bool, len(idlePkts))
 
@@ -1500,7 +1499,7 @@ func noSignalGeneratorGr(doneUnbuf <-chan struct{}, idlePkts []rtp.Packet, idleC
 			// (dont minimize race period, maximize it)
 			// ~4 ns
 			select {
-			case _, ok := <-doneUnbuf:
+			case _, ok := <-doneSync:
 				if !ok {
 					panic("closing not permitted")
 				}
@@ -2095,7 +2094,6 @@ type XPacket struct {
 	Pkt      rtp.Packet
 	Typ      XPacketType
 	Keyframe bool
-	Buf      []byte
 }
 
 //how do we know to go away?
