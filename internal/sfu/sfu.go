@@ -751,14 +751,21 @@ func getRoomOrCreate(roomname string) *roomState {
 			tracks:      NewTxTracks(),
 		}
 
-		ch := link.xBroker.Subscribe()
+		ch := link.xBroker.Subscribe() // XXX could block!
+
+		// doneSync := make(chan struct{})
+
+		// nosigCh := make(chan *XPacket, 1)
+		// go noSignalGeneratorGr(doneSync, idleMediaPackets, nosigCh)
+		// //go noSignalSwitchGr(ch,)
 
 		go link.xBroker.Start()
-		go func() {
-			groupWriter(ch, link.tracks)
-			// return from groupwriter means room has no publisher and no subscribers for too long
-			link.xBroker.Stop()
-		}()
+		go groupWriter(ch, link.tracks)
+		// go func() {
+
+		// 	// return from groupwriter means room has no publisher and no subscribers for too long
+		// 	link.xBroker.Stop()
+		// }()
 
 		roomMap[roomname] = link
 	}
