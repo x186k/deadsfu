@@ -753,13 +753,13 @@ func getRoomOrCreate(roomname string) *roomState {
 		}
 
 		go link.xBroker.Start()
-		ch, _ := link.xBroker.Subscribe() //can't block
+		ch, _ := link.xBroker.Subscribe() // can no longer block
 		go groupWriter(ch, link.tracks)
 
 		roomMap[roomname] = link
 	}
 
-	//this is fast due to select with default
+	// will never block, but new room notifications could get lost
 	select {
 	case newRoomNoticeCh <- struct{}{}:
 	default:
@@ -1699,8 +1699,7 @@ func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection
 }
 
 // SpliceRTP
-// *p gets modified/trashed
-
+// *rtp.Packet gets modified/trashed
 func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, p *rtp.Packet, unixnano int64, rtphz int64) {
 
 	// credit to Orlando Co of ion-sfu

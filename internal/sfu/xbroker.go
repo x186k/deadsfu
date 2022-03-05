@@ -62,9 +62,8 @@ func (b *XBroker) Start() {
 		b.mu.Unlock()
 
 		// blocking possible
-		//pl(1)
 		for i, ch := range tmp {
-			ch <- m
+			ch <- m // blocking possible
 			tmp[i] = nil
 		}
 		//pl(2)
