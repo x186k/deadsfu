@@ -1,6 +1,4 @@
 core
-.vscode
-!.vscode/launch.json
 workspace.code-workspace
 deadsfu
 embed
@@ -19,3 +17,8 @@ dist/
 memprofile.out
 profile.out
 deadsfu.test
+
+# keep .vscode/settings.json ignored,
+# but include launch.json for debugging purposes
+.vscode/*
+!.vscode/launch.json
