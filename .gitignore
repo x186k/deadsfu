@@ -1,5 +1,6 @@
 core
 .vscode
+!.vscode/launch.json
 workspace.code-workspace
 deadsfu
 embed
