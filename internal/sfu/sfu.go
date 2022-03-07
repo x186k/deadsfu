@@ -2355,7 +2355,9 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func groupWriter(ch chan *XPacket, t *TxTracks) {
+func Writer(ch chan *XPacket, t *TxTracks, name string) {
+	pl("Writer started for:", name)
+	defer pl("Writer ENDED for:", name)
 
 	var rtpPktCopy rtp.Packet
 
