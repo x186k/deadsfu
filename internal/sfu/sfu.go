@@ -2213,36 +2213,30 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 	dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
 	defer dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
 
-	// this new track group is for the gop replay
+	for {
 
-	room.tracks.Add(txt)
+		room.tracks.Add(txt)
+		done := make(chan struct{}) // unbuf please
+		go Replay(done, room.xBroker, room.tracks, txt)
 
-	done := make(chan struct{}) // unbuf please
-	go gopReplay(done, room.xBroker, room.tracks, txt)
+		req, open := <-subGrCh
 
-	var ok bool
-	var newroom *roomState
+		room.tracks.Remove(txt) // remove from current room
+		close(done)
 
-	for req := range subGrCh {
-
-		newroom, ok = getRoom(req)
-		if !ok { // no such room
-			continue
+		if !open {
+			return
 		}
 
-		close(done)
-		room.tracks.Remove(txt) // remove from current room
+		if newroom, ok := getRoom(req); ok {
+			room = newroom
+			dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
+		} else {
+			dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() not switched to different room")
+		}
 
-		room = newroom
-		room.tracks.Add(txt)
-		done = make(chan struct{})
-		go gopReplay(done, room.xBroker, room.tracks, txt)
-
-		dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
 	}
 
-	close(done)
-	room.tracks.Remove(txt) // remove from current room
 }
 
 func makeRoomListJson(serial int) []byte {
