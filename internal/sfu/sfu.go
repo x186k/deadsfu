@@ -2441,3 +2441,18 @@ func (t *TxTracks) Remove(p *TxTrackPair) {
 type WriteRtpIntf interface {
 	WriteRTP(p *rtp.Packet) error
 }
+
+type PeriodLog struct {
+	last  int64
+	count int
+}
+
+func (x *PeriodLog) Println(args ...interface{}) {
+	x.count++
+
+	if nanotime()-int64(x.last) > int64(time.Second*2) {
+		x.last = nanotime()
+		args = append(args, x.count)
+		_ = log.Output(2, fmt.Sprintln(args...))
+	}
+}
