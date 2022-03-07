@@ -130,7 +130,7 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 	a := NewXBroker()
 	go a.Start()
 	ch, _ := a.Subscribe()
-	go groupWriter(ch, trks)
+	go Writer(ch, trks, "test")
 
 	b.ReportAllocs()
 	b.ResetTimer()
