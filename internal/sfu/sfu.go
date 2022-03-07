@@ -2098,9 +2098,9 @@ type XPacket struct {
 // so, we can add a ctx or done channel to the front of these params.
 // NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
 // so, done must be sync chan
-func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
-	dbg.goroutine.Print("replayGOPJumpCut() start")
-	defer dbg.goroutine.Print("replayGOPJumpCut() end")
+func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
+	// pl("Replay() start")
+	// defer pl("Replay() end")
 
 	inCh, buf := xb.Subscribe()
 	defer xb.Unsubscribe(inCh)
@@ -2137,6 +2137,8 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 
 	// delay received packets from broker
 
+	//plx := PeriodLog{}
+
 	for {
 		sleep := int64(time.Hour)
 
@@ -2150,7 +2152,10 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 		}
 
 		select {
-		case <-done:
+		case _, ok := <-doneClose:
+			if ok {
+				panic("nope")
+			}
 			return
 
 		case <-time.NewTimer(time.Duration(sleep)).C: //XXX someday optimize
@@ -2158,9 +2163,7 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 			buf = buf[1:]
 			numreplay--
 			copy := xp.Pkt
-			//copy2 := *xp.pkt
 
-			//pl(txt.clockrate)
 			switch xp.Typ {
 			case Audio:
 				copy.SSRC = tmpAudSSRC
@@ -2175,13 +2178,11 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 
 			now := nanotime()
 
-			//lock
 			t.mu.Lock()
 			if _, ok := t.replay[txt]; !ok {
 				t.mu.Unlock()
 				return
 			}
-
 			switch xp.Typ {
 			case Audio:
 				txt.aud.splicer.SpliceWriteRTP(txt.aud.track, &copy, now, int64(txt.aud.clockrate))
@@ -2190,22 +2191,14 @@ func gopReplay(done chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
 			default:
 				log.Fatalln("bad p.typ:", xp.Typ)
 			}
-
-			// if xp.typ == Video {
-			// 	pl("XXX", copy.SequenceNumber, copy.Timestamp, copy2.SequenceNumber)
-			// }
-
 			t.mu.Unlock()
-
-			// we only return *xpacket to pool from live path
-			// if numreplay < 0 {
-			// 	xpacketPool.Put(xp)
-			// }
 
 		case pp, open := <-inCh:
 			if !open {
 				return
 			}
+
+			//plx.Println("Replay got broker msg")
 
 			// if p.keyframe {
 			// 	return
