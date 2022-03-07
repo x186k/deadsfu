@@ -754,7 +754,7 @@ func getRoomOrCreate(roomname string) *roomState {
 
 		go link.xBroker.Start()
 		ch, _ := link.xBroker.Subscribe() // can no longer block
-		go groupWriter(ch, link.tracks)
+		go Writer(ch, link.tracks, roomname)
 
 		roomMap[roomname] = link
 	}
