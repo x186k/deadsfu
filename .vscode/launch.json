@@ -11,9 +11,9 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/main.go",
-            "args": ["--http",":80","--html","./html"],
+            "args": ["--http",":80","--html","../html"],
             "env": {},
-            "showLog": true
+            "showLog": true,
         }
     ]
 }
