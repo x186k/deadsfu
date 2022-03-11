@@ -47,18 +47,19 @@ func TestMain(m *testing.M) {
 func BenchmarkBrokerNoWrite(b *testing.B) {
 
 	a := NewXBroker()
-	go a.Start()
+	panic("fail")
+	//go a.Start()
 
 	c, _ := a.Subscribe()
 
 	d := make(chan struct{})
 	go func() {
 
-		for zz := range c {
+		// for zz := range c {
 
-			//pp.Put(zz)
-			N += int(zz.Typ)
-		}
+		// 	//pp.Put(zz)
+		// 	N += int(zz.Typ)
+		// }
 		close(d)
 	}()
 
@@ -128,7 +129,8 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 	}
 
 	a := NewXBroker()
-	go a.Start()
+	panic("no")
+	//go a.Start()
 	ch, _ := a.Subscribe()
 	go Writer(ch, trks, "test")
 
