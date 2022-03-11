@@ -1,131 +1,153 @@
 package test
 
 import (
+	"reflect"
 	"sync"
 	"testing"
+	"time"
+	"unsafe"
 
 	"github.com/pion/rtp"
-	"github.com/x186k/deadsfu/internal/sfu"
+	//"github.com/x186k/deadsfu/internal/sfu"
 )
 
-type XXPacket struct {
+type XPacket1500 struct {
 	Arrival  int64
 	Pkt      rtp.Packet
-	Typ      sfu.XPacketType
+	Typ      int32
 	Keyframe bool
-	Buf      []byte
+	Buf      [1500]byte
+}
+type XPacket9000 struct {
+	Arrival  int64
+	Pkt      rtp.Packet
+	Typ      int32
+	Keyframe bool
+	Buf      [9000]byte
 }
 
-func BenchmarkAllocStack(b *testing.B) {
+func BenchmarkAllocStack1500(b *testing.B) {
 	for N := 0; N < b.N; N++ {
 		// a := XXPacket{}
 		// a.Buf = make([]byte, 1460)
-		a := foo()
+		a := XPacket1500{}
 
 		_ = a
 	}
 }
 
-var obj XXPacket
+var Obj1500 XPacket1500
+var Obj9000 XPacket9000
 
-func foo() XXPacket {
-	a := XXPacket{}
-	//a.Buf = make([]byte, 1460)
-	return a
-}
-
-func BenchmarkAllocHeap(b *testing.B) {
+func BenchmarkAllocHeap1500(b *testing.B) {
 	for N := 0; N < b.N; N++ {
-		obj = foo()
-		_ = obj
+		Obj1500 = XPacket1500{}
+		_ = Obj1500
 	}
 }
 
-var bytePool = sync.Pool{
-	New: func() interface{} {
-		a := foo()
+func BenchmarkAllocHeapParallel1500(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			Obj1500 = XPacket1500{}
+			_ = Obj1500
+		}
+	})
+	b.StopTimer() // required to get duration
+	reportCPUUtil(b,1500)
+}
 
-		return &a
+func BenchmarkAllocHeap9000(b *testing.B) {
+	for N := 0; N < b.N; N++ {
+		Obj9000 = XPacket9000{}
+		_ = Obj9000
+	}
+}
+
+func BenchmarkAllocHeapParallel9000(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			Obj9000 = XPacket9000{}
+			_ = Obj9000
+		}
+	})
+	b.StopTimer() // required to get duration
+
+	reportCPUUtil(b,9000)
+}
+
+	//for example
+	// units -v '100megabit/sec * 1/1500bytes * 70ns'
+	// units -v '100megabit/sec * 1byte/8bits * 1sec/1e9ns *   1/1500bytes * 70ns'
+	// units -v '100megabit/sec * 1/1500bytes * 70ns'
+	//     Definition: 0.00058333333
+func reportCPUUtil(b *testing.B, mtu float64) {
+	duration := GetDuration(b)
+	nsPerOp := float64(duration) / float64(b.N)
+	b.ReportMetric(nsPerOp, "ns/op2")
+
+	averagePacketLen := mtu/2
+
+	cpuutil := 100e6 / 8 / 1e9 / averagePacketLen * nsPerOp
+	b.ReportMetric(cpuutil, "100mbps-cpuFraction")
+	b.ReportMetric(cpuutil*100, "100mbps-cpuPercent")
+}
+
+var bytePool1500 = sync.Pool{
+	New: func() interface{} {
+		return new(XPacket1500)
+	},
+}
+var bytePool9000 = sync.Pool{
+	New: func() interface{} {
+		return new(XPacket9000)
 	},
 }
 
-func BenchmarkAllocPool(b *testing.B) {
+var Pub int
+
+func BenchmarkAllocPool1500(b *testing.B) {
 	for N := 0; N < b.N; N++ {
-		obj := bytePool.Get().(*XXPacket)
+		obj := bytePool1500.Get().(*XPacket1500)
 		_ = obj
-		bytePool.Put(obj)
+		Pub += int(obj.Arrival)
+		bytePool1500.Put(obj)
+	}
+}
+func BenchmarkAllocPool9000(b *testing.B) {
+	for N := 0; N < b.N; N++ {
+		obj := bytePool9000.Get().(*XPacket9000)
+		_ = obj
+		Pub += int(obj.Arrival)
+		bytePool9000.Put(obj)
+	}
+}
+func BenchmarkAllocPoolParallel9000(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			obj := bytePool9000.Get().(*XPacket9000)
+			_ = obj
+			Pub += int(obj.Arrival)
+			bytePool9000.Put(obj)
+		}
+	})
+
+}
+
+func BenchmarkXX(b *testing.B) {
+
+	for i := 0; i < b.N; i++ {
+		time.Sleep(time.Microsecond)
 	}
 }
 
-var Pub int64
+func GetDuration(b *testing.B) time.Duration {
 
-func BenchmarkAllocQuasiPool10(b *testing.B) {
-	const nn = 10
-
-	a := make([]*XXPacket, b.N)
-
-	var x [nn][1540]byte
-	var y [nn]XXPacket
-
-	b.ResetTimer()
-	for N := 0; N < b.N; N++ {
-
-		if N%nn == 0 {
-			x = [nn][1540]byte{}
-			y = [nn]XXPacket{}
-		}
-
-		obj := y[N%nn]
-		a[N] = &obj
-		obj.Buf = x[N%nn][:]
-		_ = obj
-		Pub += int64(obj.Buf[0])
-	}
-}
-func BenchmarkAllocQuasiPool1000(b *testing.B) {
-	const nn = 1000
-
-	a := make([]*XXPacket, b.N)
-
-	var x [nn][1540]byte
-	var y [nn]XXPacket
-
-	b.ResetTimer()
-	for N := 0; N < b.N; N++ {
-
-		if N%nn == 0 {
-			x = [nn][1540]byte{}
-			y = [nn]XXPacket{}
-		}
-
-		obj := y[N%nn]
-		a[N] = &obj
-		obj.Buf = x[N%nn][:]
-		_ = obj
-		Pub += int64(obj.Buf[0])
-	}
+	durintf := GetUnexportedField(reflect.ValueOf(b).Elem().FieldByName("duration"))
+	duration := durintf.(time.Duration)
+	return duration
 }
 
-func BenchmarkAllocQuasiPool10000(b *testing.B) {
-	const nn = 10000
-
-	a := make([]*XXPacket, b.N)
-
-	var x [nn][1540]byte
-	var y [nn]XXPacket
-
-	b.ResetTimer()
-	for N := 0; N < b.N; N++ {
-
-		if N%nn == 0 {
-			x = [nn][1540]byte{}
-			y = [nn]XXPacket{}
-		}
-
-		obj := y[N%nn]
-		a[N] = &obj
-		obj.Buf = x[N%nn][:]
-		_ = obj
-		Pub += int64(obj.Buf[0])
-	}
+func GetUnexportedField(field reflect.Value) interface{} {
+	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
 }
