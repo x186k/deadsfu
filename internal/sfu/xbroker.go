@@ -14,8 +14,8 @@ The XBroker does these things:
 */
 
 const (
-	BrokerInputChannelDepth  = 1
-	BrokerOutputChannelDepth = 1
+	XBrokerInputChannelDepth  = 1000 // no benefit to being small
+	XBrokerOutputChannelDepth = 1000 // same
 )
 
 type XBroker struct {
@@ -27,7 +27,7 @@ type XBroker struct {
 
 func NewXBroker() *XBroker {
 	return &XBroker{
-		inCh: make(chan *XPacket, BrokerInputChannelDepth), // must be unbuf/sync!
+		inCh: make(chan *XPacket, XBrokerInputChannelDepth),
 		subs: make(map[chan *XPacket]struct{}),
 		buf:  make([]*XPacket, 0, 2000),
 	}
@@ -76,7 +76,7 @@ func (b *XBroker) Stop() {
 
 func (b *XBroker) Subscribe() (chan *XPacket, []*XPacket) {
 
-	c := make(chan *XPacket, BrokerOutputChannelDepth)
+	c := make(chan *XPacket, XBrokerOutputChannelDepth)
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
