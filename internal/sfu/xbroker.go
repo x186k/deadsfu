@@ -19,10 +19,12 @@ const (
 )
 
 type XBroker struct {
-	mu   sync.Mutex
-	subs map[chan *XPacket]struct{}
-	inCh chan *XPacket
-	buf  []*XPacket
+	mu      sync.Mutex
+	subs    map[chan *XPacket]struct{}
+	inCh    chan *XPacket
+	buf     []*XPacket
+	inLost  int
+	outLost int
 }
 
 func NewXBroker() *XBroker {
@@ -66,7 +68,7 @@ func (b *XBroker) Start() {
 			ch <- m // blocking possible
 			tmp[i] = nil
 		}
-		//pl(2)
+
 	}
 }
 
@@ -95,8 +97,13 @@ func (b *XBroker) Unsubscribe(c chan *XPacket) {
 	delete(b.subs, c)
 }
 
+//non blocking
 func (b *XBroker) Publish(msg *XPacket) {
-	pl()
-	b.inCh <- msg
-	pl()
+
+	select {
+	case b.inCh <- msg:
+	default:
+		b.inLost++
+	}
+
 }
