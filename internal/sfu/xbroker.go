@@ -22,7 +22,7 @@ type XBroker struct {
 	mu      sync.Mutex
 	subs    map[chan *XPacket]struct{}
 	inCh    chan *XPacket
-	buf     []*XPacket
+	gop     []*XPacket
 	inLost  int
 	outLost int
 }
@@ -31,7 +31,7 @@ func NewXBroker() *XBroker {
 	return &XBroker{
 		inCh: make(chan *XPacket, XBrokerInputChannelDepth),
 		subs: make(map[chan *XPacket]struct{}),
-		buf:  make([]*XPacket, 0, 2000),
+		gop:  make([]*XPacket, 0, 2000),
 	}
 }
 
@@ -48,14 +48,14 @@ func (b *XBroker) Start() {
 		// fast block
 		b.mu.Lock()
 		if m.Typ == Video { // save video GOPs
-			tooLarge := len(b.buf) > 50000
+			tooLarge := len(b.gop) > 50000
 			if m.Keyframe || tooLarge {
-				for i := range b.buf {
-					b.buf[i] = nil
+				for i := range b.gop {
+					b.gop[i] = nil
 				}
-				b.buf = b.buf[0:0]
+				b.gop = b.gop[0:0]
 			}
-			b.buf = append(b.buf, m)
+			b.gop = append(b.gop, m)
 		}
 		tmp = tmp[0:0]
 		for k := range b.subs {
@@ -84,8 +84,8 @@ func (b *XBroker) Subscribe() (chan *XPacket, []*XPacket) {
 	defer b.mu.Unlock()
 
 	b.subs[c] = struct{}{}
-	tmp := make([]*XPacket, len(b.buf))
-	copy(tmp, b.buf)
+	tmp := make([]*XPacket, len(b.gop))
+	copy(tmp, b.gop)
 
 	return c, tmp
 }
