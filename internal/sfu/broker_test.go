@@ -47,8 +47,7 @@ func TestMain(m *testing.M) {
 func BenchmarkBrokerNoWrite(b *testing.B) {
 
 	a := NewXBroker()
-	panic("fail")
-	//go a.Start()
+	go a.Start()
 
 	c, _ := a.Subscribe()
 
@@ -129,8 +128,7 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 	}
 
 	a := NewXBroker()
-	panic("no")
-	//go a.Start()
+	go a.Start()
 	ch, _ := a.Subscribe()
 	go Writer(ch, trks, "test")
 
