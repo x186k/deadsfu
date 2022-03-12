@@ -46,7 +46,7 @@ func BenchmarkAllocHeap1500(b *testing.B) {
 	}
 }
 
-func BenchmarkAllocHeapParallel1500(b *testing.B) {
+func BenchmarkAllocHeap1500Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			Obj1500 = XPacket1500{}
@@ -64,7 +64,7 @@ func BenchmarkAllocHeap9000(b *testing.B) {
 	}
 }
 
-func BenchmarkAllocHeapParallel9000(b *testing.B) {
+func BenchmarkAllocHeap9000Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			Obj9000 = XPacket9000{}
