@@ -752,8 +752,8 @@ func getRoomOrCreate(roomname string) *roomState {
 			tracks:      NewTxTracks(),
 		}
 
-		ch, gop := link.xBroker.Subscribe() // can no longer block
-		gop.DecRef()                        // the writer doesn't need the gop, but we must dec the ref count
+		go link.xBroker.Start()
+		ch, _ := link.xBroker.Subscribe() // can no longer block
 		go Writer(ch, link.tracks, roomname)
 
 		roomMap[roomname] = link
@@ -1350,7 +1350,7 @@ func OnTrack2(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker)
+		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker.inCh)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1412,7 +1412,7 @@ func OnTrack2(
 // 	},
 // }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, xbroker *XBroker) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- *XPacket) {
 
 	for {
 		xp := new(XPacket)
@@ -1438,7 +1438,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 		xp.Arrival = nanotime()
 		xp.Keyframe = isvid && isH264Keyframe(r.Payload)
 
-		xbroker.Publish(xp)
+		ch <- xp
 
 	}
 }
@@ -2087,7 +2087,6 @@ const (
 var _ = Data
 
 type XPacket struct {
-	Next     *XPacket
 	Arrival  int64
 	Pkt      rtp.Packet
 	Typ      XPacketType
@@ -2103,25 +2102,38 @@ func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair)
 	// pl("Replay() start")
 	// defer pl("Replay() end")
 
-	rb, gop := xb.Subscribe()
-	defer xb.Unsubscribe(rb)
+	inCh, buf := xb.Subscribe()
+	defer xb.Unsubscribe(inCh)
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
 	var tmpVidSSRC uint32 = uint32(mrand.Int63())
 
+	numreplay := len(buf)
 
+	//pl("gopreplay got n pkts", len(buf))
 
-	
-	for gop.first!=nil {		
+	//dbg.switching.Print("got n packets for replay", len(buf))
+	if len(buf) > 0 {
+		delta = nanotime() - buf[0].Arrival // alternative: linear regression
 
-		delta = nanotime() - gop.first.Arrival // alternative: linear regression
-
-		if !gop.first.Keyframe {
+		if !buf[0].Keyframe {
 			panic("replay must begin with KF, or be empty")
 		}
 
-}
+		dur := buf[len(buf)-1].Arrival - buf[0].Arrival
+		dur2 := time.Duration(dur).Round(time.Second / 100)
+
+		nframe := 0
+		lastts := buf[0].Pkt.Timestamp
+		for _, v := range buf {
+			if lastts != v.Pkt.Timestamp {
+				nframe += 1
+			}
+			lastts = v.Pkt.Timestamp
+		}
+		dbg.goroutine.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
+	}
 
 	// delay received packets from broker
 
@@ -2130,8 +2142,8 @@ func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair)
 	for {
 		sleep := int64(time.Hour)
 
-		if gop.first!=nil  {
-			playtime := gop.first.Arrival + delta
+		if len(buf) > 0 {
+			playtime := buf[0].Arrival + delta
 			sleep = playtime - nanotime()
 			sleep += int64(time.Microsecond) // safety measure, so we sleep plenty
 			if sleep < 0 {
@@ -2147,9 +2159,9 @@ func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair)
 			return
 
 		case <-time.NewTimer(time.Duration(sleep)).C: //XXX someday optimize
-			xp := gop[0]
-			gop = gop[1:]
-
+			xp := buf[0]
+			buf = buf[1:]
+			numreplay--
 			copy := xp.Pkt
 
 			switch xp.Typ {
@@ -2181,7 +2193,7 @@ func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair)
 			}
 			t.mu.Unlock()
 
-		case pp, open := <-rb:
+		case pp, open := <-inCh:
 			if !open {
 				return
 			}
@@ -2191,7 +2203,7 @@ func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair)
 			// if p.keyframe {
 			// 	return
 			// }
-			gop = append(gop, pp)
+			buf = append(buf, pp)
 
 		}
 	}
@@ -2337,15 +2349,13 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 
 }
 
-func Writer(ch RingBuff, t *TxTracks, name string) {
+func Writer(ch chan *XPacket, t *TxTracks, name string) {
 	pl("Writer started for:", name)
 	defer pl("Writer ENDED for:", name)
 
 	var rtpPktCopy rtp.Packet
 
-	for {
-
-		p := ch.ReadSingle() // blocking
+	for p := range ch {
 
 		now := nanotime()
 
