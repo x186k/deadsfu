@@ -29,7 +29,7 @@ func NewXBroker() *XBroker {
 	return &XBroker{
 		inCh: make(chan *XPacket, BrokerInputChannelDepth), // must be unbuf/sync!
 		subs: make(map[chan *XPacket]struct{}),
-		buf:  make([]*XPacket, 0),
+		buf:  make([]*XPacket, 0, 2000),
 	}
 }
 
