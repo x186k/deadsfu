@@ -557,19 +557,24 @@ func newPeerConnection() (*webrtc.PeerConnection, error) {
 	}
 
 	// good
-	rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se), webrtc.WithInterceptorRegistry(i))
+	//XXXXXXXX
+	// ion doesn't include :
+	//webrtc.WithInterceptorRegistry(i))
+	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se), webrtc.WithInterceptorRegistry(i))
 	// bad, ~30kbps throughput on ingest
 	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
 
 	//rtcApi = webrtc.NewAPI()
 	//if *videoCodec == "h264" {
 
-	err = RegisterH264AndOpusCodecs(m)
+	me, err := getPublisherMediaEngine()
 	if err != nil {
 		return nil, err
 	}
 
-	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(me), webrtc.WithSettingEngine(se))
+
+	peerConnection, err := api.NewPeerConnection(peerConnectionConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -2170,7 +2175,7 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 		room.tracks.Add(txt)
 
 		xpCh := room.xBroker.SubscribeReplay()
-		go func() {			
+		go func() {
 			defer room.xBroker.Unsubscribe(xpCh)
 			Replay(xpCh, room.tracks, txt)
 		}()

@@ -14,6 +14,7 @@ require (
 	github.com/pion/interceptor v0.0.13
 	github.com/pion/rtcp v1.2.6
 	github.com/pion/rtp v1.6.5
+	github.com/pion/sdp/v3 v3.0.4
 	github.com/pion/webrtc/v3 v3.0.32
 	github.com/pkg/profile v1.5.0
 	github.com/spf13/pflag v1.0.5
