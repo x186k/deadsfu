@@ -1350,7 +1350,7 @@ func OnTrack2(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker.inCh)
+		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker)
 		//here on error
 		dbg.main.Printf("audio reader %p exited", track)
 		return
@@ -1398,7 +1398,7 @@ func OnTrack2(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker.inCh)
+	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker)
 	//here on error
 	dbg.main.Printf("video reader %p exited", track)
 
@@ -1412,7 +1412,7 @@ func OnTrack2(
 // 	},
 // }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, ch chan<- *XPacket) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, xb *XBroker) {
 
 	for {
 		xp := new(XPacket)
@@ -1438,7 +1438,8 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 		xp.Arrival = nanotime()
 		xp.Keyframe = isvid && isH264Keyframe(r.Payload)
 
-		ch <- xp
+		xb.Publish(xp)
+		
 
 	}
 }
