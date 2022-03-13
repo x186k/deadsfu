@@ -42,6 +42,8 @@ func NewXBroker() *XBroker {
 
 func (b *XBroker) Start() {
 
+	gotKF := false
+
 	for m := range b.inCh {
 		//b.capacityMaxRx = MaxInt(b.capacityMaxRx, cap(b.inCh)+1)
 
@@ -58,8 +60,11 @@ func (b *XBroker) Start() {
 					b.gop[i] = nil
 				}
 				b.gop = b.gop[0:0]
+				gotKF = true
 			}
-			b.gop = append(b.gop, m)
+		}
+		if gotKF {
+			b.gop = append(b.gop, m) // save audio and video for replay
 		}
 
 		// non-blocking send loop
@@ -81,7 +86,7 @@ func (b *XBroker) Stop() {
 	close(b.inCh)
 }
 
-func (b *XBroker) Subscribe() (chan *XPacket, []*XPacket) {
+func (b *XBroker) Subscribe() chan *XPacket {
 
 	c := make(chan *XPacket, XBrokerOutputChannelDepth)
 
@@ -89,10 +94,26 @@ func (b *XBroker) Subscribe() (chan *XPacket, []*XPacket) {
 	defer b.mu.Unlock()
 
 	b.subs[c] = struct{}{}
-	tmp := make([]*XPacket, len(b.gop))
-	copy(tmp, b.gop)
 
-	return c, tmp
+	return c
+}
+
+func (b *XBroker) SubscribeReplay() chan *XPacket {
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	c := make(chan *XPacket, len(b.gop)+XBrokerOutputChannelDepth)
+
+	for _, v := range b.gop {
+		c <- v // pre load gop into channel
+	}
+
+	b.subs[c] = struct{}{}
+
+	//pl("replay chan preloaded with N", len(b.gop))
+
+	return c
 }
 
 func (b *XBroker) Unsubscribe(c chan *XPacket) {

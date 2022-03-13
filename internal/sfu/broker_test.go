@@ -49,7 +49,7 @@ func BenchmarkBrokerNoWrite(b *testing.B) {
 	a := NewXBroker()
 	go a.Start()
 
-	c, _ := a.Subscribe()
+	c:= a.Subscribe()
 
 	d := make(chan struct{})
 	go func() {
@@ -129,7 +129,7 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 
 	a := NewXBroker()
 	go a.Start()
-	ch, _ := a.Subscribe()
+	ch := a.Subscribe()
 	go Writer(ch, trks, "test")
 
 	b.ReportAllocs()

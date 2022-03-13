@@ -753,7 +753,7 @@ func getRoomOrCreate(roomname string) *roomState {
 		}
 
 		go link.xBroker.Start()
-		ch, _ := link.xBroker.Subscribe() // can no longer block
+		ch := link.xBroker.Subscribe() // can no longer block
 		go Writer(ch, link.tracks, roomname)
 
 		roomMap[roomname] = link
@@ -1439,7 +1439,6 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 		xp.Keyframe = isvid && isH264Keyframe(r.Payload)
 
 		xb.Publish(xp)
-		
 
 	}
 }
@@ -2094,119 +2093,71 @@ type XPacket struct {
 	Keyframe bool
 }
 
-//how do we know to go away?
-// the broker gets created at room-creation-time, and never goes away!
-// so, we can add a ctx or done channel to the front of these params.
-// NOTE!: ending this needs to be *sync*, as this writes to the webrtc.track
-// so, done must be sync chan
-func Replay(doneClose chan struct{}, xb *XBroker, t *TxTracks, txt *TxTrackPair) {
-	// pl("Replay() start")
-	// defer pl("Replay() end")
+// Replay will replay a GOP to a subscribers tracks
 
-	inCh, buf := xb.Subscribe()
-	defer xb.Unsubscribe(inCh)
+func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
+	dbg.goroutine.Println(unsafe.Pointer(t), "Replay() started")
+	defer dbg.goroutine.Println(unsafe.Pointer(t), "Replay() ended")
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
 	var tmpVidSSRC uint32 = uint32(mrand.Int63())
 
-	numreplay := len(buf)
+	var first *XPacket = nil
 
-	//pl("gopreplay got n pkts", len(buf))
+	for xp := range inCh {
+		now := nanotime()
 
-	//dbg.switching.Print("got n packets for replay", len(buf))
-	if len(buf) > 0 {
-		delta = nanotime() - buf[0].Arrival // alternative: linear regression
-
-		if !buf[0].Keyframe {
-			panic("replay must begin with KF, or be empty")
-		}
-
-		dur := buf[len(buf)-1].Arrival - buf[0].Arrival
-		dur2 := time.Duration(dur).Round(time.Second / 100)
-
-		nframe := 0
-		lastts := buf[0].Pkt.Timestamp
-		for _, v := range buf {
-			if lastts != v.Pkt.Timestamp {
-				nframe += 1
+		if first == nil {
+			first = xp
+			delta = now - first.Arrival
+			if delta < 0 {
+				panic("bug")
 			}
-			lastts = v.Pkt.Timestamp
-		}
-		dbg.goroutine.Printf("replay duration is %s nframes is %d", dur2.String(), nframe)
-	}
-
-	// delay received packets from broker
-
-	//plx := PeriodLog{}
-
-	for {
-		sleep := int64(time.Hour)
-
-		if len(buf) > 0 {
-			playtime := buf[0].Arrival + delta
-			sleep = playtime - nanotime()
-			sleep += int64(time.Microsecond) // safety measure, so we sleep plenty
-			if sleep < 0 {
-				sleep = 0
-			}
-		}
-
-		select {
-		case _, ok := <-doneClose:
-			if ok {
-				panic("nope")
-			}
-			return
-
-		case <-time.NewTimer(time.Duration(sleep)).C: //XXX someday optimize
-			xp := buf[0]
-			buf = buf[1:]
-			numreplay--
-			copy := xp.Pkt
-
-			switch xp.Typ {
-			case Audio:
-				copy.SSRC = tmpAudSSRC
-			case Video:
-				copy.SSRC = tmpVidSSRC
-			}
-			// you cannot use m.now for the nano timestamp
-			// these packets have been delayed,
-			// and those old timestamps won't play well
-			// when we switch to 'live'
-			// (this would cause a big jump in the timestamps to the splicer)
-
-			now := nanotime()
-
-			t.mu.Lock()
-			if _, ok := t.replay[txt]; !ok {
-				t.mu.Unlock()
+			if !xp.Keyframe {
+				pl("Replay() didnt start with KF, returning")
 				return
 			}
-			switch xp.Typ {
-			case Audio:
-				txt.aud.splicer.SpliceWriteRTP(txt.aud.track, &copy, now, int64(txt.aud.clockrate))
-			case Video:
-				txt.vid.splicer.SpliceWriteRTP(txt.vid.track, &copy, now, int64(txt.vid.clockrate))
-			default:
-				log.Fatalln("bad p.typ:", xp.Typ)
-			}
+		}
+
+		playtime := xp.Arrival + delta
+		sleep := playtime - now
+		if sleep < 0 {
+			sleep = 0
+		}
+
+		time.Sleep(time.Duration(sleep))
+
+		copy := xp.Pkt
+
+		switch xp.Typ {
+		case Audio:
+			copy.SSRC = tmpAudSSRC
+		case Video:
+			copy.SSRC = tmpVidSSRC
+		}
+		// you cannot use m.now for the nano timestamp
+		// these packets have been delayed,
+		// and those old timestamps won't play well
+		// when we switch to 'live'
+		// (this would cause a big jump in the timestamps to the splicer)
+
+		t.mu.Lock()
+		if _, ok := t.replay[txt]; !ok {
+			//finish when tracks have been switched away
 			t.mu.Unlock()
-
-		case pp, open := <-inCh:
-			if !open {
-				return
-			}
-
-			//plx.Println("Replay got broker msg")
-
-			// if p.keyframe {
-			// 	return
-			// }
-			buf = append(buf, pp)
-
+			return
 		}
+		switch xp.Typ {
+		case Audio:
+			txt.aud.splicer.SpliceWriteRTP(txt.aud.track, &copy, now, int64(txt.aud.clockrate))
+		case Video:
+			txt.vid.splicer.SpliceWriteRTP(txt.vid.track, &copy, now, int64(txt.vid.clockrate))
+		default:
+			log.Fatalln("bad p.typ:", xp.Typ)
+		}
+		t.mu.Unlock()
+
 	}
 }
 
@@ -2217,13 +2168,33 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 	for {
 
 		room.tracks.Add(txt)
-		done := make(chan struct{}) // unbuf please
-		go Replay(done, room.xBroker, room.tracks, txt)
+
+		xpCh := room.xBroker.SubscribeReplay()
+		go func() {			
+			defer room.xBroker.Unsubscribe(xpCh)
+			Replay(xpCh, room.tracks, txt)
+		}()
 
 		req, open := <-subGrCh
 
+		room.xBroker.Unsubscribe(xpCh) // close the xbroker sub chan if not already
+
 		room.tracks.Remove(txt) // remove from current room
-		close(done)
+
+		// shutdown Replay() using method #2
+		// freaking magic!
+		// this re-addressing of 'txt' *TxTrackPair
+		// forces Replay() to finish up,
+		// since Replay() returns when it discovers
+		// the *TxTrackPair we have passed it is no longer
+		// on the 'replay' map of *TxTracks (room.tracks)
+		// ---
+		// if we don't do this, we can start multiple concurrent overlapping
+		// Replay() for the same *TxTrackPair.
+		// doing this causes them to finish up and exit.
+		// because this code in this func, basically does a Remove() then Add()
+		tmptxt := *txt
+		txt = &tmptxt
 
 		if !open {
 			return
@@ -2351,8 +2322,8 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func Writer(ch chan *XPacket, t *TxTracks, name string) {
-	pl("Writer started for:", name)
-	defer pl("Writer ENDED for:", name)
+	// pl("Writer started for:", name)
+	// defer pl("Writer ENDED for:", name)
 
 	var rtpPktCopy rtp.Packet
 
