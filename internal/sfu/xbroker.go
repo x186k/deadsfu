@@ -99,7 +99,10 @@ func (b *XBroker) Unsubscribe(c chan *XPacket) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	delete(b.subs, c)
+	if _, ok := b.subs[c]; ok {
+		delete(b.subs, c)
+		close(c)
+	}
 }
 
 // non blocking
