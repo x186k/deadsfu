@@ -19,12 +19,12 @@ const (
 )
 
 type XBroker struct {
-	mu            sync.Mutex
-	subs          map[chan *XPacket]struct{}
-	inCh          chan *XPacket
-	gop           []*XPacket
-	droppedRx     int
-	droppedTx     int
+	mu        sync.Mutex
+	subs      map[chan *XPacket]struct{}
+	inCh      chan *XPacket
+	gop       []*XPacket
+	droppedRx int
+	droppedTx int
 	// capacityMaxRx int
 	// capacityMaxTx int
 }
@@ -68,6 +68,7 @@ func (b *XBroker) Start() {
 				//b.capacityMaxTx = MaxInt(b.capacityMaxTx, cap(ch))
 			default:
 				b.droppedTx++
+				errlog.Println("xbroker TX drop count", b.droppedTx)
 			}
 		}
 		b.mu.Unlock()
@@ -107,6 +108,7 @@ func (b *XBroker) Publish(msg *XPacket) {
 	case b.inCh <- msg:
 	default:
 		b.droppedRx++
+		errlog.Println("xbroker RX drop count", b.droppedRx)
 	}
 
 }
