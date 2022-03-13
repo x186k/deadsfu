@@ -37,8 +37,6 @@ func NewXBroker() *XBroker {
 
 func (b *XBroker) Start() {
 
-	tmp := make([]chan *XPacket, 0)
-
 	for m := range b.inCh {
 
 		if m.Typ != Video && m.Typ != Audio {
@@ -57,17 +55,16 @@ func (b *XBroker) Start() {
 			}
 			b.gop = append(b.gop, m)
 		}
-		tmp = tmp[0:0]
-		for k := range b.subs {
-			tmp = append(tmp, k)
+
+		// non-blocking send loop
+		for ch := range b.subs {
+			select {
+			case ch <- m:
+			default:
+				b.outLost++
+			}
 		}
 		b.mu.Unlock()
-
-		// blocking possible
-		for i, ch := range tmp {
-			ch <- m // blocking possible
-			tmp[i] = nil
-		}
 
 	}
 }
