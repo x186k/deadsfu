@@ -19,13 +19,17 @@ const (
 )
 
 type XBroker struct {
-	mu      sync.Mutex
-	subs    map[chan *XPacket]struct{}
-	inCh    chan *XPacket
-	gop     []*XPacket
-	inLost  int
-	outLost int
+	mu            sync.Mutex
+	subs          map[chan *XPacket]struct{}
+	inCh          chan *XPacket
+	gop           []*XPacket
+	droppedRx     int
+	droppedTx     int
+	// capacityMaxRx int
+	// capacityMaxTx int
 }
+
+var TimerXPacket XPacket
 
 func NewXBroker() *XBroker {
 	return &XBroker{
@@ -38,6 +42,7 @@ func NewXBroker() *XBroker {
 func (b *XBroker) Start() {
 
 	for m := range b.inCh {
+		//b.capacityMaxRx = MaxInt(b.capacityMaxRx, cap(b.inCh)+1)
 
 		if m.Typ != Video && m.Typ != Audio {
 			panic("invalid xpkt type")
@@ -60,8 +65,9 @@ func (b *XBroker) Start() {
 		for ch := range b.subs {
 			select {
 			case ch <- m:
+				//b.capacityMaxTx = MaxInt(b.capacityMaxTx, cap(ch))
 			default:
-				b.outLost++
+				b.droppedTx++
 			}
 		}
 		b.mu.Unlock()
@@ -100,7 +106,14 @@ func (b *XBroker) Publish(msg *XPacket) {
 	select {
 	case b.inCh <- msg:
 	default:
-		b.inLost++
+		b.droppedRx++
 	}
 
+}
+
+func MaxInt(x, y int) int {
+	if x < y {
+		return y
+	}
+	return x
 }
