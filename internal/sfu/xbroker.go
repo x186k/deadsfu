@@ -2,6 +2,7 @@ package sfu
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -23,8 +24,8 @@ type XBroker struct {
 	subs      map[chan *XPacket]struct{}
 	inCh      chan *XPacket
 	gop       []*XPacket
-	droppedRx int
-	droppedTx int
+	droppedRx int32 // concurrent/atomic increments
+	droppedTx int   // non-current increments
 	// capacityMaxRx int
 	// capacityMaxTx int
 }
@@ -101,13 +102,14 @@ func (b *XBroker) Unsubscribe(c chan *XPacket) {
 	delete(b.subs, c)
 }
 
-//non blocking
+// non blocking
+// concurrent use
 func (b *XBroker) Publish(msg *XPacket) {
 
 	select {
 	case b.inCh <- msg:
 	default:
-		b.droppedRx++
+		atomic.AddInt32(&b.droppedRx, 1)
 		errlog.Println("xbroker RX drop count", b.droppedRx)
 	}
 
