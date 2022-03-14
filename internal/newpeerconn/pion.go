@@ -1,4 +1,4 @@
-package sfu
+package newpeerconn
 
 import (
 	_ "io"

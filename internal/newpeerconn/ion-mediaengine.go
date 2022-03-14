@@ -1,4 +1,4 @@
-package sfu
+package newpeerconn
 
 //portions of this: MIT License, Copyright (c) 2019, the ion sfu project
 
@@ -10,10 +10,11 @@ import (
 const (
 	mimeTypeH264 = "video/h264"
 	mimeTypeOpus = "audio/opus"
-
 )
 
 const frameMarking = "urn:ietf:params:rtp-hdrext:framemarking"
+
+var _ = getPublisherMediaEngine
 
 func getPublisherMediaEngine() (*webrtc.MediaEngine, error) {
 	me := &webrtc.MediaEngine{}
@@ -24,7 +25,14 @@ func getPublisherMediaEngine() (*webrtc.MediaEngine, error) {
 		return nil, err
 	}
 
-	videoRTCPFeedback := []webrtc.RTCPFeedback{{"goog-remb", ""}, {"ccm", "fir"}, {"nack", ""}, {"nack", "pli"}}
+	videoRTCPFeedback := []webrtc.RTCPFeedback{
+		{Type: "goog-remb", Parameter: ""},
+		{Type: "ccm", Parameter: "fir"},
+		{Type: "nack", Parameter: ""},
+		{Type: "nack", Parameter: "pli"},
+		{Type: "transport-cc", Parameter: ""},
+	}
+
 	for _, codec := range []webrtc.RTPCodecParameters{
 		// {
 		// 	RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: mimeTypeVP8, ClockRate: 90000, RTCPFeedback: videoRTCPFeedback},
@@ -86,6 +94,8 @@ func getPublisherMediaEngine() (*webrtc.MediaEngine, error) {
 
 	return me, nil
 }
+
+var _ = getSubscriberMediaEngine
 
 func getSubscriberMediaEngine() (*webrtc.MediaEngine, error) {
 	me := &webrtc.MediaEngine{}
