@@ -54,7 +54,7 @@ func BenchmarkAllocHeap1500Parallel(b *testing.B) {
 		}
 	})
 	b.StopTimer() // required to get duration
-	reportCPUUtil(b,1500)
+	reportCPUUtil(b, 1500)
 }
 
 func BenchmarkAllocHeap9000(b *testing.B) {
@@ -73,20 +73,20 @@ func BenchmarkAllocHeap9000Parallel(b *testing.B) {
 	})
 	b.StopTimer() // required to get duration
 
-	reportCPUUtil(b,9000)
+	reportCPUUtil(b, 9000)
 }
 
-	//for example
-	// units -v '100megabit/sec * 1/1500bytes * 70ns'
-	// units -v '100megabit/sec * 1byte/8bits * 1sec/1e9ns *   1/1500bytes * 70ns'
-	// units -v '100megabit/sec * 1/1500bytes * 70ns'
-	//     Definition: 0.00058333333
+//for example
+// units -v '100megabit/sec * 1/1500bytes * 70ns'
+// units -v '100megabit/sec * 1byte/8bits * 1sec/1e9ns *   1/1500bytes * 70ns'
+// units -v '100megabit/sec * 1/1500bytes * 70ns'
+//     Definition: 0.00058333333
 func reportCPUUtil(b *testing.B, mtu float64) {
 	duration := GetDuration(b)
 	nsPerOp := float64(duration) / float64(b.N)
 	b.ReportMetric(nsPerOp, "ns/op2")
 
-	averagePacketLen := mtu/2
+	averagePacketLen := mtu / 2
 
 	cpuutil := 100e6 / 8 / 1e9 / averagePacketLen * nsPerOp
 	b.ReportMetric(cpuutil, "100mbps-cpuFraction")
