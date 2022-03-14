@@ -41,7 +41,6 @@ import (
 
 	//"github.com/davecgh/go-spew/spew"
 
-	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -53,6 +52,8 @@ import (
 
 	"github.com/x186k/deadsfu"
 	"github.com/x186k/deadsfu/ftlserver"
+
+	"github.com/x186k/deadsfu/internal/newpeerconn"
 
 	"github.com/google/uuid"
 
@@ -537,14 +538,7 @@ func newPeerConnection() (*webrtc.PeerConnection, error) {
 
 	// Do NOT share MediaEngine between PC!  BUG of 020321
 	// with Sean & Orlando. They are so nice.
-	m := &webrtc.MediaEngine{}
-
-	i := &interceptor.Registry{}
-	_ = i
-	err := webrtc.RegisterDefaultInterceptors(m, i)
-	if err != nil {
-		return nil, err
-	}
+	//m := &webrtc.MediaEngine{}
 
 	se := webrtc.SettingEngine{}
 
@@ -556,25 +550,28 @@ func newPeerConnection() (*webrtc.PeerConnection, error) {
 		peerConnectionConfig.ICEServers = []webrtc.ICEServer{} // yuck
 	}
 
+	// with ion sfu
+	// me, err := getPublisherMediaEngine()
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(me), webrtc.WithSettingEngine(se))
 	// good
 	//XXXXXXXX
 	// ion doesn't include :
 	//webrtc.WithInterceptorRegistry(i))
-	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se), webrtc.WithInterceptorRegistry(i))
-	// bad, ~30kbps throughput on ingest
-	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
+	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(me), webrtc.WithSettingEngine(se), webrtc.WithInterceptorRegistry(i))
 
-	//rtcApi = webrtc.NewAPI()
-	//if *videoCodec == "h264" {
-
-	me, err := getPublisherMediaEngine()
+	rtcapi, err := newpeerconn.NewWebRTCAPI()
 	if err != nil {
 		return nil, err
 	}
 
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(me), webrtc.WithSettingEngine(se))
+	// bad, ~30kbps throughput on ingest
+	//rtcapi := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
 
-	peerConnection, err := api.NewPeerConnection(peerConnectionConfig)
+	peerConnection, err := rtcapi.NewPeerConnection(peerConnectionConfig)
 	if err != nil {
 		return nil, err
 	}
