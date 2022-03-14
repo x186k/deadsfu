@@ -788,6 +788,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 	return false
 }
 
+// subHandlerGr will block until the PC is done
 func subHandlerGr(offersdp string,
 	link *roomState,
 	sdpCh chan *webrtc.SessionDescription,
@@ -907,7 +908,7 @@ func subHandlerGr(offersdp string,
 		if conn && ok {
 			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
-			subGr(subGrCh, txset, link)
+			SubscriberGr(subGrCh, txset, link)
 
 		} else {
 			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
@@ -2163,12 +2164,11 @@ func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
 	}
 }
 
-func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
+func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 	dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
 	defer dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
 
 	for {
-
 		room.tracks.Add(txt)
 
 		xpCh := room.xBroker.SubscribeReplay()
@@ -2178,29 +2178,14 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 		}()
 
 		req, open := <-subGrCh
-
 		room.xBroker.Unsubscribe(xpCh) // close the xbroker sub chan if not already
-
-		room.tracks.Remove(txt) // remove from current room
-
-		// shutdown Replay() using method #2
-		// freaking magic!
-		// this re-addressing of 'txt' *TxTrackPair
-		// forces Replay() to finish up,
-		// since Replay() returns when it discovers
-		// the *TxTrackPair we have passed it is no longer
-		// on the 'replay' map of *TxTracks (room.tracks)
-		// ---
-		// if we don't do this, we can start multiple concurrent overlapping
-		// Replay() for the same *TxTrackPair.
-		// doing this causes them to finish up and exit.
-		// because this code in this func, basically does a Remove() then Add()
-		tmptxt := *txt
-		txt = &tmptxt
-
+		room.tracks.Remove(txt)        // remove from current room
 		if !open {
 			return
 		}
+
+		tmptxt := *txt // See note below: this is necessary to trigger Replay to return
+		txt = &tmptxt
 
 		if newroom, ok := getRoom(req); ok {
 			room = newroom
@@ -2212,6 +2197,21 @@ func subGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
 	}
 
 }
+
+//Important note:
+// why we change the address of 'txt' *TxTrackPair:
+// shutdown Replay() using method #2
+// freaking magic!
+// this re-addressing of 'txt' *TxTrackPair
+// forces Replay() to finish up,
+// since Replay() returns when it discovers
+// the *TxTrackPair we have passed it is no longer
+// on the 'replay' map of *TxTracks (room.tracks)
+// ---
+// if we don't do this, we can start multiple concurrent overlapping
+// Replay() for the same *TxTrackPair.
+// doing this causes them to finish up and exit.
+// because this code in this func, basically does a Remove() then Add()
 
 func makeRoomListJson(serial int) []byte {
 
