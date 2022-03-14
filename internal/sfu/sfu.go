@@ -111,7 +111,7 @@ type myFtlServer struct {
 //the link between publishers and subscribers
 // mostly the channel on which a /pub puts media for a /sub to send out
 // this struct, is currently IMMUTABLE, ideally, it stays that way
-type roomState struct {
+type Room struct {
 	roomname    string
 	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
 	xBroker     *XBroker
@@ -126,7 +126,7 @@ type MsgGetSourcesList struct {
 var newRoomNoticeCh = make(chan struct{}, 5) // we never want sender to 'default'
 var getSourceListCh = make(chan MsgGetSourcesList, 1)
 
-var roomMap = make(map[string]*roomState)
+var roomMap = make(map[string]*Room)
 var roomMapMutex sync.Mutex
 
 var subMap = make(map[uuid.UUID]chan string)
@@ -725,7 +725,7 @@ func fixRoomName(name string) string {
 	return name
 }
 
-func getRoom(roomname string) (*roomState, bool) {
+func getRoom(roomname string) (*Room, bool) {
 
 	roomname = fixRoomName(roomname)
 
@@ -736,7 +736,7 @@ func getRoom(roomname string) (*roomState, bool) {
 	return link, ok
 }
 
-func getRoomOrCreate(roomname string) *roomState {
+func getRoomOrCreate(roomname string) *Room {
 
 	roomname = fixRoomName(roomname)
 
@@ -747,7 +747,7 @@ func getRoomOrCreate(roomname string) *roomState {
 	link, ok := roomMap[roomname]
 
 	if !ok {
-		link = &roomState{
+		link = &Room{
 			roomname:    roomname,
 			ingressSema: semaphore.NewWeighted(int64(1)),
 			xBroker:     NewXBroker(),
@@ -790,7 +790,7 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 
 // subHandlerGr will block until the PC is done
 func subHandlerGr(offersdp string,
-	link *roomState,
+	link *Room,
 	sdpCh chan *webrtc.SessionDescription,
 	subGrCh chan string) error {
 	peerConnection, err := newPeerConnection()
@@ -1168,7 +1168,7 @@ func removeH264AccessDelimiterAndSEI(pkts []rtp.Packet) []rtp.Packet {
 
 var _ = dialUpstream
 
-func dialUpstream(link *roomState) error {
+func dialUpstream(link *Room) error {
 
 	var u url.URL
 
@@ -1345,7 +1345,7 @@ func OnTrack2(
 	peerConnection *webrtc.PeerConnection,
 	track *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
-	link *roomState) {
+	link *Room) {
 
 	mimetype := track.Codec().MimeType
 	dbg.main.Println("OnTrack codec:", mimetype)
@@ -1573,7 +1573,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 }
 
 // Blocks until PC is Closed
-func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webrtc.SessionDescription) error {
+func pubHandlerCreatePeerconn(offersdp string, link *Room, sdpCh chan *webrtc.SessionDescription) error {
 
 	dbg.main.Println("createIngressPeerConnection")
 
@@ -1650,7 +1650,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *roomState, sdpCh chan *webr
 // pcDone will get closed upon the failed, closed or disconnected state of the PC
 // connected will get closed upon the connected state of the PC
 // this does not block until the PC is finished, you can do that with pcDone
-func waitPeerconnClosed(debug string, link *roomState, pc *webrtc.PeerConnection) (
+func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 	pcDone chan struct{},
 	connected chan bool) {
 
@@ -2164,7 +2164,7 @@ func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
 	}
 }
 
-func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *roomState) {
+func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
 	dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
 	defer dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
 
