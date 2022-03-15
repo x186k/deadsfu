@@ -33,7 +33,6 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	"github.com/spf13/pflag"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/pkg/profile"
 
@@ -112,10 +111,56 @@ type myFtlServer struct {
 // mostly the channel on which a /pub puts media for a /sub to send out
 // this struct, is currently IMMUTABLE, ideally, it stays that way
 type Room struct {
+	mu          sync.Mutex
 	roomname    string
-	ingressSema *semaphore.Weighted // is a publisher already using '/foobar' ??
+	ingressBusy bool
 	xBroker     *XBroker
 	tracks      *TxTracks
+}
+
+func (r *Room) PublisherTryLock() bool {
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ingressBusy {
+		dbg.roomcleaner.Printf("PublisherTryLock() room:%s already busy", r.roomname)
+		return false // room ingres is busy!
+	}
+	r.ingressBusy = true
+	//r.lastInUse = time.Now()
+
+	dbg.roomcleaner.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
+
+	return true
+
+}
+func (r *Room) PublisherUnlock() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dbg.roomcleaner.Printf("PublisherUnlock() room:%s is now unlocked", r.roomname)
+
+	r.ingressBusy = false
+	//r.lastInUse = time.Now()
+}
+
+func (r *Room) IsRoomBusy() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.tracks.IsEmpty() //double lock, maintain order
+}
+
+func (r *Room) CloseRoomIfNoPubNoSub() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dbg.roomcleaner.Println()
+
+	if r.ingressBusy && r.tracks.IsEmpty() { //double lock, maintain order
+		dbg.roomcleaner.Printf("CloseRoomIfNoPubNoSub() room:%s has no pubs, no subs, removing", r.roomname)
+	}
 }
 
 type MsgGetSourcesList struct {
@@ -126,8 +171,57 @@ type MsgGetSourcesList struct {
 var newRoomNoticeCh = make(chan struct{}, 5) // we never want sender to 'default'
 var getSourceListCh = make(chan MsgGetSourcesList, 1)
 
-var roomMap = make(map[string]*Room)
-var roomMapMutex sync.Mutex
+type RoomMap struct {
+	mu      sync.Mutex
+	roomMap map[string]*Room
+}
+
+func NewRoomMap() *RoomMap {
+	return &RoomMap{
+		roomMap: make(map[string]*Room),
+	}
+}
+
+func (r *RoomMap) Get(name string) (*Room, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	room, ok := r.roomMap[name]
+	return room, ok
+}
+
+func (r *RoomMap) GetList() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	a := make([]string, 0, len(r.roomMap))
+
+	for _, v := range r.roomMap {
+		a = append(a, v.roomname)
+	}
+
+	return a
+}
+
+func (r *RoomMap) CloseDeadRooms() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, room := range r.roomMap {
+
+		room.CloseRoomIfNoPubNoSub()
+
+	}
+}
+
+func RoomTerminator() {
+	for {
+		time.Sleep(2 * time.Second)
+		rooms.CloseDeadRooms()
+	}
+}
+
+var rooms = NewRoomMap()
 
 var subMap = make(map[uuid.UUID]chan string)
 var subMapMutex sync.Mutex
@@ -153,33 +247,6 @@ var idleMediaPackets []rtp.Packet
 // use:
 // log.Println(...)  for info messages that should be seen without enabling any debugging
 const logFlags = log.Lmicroseconds | log.LUTC | log.Lshortfile | log.Lmsgprefix
-
-var dbg = struct {
-	url                 FastLogger
-	media               FastLogger
-	https               FastLogger
-	ice                 FastLogger
-	main                FastLogger
-	ftl                 FastLogger
-	ddns                FastLogger
-	peerConn            FastLogger
-	switching           FastLogger
-	goroutine           FastLogger
-	receiverLostPackets FastLogger
-}{}
-var dbgMap = map[string]*FastLogger{
-	"url":                   &dbg.url,
-	"media":                 &dbg.media,
-	"https":                 &dbg.https,
-	"ice-candidates":        &dbg.ice,
-	"main":                  &dbg.main,
-	"ftl":                   &dbg.ftl,
-	"ddns":                  &dbg.ddns,
-	"peer-conn":             &dbg.peerConn,
-	"switching":             &dbg.switching,
-	"goroutine":             &dbg.goroutine,
-	"receiver-lost-packets": &dbg.receiverLostPackets,
-}
 
 var errlog = log.New(os.Stderr, "errlog", logFlags)
 
@@ -282,6 +349,7 @@ func Main() {
 
 	go getSourceListGr()
 	go logGoroutineCountToDebugLog()
+	go RoomTerminator()
 
 	if *dialUpstreamUrlFlag != "" {
 		dialUpstreamUrl, err = url.Parse(*dialUpstreamUrlFlag)
@@ -660,7 +728,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getRoomOrCreate(roomname)
+	link := rooms.GetOrMake(roomname)
 
 	dbg.url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
@@ -671,7 +739,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		panic("internal-err-120")
 	}
 
-	if !link.ingressSema.TryAcquire(1) {
+	if !link.PublisherTryLock() {
 		err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -679,7 +747,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		defer link.ingressSema.Release(1)
+		defer link.PublisherUnlock()
 
 		err := pubHandlerCreatePeerconn(string(offer), link, sdpCh)
 		if err != nil {
@@ -729,36 +797,33 @@ func getRoom(roomname string) (*Room, bool) {
 
 	roomname = fixRoomName(roomname)
 
-	roomMapMutex.Lock()
-	defer roomMapMutex.Unlock()
-	link, ok := roomMap[roomname]
-
+	link, ok := rooms.Get(roomname)
 	return link, ok
 }
 
-func getRoomOrCreate(roomname string) *Room {
+func (rm *RoomMap) GetOrMake(roomname string) *Room {
 
 	roomname = fixRoomName(roomname)
 
 	//everything below here should be FAST
-	roomMapMutex.Lock()
-	defer roomMapMutex.Unlock()
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
 
-	link, ok := roomMap[roomname]
+	link, ok := rm.roomMap[roomname]
 
 	if !ok {
+
 		link = &Room{
-			roomname:    roomname,
-			ingressSema: semaphore.NewWeighted(int64(1)),
-			xBroker:     NewXBroker(),
-			tracks:      NewTxTracks(),
+			roomname: roomname,
+			xBroker:  NewXBroker(),
+			tracks:   NewTxTracks(),
 		}
 
 		go link.xBroker.Start()
 		ch := link.xBroker.Subscribe() // can no longer block
 		go Writer(ch, link.tracks, roomname)
 
-		roomMap[roomname] = link
+		rm.roomMap[roomname] = link
 	}
 
 	// will never block, but new room notifications could get lost
@@ -944,7 +1009,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := getRoomOrCreate(roomname)
+	link := rooms.GetOrMake(roomname)
 
 	subuuid := getSubuuidFromRequest(r)
 
@@ -2222,11 +2287,7 @@ func makeRoomListJson(serial int) []byte {
 
 	a := RoomJson{Serial: serial, Rooms: make([]string, 0, 10)}
 
-	roomMapMutex.Lock()
-	for _, v := range roomMap {
-		a.Rooms = append(a.Rooms, v.roomname)
-	}
-	roomMapMutex.Unlock()
+	a.Rooms = rooms.GetList()
 
 	xx, err := json.Marshal(a)
 	if err != nil {
@@ -2392,13 +2453,20 @@ func (t *TxTracks) Add(p *TxTrackPair) {
 	t.mu.Lock()
 	t.replay[p] = struct{}{}
 	t.mu.Unlock()
-
 }
+
 func (t *TxTracks) Remove(p *TxTrackPair) {
 	t.mu.Lock()
 	delete(t.live, p)
 	delete(t.replay, p)
 	t.mu.Unlock()
+}
+
+func (t *TxTracks) IsEmpty() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return len(t.live) == 0 && len(t.replay) == 0
 }
 
 type WriteRtpIntf interface {
