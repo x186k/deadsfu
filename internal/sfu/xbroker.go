@@ -80,9 +80,19 @@ func (b *XBroker) Start() {
 		b.mu.Unlock()
 	}
 
-	for k := range b.subs {
-		close(k) // close Writer() func
-	}
+	// NO NO NO!
+	// we require/expect all subscribers 
+	// to terminate independantly from the close of the broker input chan
+	//
+	// so, we don't close the subscriber's input channels.
+	// if we did this, we will try to close channels twice sometimes.
+	//
+	// Close all subscriber channeles
+	// b.mu.Lock()
+	// for k := range b.subs {
+	// 	close(k) // close Writer() func
+	// }
+	// b.mu.Unlock()
 }
 
 func (b *XBroker) Stop() {
