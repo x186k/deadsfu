@@ -385,9 +385,7 @@ func Main() {
 		server := &http.Server{Handler: mux2}
 		log.Println("SFU HTTP IS READY ON", ln.Addr())
 
-		go func() {
-			checkFatal(server.Serve(ln)) //okay
-		}()
+		go HttpServer(server, ln)
 	}
 
 	ctx := context.Background() // not really used well
@@ -435,6 +433,10 @@ func Main() {
 	fmt.Scanln(&input)
 
 	println("profiling done, exiting")
+}
+
+func HttpServer(server *http.Server, ln net.Listener) {
+	checkFatal(server.Serve(ln)) //okay
 }
 
 func handleSetCookieStatsShipper(next http.Handler, url string) http.Handler {
