@@ -1753,7 +1753,7 @@ func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 	connected chan bool) {
 
 	pcDone = make(chan struct{})
-	connected = make(chan bool)
+	connected = make(chan struct{}, 1) // size of one important! otherwise race cond!
 
 	onceCloseDone := sync.Once{}
 	onceCloseConnected := sync.Once{}
