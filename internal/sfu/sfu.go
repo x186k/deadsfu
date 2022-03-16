@@ -124,13 +124,13 @@ func (r *Room) PublisherTryLock() bool {
 	defer r.mu.Unlock()
 
 	if r.ingressBusy {
-		dbg.roomcleaner.Printf("PublisherTryLock() room:%s already busy", r.roomname)
+		dbg.Roomcleaner.Printf("PublisherTryLock() room:%s already busy", r.roomname)
 		return false // room ingres is busy!
 	}
 	r.ingressBusy = true
 	//r.lastInUse = time.Now()
 
-	dbg.roomcleaner.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
+	dbg.Roomcleaner.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
 
 	return true
 
@@ -139,7 +139,7 @@ func (r *Room) PublisherUnlock() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	dbg.roomcleaner.Printf("PublisherUnlock() room:%s is now unlocked", r.roomname)
+	dbg.Roomcleaner.Printf("PublisherUnlock() room:%s is now unlocked", r.roomname)
 
 	r.ingressBusy = false
 	//r.lastInUse = time.Now()
@@ -152,15 +152,22 @@ func (r *Room) IsRoomBusy() bool {
 	return r.tracks.IsEmpty() //double lock, maintain order
 }
 
-func (r *Room) CloseRoomIfNoPubNoSub() {
+func (r *Room) IsDone() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	dbg.roomcleaner.Println()
+	roomEmpty := !r.ingressBusy && r.tracks.IsEmpty()
 
-	if r.ingressBusy && r.tracks.IsEmpty() { //double lock, maintain order
-		dbg.roomcleaner.Printf("CloseRoomIfNoPubNoSub() room:%s has no pubs, no subs, removing", r.roomname)
-	}
+	return roomEmpty
+}
+
+func (r *Room) Close() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.xBroker.Stop()
+	r.tracks = nil
+
 }
 
 type MsgGetSourcesList struct {
@@ -168,7 +175,7 @@ type MsgGetSourcesList struct {
 	jsonCh chan []byte // channel to return json over
 }
 
-var newRoomNoticeCh = make(chan struct{}, 5) // we never want sender to 'default'
+var roomSetChangedCh = make(chan struct{}, 5) // we never want sender to 'default'
 var getSourceListCh = make(chan MsgGetSourcesList, 1)
 
 type RoomMap struct {
@@ -207,11 +214,29 @@ func (r *RoomMap) CloseDeadRooms() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for _, room := range r.roomMap {
+	updated := false
 
-		room.CloseRoomIfNoPubNoSub()
+	for name, room := range r.roomMap {
 
+		if room.IsDone() {
+
+			updated = true
+			delete(r.roomMap, name)
+			room.Close()
+
+			dbg.Roomcleaner.Printf("CloseRoomIfNoPubNoSub() room:%s has no pubs, no subs, removing", name)
+
+		}
 	}
+
+	if updated {
+		select {
+		case roomSetChangedCh <- struct{}{}:
+		default:
+			errlog.Println("cannot send on newRoomCh")
+		}
+	}
+
 }
 
 func RoomTerminator() {
@@ -256,6 +281,7 @@ var errlog = log.New(os.Stderr, "errlog", logFlags)
 
 //Fast logger allows using if dbg.main.enabled in code hotspots
 type FastLogger struct {
+	help string
 	*log.Logger
 	enabled bool // this is the WHOLE point of this struct, it allows fast logging checks
 }
@@ -278,12 +304,12 @@ func (x *FastLogger) Println(args ...interface{}) {
 	}
 }
 
-func logGoroutineCountToDebugLog() {
+func PrintGoroutineCount() {
 	n := -1
 	for {
 		nn := runtime.NumGoroutine()
 		if nn != n {
-			dbg.main.Println("NumGoroutine", nn)
+			dbg.Numgoroutine.Println("NumGoroutine", nn)
 			n = nn
 		}
 		time.Sleep(2 * time.Second)
@@ -323,15 +349,18 @@ func validateEmbedFiles() {
 }
 
 func Init() {
+	pl(nanotime() / 1000000)
 	bi, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
 	checkFatal(err)
 	mrand.Seed(bi.Int64())
 	validateEmbedFiles()
 	idleMediaPackets = idleMediaLoader()
+	pl(nanotime() / 1000000)
 }
 
 func Main() {
 	var err error
+	pl(nanotime() / 1000000)
 
 	log.SetFlags(logFlags)
 	log.SetPrefix("[log] ")
@@ -349,6 +378,8 @@ func Main() {
 
 	go RoomListRequestHandler()
 	if dbg.Numgoroutine.enabled {
+		go PrintGoroutineCount()
+	}
 	go RoomTerminator()
 
 	if *dialUpstreamUrlFlag != "" {
@@ -491,7 +522,7 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
 	a := getSubuuidFromRequest(r)
 	if a == nil {
-		dbg.switching.Println("/switchRoom: invalid uuid passed into request")
+		dbg.Switching.Println("/switchRoom: invalid uuid passed into request")
 		return
 	}
 
@@ -500,7 +531,7 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 	subMapMutex.Unlock()
 
 	if !ok { //that subscriber was not found
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: subscriber not found for uuid:", a.String())
+		dbg.Switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: subscriber not found for uuid:", a.String())
 		return
 	}
 
@@ -508,9 +539,9 @@ func switchHandler(rw http.ResponseWriter, r *http.Request) {
 
 	select {
 	case subGrCh <- name:
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: sent request to switch to room:", name)
+		dbg.Switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: sent request to switch to room:", name)
 	default:
-		dbg.switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: NOT! sent request to switch to room:", name)
+		dbg.Switching.Println(unsafe.Pointer(&subGrCh), "/switchRoom: NOT! sent request to switch to room:", name)
 	}
 }
 
@@ -652,7 +683,7 @@ func newPeerConnection() (*webrtc.PeerConnection, error) {
 func commonPubSubHandler(hfunc http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		dbg.main.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
+		dbg.Main.Println("commonPubSubHandler request", r.URL.String(), r.Header.Get("Content-Type"))
 
 		//could be OPTIONS
 		if handlePreflight(r, w) {
@@ -732,7 +763,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
 	link := rooms.GetOrMake(roomname)
 
-	dbg.url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
+	dbg.Url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
 	sdpCh := make(chan *webrtc.SessionDescription)
 	errCh := make(chan error)
@@ -830,7 +861,7 @@ func (rm *RoomMap) GetOrMake(roomname string) *Room {
 
 	// will never block, but new room notifications could get lost
 	select {
-	case newRoomNoticeCh <- struct{}{}:
+	case roomSetChangedCh <- struct{}{}:
 	default:
 		errlog.Println("cannot send on newRoomCh")
 	}
@@ -973,21 +1004,21 @@ func subHandlerGr(offersdp string,
 		conn, ok := <-connected
 
 		if conn && ok {
-			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
+			dbg.Goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
 			SubscriberGr(subGrCh, txset, link)
 
 		} else {
-			dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
+			dbg.Goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: connect fail")
 		}
 
 	}()
 
-	dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
+	dbg.Goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "waiting for done")
 
 	<-pcDone
 
-	dbg.goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
+	dbg.Goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
 
 	close(subGrCh)
 
@@ -999,7 +1030,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var err error
 
-	dbg.main.Println("subHandler request", r.URL.String())
+	dbg.Main.Println("subHandler request", r.URL.String())
 
 	// rx offer, tx answer
 	// offer from browser
@@ -1024,7 +1055,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		subMapMutex.Unlock()
 	}
 
-	dbg.url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
+	dbg.Url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
 	sdpCh := make(chan *webrtc.SessionDescription) //
 	errCh := make(chan error)
@@ -1085,18 +1116,18 @@ func getSubuuidFromRequest(r *http.Request) (subuuid *uuid.UUID) {
 
 func logTransceivers(tag string, pc *webrtc.PeerConnection) {
 	if len(pc.GetTransceivers()) == 0 {
-		dbg.main.Printf("%v transceivers is empty", tag)
+		dbg.Main.Printf("%v transceivers is empty", tag)
 	}
 	for i, v := range pc.GetTransceivers() {
 		rx := v.Receiver()
 		tx := v.Sender()
-		dbg.main.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
+		dbg.Main.Printf("%v transceiver %v,%v,%v,%v nilrx:%v niltx:%v", tag, i, v.Direction(), v.Kind(), v.Mid(), rx == nil, tx == nil)
 
 		if rx != nil && len(rx.GetParameters().Codecs) > 0 {
-			dbg.main.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
+			dbg.Main.Println(" rtprx ", rx.GetParameters().Codecs[0].MimeType)
 		}
 		if tx != nil && len(tx.GetParameters().Codecs) > 0 {
-			dbg.main.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
+			dbg.Main.Println(" rtptx ", tx.GetParameters().Codecs[0].MimeType)
 		}
 	}
 }
@@ -1121,25 +1152,25 @@ func logSdpReport(wherefrom string, rtcsd webrtc.SessionDescription) {
 		return
 	}
 	nlines := len(strings.Split(strings.Replace(rtcsd.SDP, "\r\n", "\n", -1), "\n"))
-	dbg.main.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
+	dbg.Main.Printf("%s sdp from %v is %v lines long, and has v= %v", rtcsd.Type.String(), wherefrom, nlines, good)
 
-	dbg.main.Println("fullsdp", wherefrom, rtcsd.SDP)
+	dbg.Main.Println("fullsdp", wherefrom, rtcsd.SDP)
 
 	sd, err := rtcsd.Unmarshal()
 	if err != nil {
 		errlog.Println(fmt.Errorf("rtcsd.Unmarshal() fail:%w", err))
 		return
 	}
-	dbg.main.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
+	dbg.Main.Printf(" n/%d media descriptions present", len(sd.MediaDescriptions))
 
 	ncandidates := 0
 	for _, v := range strings.Split(strings.ReplaceAll(rtcsd.SDP, "\r\n", "\n"), "\n") {
 		if strings.HasPrefix(v, "a=candidate") {
-			dbg.ice.Println(wherefrom, v)
+			dbg.Ice.Println(wherefrom, v)
 			ncandidates++
 		}
 	}
-	dbg.ice.Println(wherefrom, "ice candidates found/printed", ncandidates)
+	dbg.Ice.Println(wherefrom, "ice candidates found/printed", ncandidates)
 
 }
 
@@ -1253,14 +1284,14 @@ func dialUpstream(link *Room) error {
 	}
 	defer peerConnection.Close()
 
-	dbg.url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
+	dbg.Url.Println("dialing upstream", link.roomname, unsafe.Pointer(link), u.String())
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		OnTrack2(peerConnection, track, receiver, link)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		dbg.main.Println("dial ICE Connection State has changed", icecs.String())
+		dbg.Main.Println("dial ICE Connection State has changed", icecs.String())
 	})
 
 	recvonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}
@@ -1293,7 +1324,7 @@ func dialUpstream(link *Room) error {
 
 	// send offer, get answer
 
-	dbg.main.Println("sending post", u.String())
+	dbg.Main.Println("sending post", u.String())
 
 	req, err := http.NewRequest("POST", u.String(), strings.NewReader(offer.SDP))
 	if err != nil {
@@ -1311,7 +1342,7 @@ func dialUpstream(link *Room) error {
 	}
 	defer resp.Body.Close()
 
-	dbg.main.Println("dial connected")
+	dbg.Main.Println("dial connected")
 
 	answerraw, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -1350,7 +1381,7 @@ func processRTCP(rtpSender *webrtc.RTPSender) {
 			return
 		}
 
-		if dbg.receiverLostPackets.enabled {
+		if dbg.ReceiverLostPackets.enabled {
 			for _, pkt := range packets {
 				switch t := pkt.(type) {
 				case *rtcp.SenderReport:
@@ -1385,7 +1416,7 @@ func text2pcapLog(log *log.Logger, inbuf []byte) {
 	}
 	b.WriteString("!text2pcap")
 
-	dbg.main.Print(b.String())
+	dbg.Main.Print(b.String())
 }
 
 // logPacket writes text2pcap compatible lines
@@ -1415,14 +1446,14 @@ func OnTrack2(
 	link *Room) {
 
 	mimetype := track.Codec().MimeType
-	dbg.main.Println("OnTrack codec:", mimetype)
+	dbg.Main.Println("OnTrack codec:", mimetype)
 
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
-		dbg.main.Println("OnTrack audio", mimetype)
+		dbg.Main.Println("OnTrack audio", mimetype)
 
 		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker)
 		//here on error
-		dbg.main.Printf("audio reader %p exited", track)
+		dbg.Main.Printf("audio reader %p exited", track)
 		return
 	}
 
@@ -1433,9 +1464,9 @@ func OnTrack2(
 		panic("unexpected kind or mimetype:" + track.Kind().String() + ":" + mimetype)
 	}
 
-	dbg.main.Println("OnTrack RID():", track.RID())
-	dbg.main.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
-	dbg.main.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
+	dbg.Main.Println("OnTrack RID():", track.RID())
+	dbg.Main.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
+	dbg.Main.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
 
 	go func() {
 		var err error
@@ -1470,7 +1501,7 @@ func OnTrack2(
 	// one per track (OnTrack above)
 	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker)
 	//here on error
-	dbg.main.Printf("video reader %p exited", track)
+	dbg.Main.Printf("video reader %p exited", track)
 
 }
 
@@ -1642,7 +1673,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 // Blocks until PC is Closed
 func pubHandlerCreatePeerconn(offersdp string, link *Room, sdpCh chan *webrtc.SessionDescription) error {
 
-	dbg.main.Println("createIngressPeerConnection")
+	dbg.Main.Println("createIngressPeerConnection")
 
 	peerConnection, err := newPeerConnection()
 	if err != nil {
@@ -1655,7 +1686,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *Room, sdpCh chan *webrtc.Se
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
-		dbg.main.Println("ingress ICE Connection State has changed", icecs.String())
+		dbg.Main.Println("ingress ICE Connection State has changed", icecs.String())
 	})
 
 	// XXX 1 5 20 cam
@@ -1738,7 +1769,7 @@ func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 	}
 
 	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		dbg.peerConn.Println(debug+"/"+link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
+		dbg.PeerConn.Println(debug+"/"+link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
 
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
@@ -1795,7 +1826,7 @@ func (s *RtpSplicer) SpliceWriteRTP(trk WriteRtpIntf, p *rtp.Packet, unixnano in
 		s.tsOffset = p.Timestamp - (s.lastTS + uint32(td2))
 		s.snOffset = p.SequenceNumber - s.lastSN - 1
 
-		dbg.main.Printf("** ssrc change [txid] rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
+		dbg.Main.Printf("** ssrc change [txid] rtphz/%v td1/%v td2/%v tsdelta/%v sndelta/%v", rtphz, td1, td2, (p.Timestamp-s.tsOffset)-s.lastTS, (p.SequenceNumber-s.snOffset)-s.lastSN)
 	}
 
 	p.Timestamp -= s.tsOffset
@@ -1968,17 +1999,17 @@ func getDefRouteIntfAddrIPv4() (net.IP, error) {
 func startFtlListener(ln net.Listener) error {
 
 	for {
-		dbg.ftl.Println("ftl/waiting for accept on:", ln.Addr())
+		dbg.Ftl.Println("ftl/waiting for accept on:", ln.Addr())
 
 		netconn, err := ln.Accept()
 		if err != nil {
 			return fmt.Errorf("ftl: Accept() err %w", err)
 		}
 
-		dbg.ftl.Println("ftl/socket accepted")
+		dbg.Ftl.Println("ftl/socket accepted")
 
 		tcpconn := netconn.(*net.TCPConn)
-		ftlserver.NewTcpSession(log.Default(), dbg.ftl.Logger, tcpconn, findserver, *ftlUdpPort)
+		ftlserver.NewTcpSession(log.Default(), dbg.Ftl.Logger, tcpconn, findserver, *ftlUdpPort)
 		netconn.Close()
 	}
 	// unreachable
@@ -2166,8 +2197,8 @@ type XPacket struct {
 // Replay will replay a GOP to a subscribers tracks
 
 func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
-	dbg.goroutine.Println(unsafe.Pointer(t), "Replay() started")
-	defer dbg.goroutine.Println(unsafe.Pointer(t), "Replay() ended")
+	dbg.Goroutine.Println(unsafe.Pointer(t), "Replay() started")
+	defer dbg.Goroutine.Println(unsafe.Pointer(t), "Replay() ended")
 
 	var delta int64
 	var tmpAudSSRC uint32 = uint32(mrand.Int63())
@@ -2232,8 +2263,8 @@ func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
 }
 
 func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
-	dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
-	defer dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
+	dbg.Goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() started")
+	defer dbg.Goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() ended")
 
 	for {
 		room.tracks.Add(txt)
@@ -2256,9 +2287,9 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
 
 		if newroom, ok := getRoom(req); ok {
 			room = newroom
-			dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
+			dbg.Goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
 		} else {
-			dbg.goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() not switched to different room")
+			dbg.Goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() not switched to different room")
 		}
 
 	}
@@ -2328,16 +2359,16 @@ func RoomListRequestHandler() {
 				panic("bad")
 			}
 			if m.serial == serial {
-				dbg.switching.Println("/getSourceList same serial, saving")
+				dbg.Switching.Println("/getSourceList same serial, saving")
 				x = append(x, m)
 			} else {
-				dbg.switching.Println("/getSourceList not same serial, responding")
+				dbg.Switching.Println("/getSourceList not same serial, responding")
 				j := makeRoomListJson(serial)
 				sendback(j, m.jsonCh)
 			}
 
 		// this is a notice from internally, the room list has changed
-		case _, ok := <-newRoomNoticeCh:
+		case _, ok := <-roomSetChangedCh:
 			if !ok {
 				panic("bad")
 			}
@@ -2354,8 +2385,8 @@ func RoomListRequestHandler() {
 
 func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 
-	dbg.switching.Println("getSourceListHandler() enter")
-	defer dbg.switching.Println("getSourceListHandler() exit")
+	dbg.Switching.Println("getSourceListHandler() enter")
+	defer dbg.Switching.Println("getSourceListHandler() exit")
 
 	serial := r.URL.Query().Get("serial")
 
@@ -2387,8 +2418,8 @@ func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func Writer(ch chan *XPacket, t *TxTracks, name string) {
-	// pl("Writer started for:", name)
-	// defer pl("Writer ENDED for:", name)
+	dbg.Goroutine.Println("Writer() started")
+	defer dbg.Goroutine.Println("Writer() ended")
 
 	var rtpPktCopy rtp.Packet
 

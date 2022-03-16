@@ -68,7 +68,7 @@ func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux
 		}
 	}
 
-	if dbg.https.enabled {
+	if dbg.Https.enabled {
 		logger, err := zap.NewDevelopment()
 		checkFatal(err)
 		mgrTemplate.Logger = logger
@@ -134,13 +134,13 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		if IsPrivate(v) {
 			pubpriv = "Private"
 		}
-		dbg.https.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
+		dbg.Https.Printf("Registering DNS %v %v %v %v IP-addr", fqdn, dns.TypeToString[dnstype], normalip, pubpriv)
 
 		//log.Println("DDNS setting", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err := ddnsSetRecord(context.Background(), provider, fqdn, suffixCount, normalip, dnstype)
 		checkFatal(err)
 
-		dbg.https.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
+		dbg.Https.Println("DDNS waiting for propagation", fqdn, suffixCount, normalip, dns.TypeToString[dnstype])
 		err = ddnsWaitUntilSet(context.Background(), fqdn, normalip, dnstype)
 		checkFatal(err)
 
@@ -149,7 +149,7 @@ func ddnsRegisterIPAddresses(provider DDNSProvider, fqdn string, suffixCount int
 		localDNSIP, err := net.ResolveIPAddr(network, fqdn)
 		checkFatal(err)
 
-		dbg.https.Println("net.ResolveIPAddr", network, fqdn, localDNSIP.String())
+		dbg.Https.Println("net.ResolveIPAddr", network, fqdn, localDNSIP.String())
 
 		if !localDNSIP.IP.Equal(v) {
 			checkFatal(fmt.Errorf("Inconsistent DNS, please use another name"))
@@ -306,7 +306,7 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 
 	contextDialer, ok := dialer.(proxy.ContextDialer)
 	if !ok {
-		dbg.https.Println("cannot deref dialer")
+		dbg.Https.Println("cannot deref dialer")
 		//not fatal
 		return
 	}
@@ -341,9 +341,9 @@ func canConnectThroughProxy(proxyaddr string, tcpaddr *net.TCPAddr, network stri
 		// unexpected issue with proxy, but we stay silent
 		// unless debugging is on
 		// maybe Cam didn't pay proxy bill
-		dbg.https.Println("unexpected proxy behavior")
+		dbg.Https.Println("unexpected proxy behavior")
 		for xx := err; xx != nil; xx = errors.Unwrap(xx) {
-			dbg.https.Printf("%#v\n", xx)
+			dbg.Https.Printf("%#v\n", xx)
 		}
 
 		return

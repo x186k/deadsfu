@@ -125,7 +125,7 @@ func dnsMsgContainsCNAME(msg *dns.Msg) bool {
 }
 
 func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (*dns.Msg, error) {
-	dbg.ddns.Printf("dnsQuery(%v,%v,%v,%v) entered", fqdn, dns.TypeToString[rtype], nameservers, recursive)
+	dbg.Ddns.Printf("dnsQuery(%v,%v,%v,%v) entered", fqdn, dns.TypeToString[rtype], nameservers, recursive)
 
 	m := createDNSMsg(fqdn, rtype, recursive)
 	var in *dns.Msg
@@ -135,7 +135,7 @@ func dnsQuery(fqdn string, rtype uint16, nameservers []string, recursive bool) (
 
 		gotansr := err == nil && in != nil && len(in.Answer) > 0
 
-		dbg.ddns.Printf("sendDNSQuery(%v) retrn gotansr:%v nilerr:%v", ns, gotansr, err == nil)
+		dbg.Ddns.Printf("sendDNSQuery(%v) retrn gotansr:%v nilerr:%v", ns, gotansr, err == nil)
 
 		if gotansr {
 			return in, nil
@@ -163,11 +163,11 @@ func sendDNSQuery(m *dns.Msg, ns string) (*dns.Msg, error) {
 	// truncation and timeout; see https://github.com/caddyserver/caddy/issues/3639
 	truncated := in != nil && in.Truncated
 	timeoutErr := err != nil && strings.Contains(err.Error(), "timeout")
-	dbg.ddns.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v", ns, timeoutErr, truncated, err)
+	dbg.Ddns.Printf("udp sendDNSQuery result ns:%v tout:%v trunc:%v err:%v", ns, timeoutErr, truncated, err)
 	if truncated || timeoutErr {
 		tcp := &dns.Client{Net: "tcp", Timeout: dnsTimeout}
 		in, _, err = tcp.Exchange(m, ns)
-		dbg.ddns.Printf("tcp sendDNSQuery result ns:%v err:%v", ns, err)
+		dbg.Ddns.Printf("tcp sendDNSQuery result ns:%v err:%v", ns, err)
 	}
 	return in, err
 }
@@ -231,12 +231,12 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 	if !strings.HasSuffix(fqdn, ".") {
 		fqdn += "."
 	}
-	dbg.ddns.Printf("checkDNSPropagation(%v,%v,%v) entry", fqdn, resolvers, dns.TypeToString[dnstype])
+	dbg.Ddns.Printf("checkDNSPropagation(%v,%v,%v) entry", fqdn, resolvers, dns.TypeToString[dnstype])
 
 	// Initial attempt to resolve at the recursive NS
 	r, err := dnsQuery(fqdn, dnstype, resolvers, true)
 
-	dbg.ddns.Printf("dnsQuery() ret: dns.RcodeSuccess:%v nilerr:%v", r.Rcode == dns.RcodeSuccess, err == nil)
+	dbg.Ddns.Printf("dnsQuery() ret: dns.RcodeSuccess:%v nilerr:%v", r.Rcode == dns.RcodeSuccess, err == nil)
 	if err != nil {
 		return "", err
 	}
@@ -248,17 +248,17 @@ func checkDNSPropagation(fqdn string, resolvers []string, dnstype uint16) (strin
 
 	if r.Rcode == dns.RcodeSuccess {
 		fqdn = updateDomainWithCName(r, fqdn)
-		dbg.ddns.Printf("dnsQuery()  returns fqdn = %v", fqdn)
+		dbg.Ddns.Printf("dnsQuery()  returns fqdn = %v", fqdn)
 	}
 
 	authoritativeNss, err := lookupNameservers(fqdn, resolvers)
-	dbg.ddns.Printf("lookupNameservers() ret authnss:%v nilerr:%v", authoritativeNss, err == nil)
+	dbg.Ddns.Printf("lookupNameservers() ret authnss:%v nilerr:%v", authoritativeNss, err == nil)
 	if err != nil {
 		return "", err
 	}
 
 	xx, err := checkAuthoritativeNss(fqdn, authoritativeNss, dnstype)
-	dbg.ddns.Printf("checkAuthoritativeNss() ret val:%v nilerr:%v", xx, err == nil)
+	dbg.Ddns.Printf("checkAuthoritativeNss() ret val:%v nilerr:%v", xx, err == nil)
 
 	return xx, err
 

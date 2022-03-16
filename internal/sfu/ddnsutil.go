@@ -57,7 +57,7 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 	// you can change the nameservers here
 	resolvers := recursiveNameservers([]string{})
 
-	dbg.ddns.Println("ddnsWaitUntilSet resolvers", resolvers)
+	dbg.Ddns.Println("ddnsWaitUntilSet resolvers", resolvers)
 
 	var err error
 	start := time.Now()
@@ -73,7 +73,7 @@ func ddnsWaitUntilSet(ctx context.Context, dnsName string, dnsVal string, dnstyp
 		// 	return fmt.Errorf("checking DNS propagation of %s: %w", dnsName, err)
 		// }
 
-		dbg.ddns.Printf("wait()  want:%v got:%v from checkDNSPropagation()", dnsVal, val)
+		dbg.Ddns.Printf("wait()  want:%v got:%v from checkDNSPropagation()", dnsVal, val)
 
 		if val == dnsVal {
 			return nil

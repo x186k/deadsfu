@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/caddyserver/certmagic"
@@ -137,12 +138,51 @@ func printHttpsHelp() {
 	fmt.Println()
 }
 
-func processDebugFlag() {
+var dbg = struct {
+	Url                 FastLogger
+	Media               FastLogger
+	Https               FastLogger
+	Ice                 FastLogger
+	Main                FastLogger
+	Ftl                 FastLogger
+	Ddns                FastLogger
+	PeerConn            FastLogger
+	Switching           FastLogger
+	Goroutine           FastLogger
+	ReceiverLostPackets FastLogger
+	Roomcleaner         FastLogger
+	Numgoroutine        FastLogger
+}{
+	Url:                 FastLogger{},
+	Media:               FastLogger{},
+	Https:               FastLogger{},
+	Ice:                 FastLogger{},
+	Main:                FastLogger{},
+	Ftl:                 FastLogger{},
+	Ddns:                FastLogger{},
+	PeerConn:            FastLogger{},
+	Switching:           FastLogger{},
+	Goroutine:           FastLogger{},
+	ReceiverLostPackets: FastLogger{},
+	Roomcleaner:         FastLogger{},
+	Numgoroutine:        FastLogger{help: "periodically print goroutine count"},
+}
 
-	for k, v := range dbgMap {
-		v.Logger = log.New(io.Discard, k, 0)
-		v.enabled = false
+func getDbgMap() map[string]reflect.Value {
+
+	loggers := make(map[string]reflect.Value)
+	v := reflect.ValueOf(&dbg)
+	typeOfS := v.Elem().Type()
+	for i := 0; i < v.Elem().NumField(); i++ {
+		name := typeOfS.Field(i).Name
+		//pl(name,v.Elem().Field(i).CanSet())
+
+		loggers[name] = v.Elem().Field(i)
 	}
+	return loggers
+}
+
+func processDebugFlag() {
 
 	for _, v := range *debugFlag {
 		if v == "help" {
@@ -151,30 +191,53 @@ func processDebugFlag() {
 		}
 	}
 
-	for _, flagName := range *debugFlag {
+	flags := make(map[string]struct{})
 
-		val, ok := dbgMap[flagName]
-		if !ok {
-			checkFatal(fmt.Errorf("'%s' is not a valid debug option", flagName))
+	for _, name := range *debugFlag {
+		flags[name] = struct{}{}
+	}
+
+	loggers := getDbgMap()
+
+	for name := range flags {
+		if _, ok := loggers[name]; !ok {
+			checkFatal(fmt.Errorf("'%s' is not a valid debug option", name))
 		}
+	}
 
-		val.enabled = true
-		val.Logger = log.New(os.Stdout, "["+flagName+"] ", logFlags)
+	for name, l := range loggers {
+		a := FastLogger{
+			Logger:  log.New(io.Discard, name, 0),
+			enabled: false,
+		}
+		l.Set(reflect.ValueOf(a))
+	}
+
+	for name := range flags {
+		if l, ok := loggers[name]; ok {
+			a := FastLogger{
+				Logger:  log.New(os.Stdout, name, logFlags),
+				enabled: true,
+			}
+			l.Set(reflect.ValueOf(a))
+		}
 	}
 
 }
 
 func printDebugFlagHelp() {
 	fmt.Println()
+	fmt.Println("debug options may be comma seperated.")
 	fmt.Println("debug options available:")
-	for k := range dbgMap {
-		fmt.Println("--debug", k)
+	for k, v := range getDbgMap() {
+		fastlogger := v.Interface().(FastLogger)
+		fmt.Println("--debug", fmt.Sprintf("%-25s", k), "#", fastlogger.help)
 	}
 	fmt.Println()
 	fmt.Println(`Examples:
 $ ./deadsfu --debug help                    # show this help
-$ ./deadsfu --debug main,media              # print debug log for media and main/general debuging
-$ ./deadsfu --debug ice-candidates          # print debug log on ice-candidates`)
+$ ./deadsfu --debug Url,Media               # print url and media info
+$ ./deadsfu --debug Ice                     # print debug log on ice-candidates`)
 }
 
 func parseFlags() {
