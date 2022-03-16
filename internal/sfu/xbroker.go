@@ -78,7 +78,10 @@ func (b *XBroker) Start() {
 			}
 		}
 		b.mu.Unlock()
+	}
 
+	for k := range b.subs {
+		close(k) // close Writer() func
 	}
 }
 
