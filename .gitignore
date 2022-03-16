@@ -22,3 +22,5 @@ deadsfu.test
 # but include launch.json for debugging purposes
 .vscode/*
 !.vscode/launch.json
+
+.idea/*
