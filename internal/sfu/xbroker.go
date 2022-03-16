@@ -103,18 +103,15 @@ func (b *XBroker) Subscribe() chan *XPacket {
 
 func (b *XBroker) SubscribeReplay() chan *XPacket {
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	c := make(chan *XPacket, len(b.gop)+XBrokerOutputChannelDepth)
-
 	for _, v := range b.gop {
 		c <- v // pre load gop into channel
 	}
 
-	b.subs[c] = struct{}{}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-	//pl("replay chan preloaded with N", len(b.gop))
+	b.subs[c] = struct{}{}
 
 	return c
 }
