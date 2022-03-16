@@ -123,6 +123,8 @@ func (b *XBroker) Unsubscribe(c chan *XPacket) {
 	if _, ok := b.subs[c]; ok {
 		delete(b.subs, c)
 		close(c)
+	} else {
+		log.Fatal("Unsubscribe on invalid chan")
 	}
 }
 
