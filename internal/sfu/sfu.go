@@ -347,8 +347,8 @@ func Main() {
 
 	verifyEmbedFiles()
 
-	go getSourceListGr()
-	go logGoroutineCountToDebugLog()
+	go RoomListRequestHandler()
+	if dbg.Numgoroutine.enabled {
 	go RoomTerminator()
 
 	if *dialUpstreamUrlFlag != "" {
@@ -2300,7 +2300,7 @@ func makeRoomListJson(serial int) []byte {
 	return xx
 }
 
-func getSourceListGr() {
+func RoomListRequestHandler() {
 
 	sendback := func(j []byte, jsnCh chan<- []byte) {
 		select {
