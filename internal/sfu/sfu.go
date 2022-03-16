@@ -2276,7 +2276,7 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
 		}()
 
 		req, open := <-subGrCh
-		room.xBroker.Unsubscribe(xpCh) // close the xbroker sub chan if not already
+
 		room.tracks.Remove(txt)        // remove from current room
 		if !open {
 			return
