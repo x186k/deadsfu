@@ -1750,7 +1750,7 @@ func pubHandlerCreatePeerconn(offersdp string, link *Room, sdpCh chan *webrtc.Se
 // this does not block until the PC is finished, you can do that with pcDone
 func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 	pcDone chan struct{},
-	connected chan bool) {
+	connected chan struct{}) {
 
 	pcDone = make(chan struct{})
 	connected = make(chan struct{}, 1) // size of one important! otherwise race cond!
@@ -1760,13 +1760,8 @@ func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 	onceClosePc := sync.Once{}
 
 	fCloseDone := func() { close(pcDone) }
-	fCloseConnected := func() {
-		select {
-		case connected <- true:
-		default:
-		}
-		close(connected)
-	}
+	fCloseConnected := func() { close(connected) }
+	fClosePc := func() { pc.Close() }
 
 	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
 		dbg.PeerConn.Println(debug+"/"+link.roomname, unsafe.Pointer(link), "ConnectionState", cs.String())
@@ -1774,13 +1769,18 @@ func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 		switch cs {
 		case webrtc.PeerConnectionStateConnected:
 
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
 			onceCloseConnected.Do(fCloseConnected)
+
 		case webrtc.PeerConnectionStateClosed:
 			fallthrough
 		case webrtc.PeerConnectionStateFailed:
 			fallthrough
 		case webrtc.PeerConnectionStateDisconnected:
-			onceCloseDone.Do(fCloseDone)
+
 			// IMPORTANT
 			// per 12/27/21 Conversation with Sean, the PC going to a closed
 			// state is NOT the last step, we need to Close() the PC when we want it
@@ -1788,11 +1788,10 @@ func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 			//12/27/21 this doesn't seem to start io.ErrPipeClosed on WriteRTP,
 			// but this is important none the less.
 			// get nil value when closed
+			onceClosePc.Do(fClosePc)
 
-			onceClosePc.Do(func() {
-				pc.Close()
-			})
-
+			onceCloseConnected.Do(fCloseConnected)
+			onceCloseDone.Do(fCloseDone)
 		}
 	})
 
