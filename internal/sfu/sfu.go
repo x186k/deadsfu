@@ -1036,9 +1036,9 @@ func subHandlerGr(offersdp string,
 	txset := &TxTrackPair{aud, vid}
 
 	go func() {
-		conn, ok := <-connected
+		_, ok := <-connected
 
-		if conn && ok {
+		if ok {
 			dbg.Goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "connwait: launching writer")
 
 			SubscriberGr(subGrCh, txset, link)
