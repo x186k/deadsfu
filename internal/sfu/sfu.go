@@ -227,42 +227,6 @@ func (r *RoomMap) GetList() []string {
 	return a
 }
 
-func (r *RoomMap) CloseDeadRooms() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	updated := false
-
-	for name, room := range r.roomMap {
-
-		if room.IsDone() {
-
-			updated = true
-			delete(r.roomMap, name)
-			room.Close()
-
-			dbg.Roomcleaner.Printf("CloseRoomIfNoPubNoSub() room:%s has no pubs, no subs, removing", name)
-
-		}
-	}
-
-	if updated {
-		select {
-		case roomSetChangedCh <- struct{}{}:
-		default:
-			errlog.Println("cannot send on newRoomCh")
-		}
-	}
-
-}
-
-func RoomTerminator() {
-	for {
-		time.Sleep(2 * time.Second)
-		rooms.CloseDeadRooms()
-	}
-}
-
 var rooms = NewRoomMap()
 
 var subMap = make(map[uuid.UUID]chan string)
