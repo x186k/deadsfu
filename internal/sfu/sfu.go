@@ -2492,7 +2492,9 @@ func (t *TxTracks) Add(p *TxTrackPair) {
 }
 
 func (t *TxTracks) Remove(p *TxTrackPair) {
+	dbg.Rooms.Println("TxTracks.Remove(pair)")
 	t.mu.Lock()
+
 	delete(t.live, p)
 	delete(t.replay, p)
 	t.mu.Unlock()
