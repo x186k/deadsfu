@@ -836,7 +836,7 @@ func getRoom(roomname string) (*Room, bool) {
 	return link, ok
 }
 
-func (rm *RoomMap) GetOrMake(roomname string) *Room {
+func (rm *RoomMap) GetRoomIncRef(roomname string, pubSide bool) (*Room, bool) {
 
 	roomname = fixRoomName(roomname)
 
@@ -845,20 +845,22 @@ func (rm *RoomMap) GetOrMake(roomname string) *Room {
 	defer rm.mu.Unlock()
 
 	link, ok := rm.roomMap[roomname]
-
 	if !ok {
 
-		link = &Room{
-			roomname: roomname,
-			xBroker:  NewXBroker(),
-			tracks:   NewTxTracks(),
-		}
-
-		go link.xBroker.Start()
-		ch := link.xBroker.Subscribe() // can no longer block
-		go Writer(ch, link.tracks, roomname)
+		link = NewRoom(roomname)
 
 		rm.roomMap[roomname] = link
+	}
+
+	dbg.Rooms.Printf("GetRoomIncRef() start %s", link)
+	defer dbg.Rooms.Printf("GetRoomIncRef() return %s", link)
+
+	var gotlock bool
+	if pubSide {
+		gotlock = link.PublisherTryLock()
+	} else {
+		gotlock = true
+		link.SubscriberIncRef()
 	}
 
 	// will never block, but new room notifications could get lost
@@ -868,7 +870,9 @@ func (rm *RoomMap) GetOrMake(roomname string) *Room {
 		errlog.Println("cannot send on newRoomCh")
 	}
 
-	return link
+	return link, gotlock
+}
+
 }
 
 func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
