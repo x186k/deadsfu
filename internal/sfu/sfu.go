@@ -2270,18 +2270,22 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
 
 		xpCh := room.xBroker.SubscribeReplay()
 		go func() {
-			defer room.xBroker.Unsubscribe(xpCh)
 			Replay(xpCh, room.tracks, txt)
+			room.xBroker.Unsubscribe(xpCh) // 2 calls is okay: here & after switch request
 		}()
 
 		req, open := <-subGrCh
 
-		room.tracks.Remove(txt)        // remove from current room
+		room.xBroker.Unsubscribe(xpCh) // 2 calls is okay: here & after switch request
+
+		room.tracks.Remove(txt) // remove from current room
+
 		if !open {
 			return
 		}
 
-		tmptxt := *txt // See note below: this is necessary to trigger Replay to return
+		// copy and change the address of txt. cause Replay() return. see note after function
+		tmptxt := *txt
 		txt = &tmptxt
 
 		if newroom, ok := getRoom(req); ok {
