@@ -126,13 +126,13 @@ func (r *Room) PublisherTryLock() bool {
 	defer r.mu.Unlock()
 
 	if r.ingressBusy {
-		dbg.Roomcleaner.Printf("PublisherTryLock() room:%s already busy", r.roomname)
+		dbg.Rooms.Printf("PublisherTryLock() room:%s already busy", r.roomname)
 		return false // room ingres is busy!
 	}
 	r.ingressBusy = true
 	//r.lastInUse = time.Now()
 
-	dbg.Roomcleaner.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
+	dbg.Rooms.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
 
 	return true
 
@@ -141,7 +141,7 @@ func (r *Room) PublisherUnlock() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	dbg.Roomcleaner.Printf("PublisherUnlock() room:%s is now unlocked", r.roomname)
+	dbg.Rooms.Printf("PublisherUnlock() room:%s is now unlocked", r.roomname)
 
 	r.ingressBusy = false
 	//r.lastInUse = time.Now()
