@@ -869,6 +869,38 @@ func NewRoom(roomname string) *Room {
 	return room
 }
 
+func (rm *RoomMap) DecRef(roomname string, pubSide bool) {
+
+	roomname = fixRoomName(roomname)
+
+	//everything below here should be FAST
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	link, ok := rm.roomMap[roomname]
+	if !ok {
+		log.Fatal("DecRef missing room")
+	}
+
+	dbg.Rooms.Printf("DecRef() start %s", link)
+	defer dbg.Rooms.Printf("DecRef() return %s", link)
+
+	if pubSide {
+		link.PublisherUnlock()
+	} else {
+		link.SubscriberDecRef()
+	}
+
+	if link.IsEmpty() {
+
+		dbg.Rooms.Printf("DecRef() shutting down %s", roomname)
+
+		link.Shutdown()
+
+		delete(rm.roomMap, roomname)
+
+	}
+
 }
 
 func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
