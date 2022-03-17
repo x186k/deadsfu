@@ -135,6 +135,7 @@ func (r *Room) PublisherTryLock() bool {
 	dbg.Rooms.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
 
 	return true
+}
 
 func (r *Room) SubscriberIncRef() {
 	r.mu.Lock()
