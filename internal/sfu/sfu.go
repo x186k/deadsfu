@@ -136,7 +136,19 @@ func (r *Room) PublisherTryLock() bool {
 
 	return true
 
+func (r *Room) SubscriberIncRef() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.subCount++
 }
+
+func (r *Room) SubscriberDecRef() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.subCount--
+}
+
+// PublisherUnlock this will shutdown room if it has no pubs, no subs
 func (r *Room) PublisherUnlock() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
