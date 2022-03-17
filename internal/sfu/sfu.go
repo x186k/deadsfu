@@ -361,7 +361,6 @@ func Main() {
 	if dbg.Numgoroutine.enabled {
 		go PrintGoroutineCount()
 	}
-	go RoomTerminator()
 
 	if *dialUpstreamUrlFlag != "" {
 		dialUpstreamUrl, err = url.Parse(*dialUpstreamUrlFlag)
