@@ -159,11 +159,14 @@ func (r *Room) PublisherUnlock() {
 	//r.lastInUse = time.Now()
 }
 
-func (r *Room) IsRoomBusy() bool {
+func (r *Room) IsEmpty() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.tracks.IsEmpty() //double lock, maintain order
+	//roomEmpty := !r.ingressBusy && r.tracks.IsEmpty()
+	roomEmpty := !r.ingressBusy && r.subCount == 0
+
+	return roomEmpty
 }
 
 func (r *Room) IsDone() bool {
