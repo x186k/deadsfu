@@ -1061,10 +1061,11 @@ func subHandlerGr(offersdp string,
 
 // Blocks until PC is Closed
 func subHandler(rw http.ResponseWriter, r *http.Request) {
+	dbg.Goroutine.Println("subHandler entry", r.URL.String())
+	defer dbg.Goroutine.Println("subHandler exit", r.URL.String())
 	defer r.Body.Close()
-	var err error
 
-	dbg.Main.Println("subHandler request", r.URL.String())
+	var err error
 
 	// rx offer, tx answer
 	// offer from browser
@@ -1076,10 +1077,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := rooms.GetOrMake(roomname)
-
 	subuuid := getSubuuidFromRequest(r)
-
 	subGrCh := make(chan string, 1)
 
 	if subuuid != nil {
@@ -1089,12 +1087,15 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		subMapMutex.Unlock()
 	}
 
-	dbg.Url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
-
 	sdpCh := make(chan *webrtc.SessionDescription) //
 	errCh := make(chan error)
 
 	go func() {
+
+		link, _ := rooms.GetRoomIncRef(roomname, false)
+		defer rooms.DecRef(roomname, false)
+
+		dbg.Url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
 		err := subHandlerGr(string(offersdpbytes), link, sdpCh, subGrCh)
 		if err != nil {
