@@ -81,7 +81,7 @@ func (b *XBroker) Start() {
 	}
 
 	// NO NO NO!
-	// we require/expect all subscribers 
+	// we require/expect all subscribers
 	// to terminate independantly from the close of the broker input chan
 	//
 	// so, we don't close the subscriber's input channels.
@@ -126,6 +126,9 @@ func (b *XBroker) SubscribeReplay() chan *XPacket {
 	return c
 }
 
+// Unsubscribe
+// you may unsubscribe multiple times on the same channel
+// this functionality is needed for the Replay() func logic
 func (b *XBroker) Unsubscribe(c chan *XPacket) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -133,8 +136,6 @@ func (b *XBroker) Unsubscribe(c chan *XPacket) {
 	if _, ok := b.subs[c]; ok {
 		delete(b.subs, c)
 		close(c)
-	} else {
-		log.Fatal("Unsubscribe on invalid chan")
 	}
 }
 
