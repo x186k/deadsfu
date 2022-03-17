@@ -851,6 +851,24 @@ func (rm *RoomMap) GetRoomIncRef(roomname string, pubSide bool) (*Room, bool) {
 	return link, gotlock
 }
 
+func NewRoom(roomname string) *Room {
+
+	xbroker := NewXBroker()
+	go xbroker.Start()
+	wrch := xbroker.Subscribe()
+
+	room := &Room{
+		roomname:   roomname,
+		xBroker:    xbroker,
+		tracks:     NewTxTracks(),
+		writerChan: wrch,
+	}
+
+	go Writer(wrch, room.tracks, roomname) // last two vars are immutable, no race possible
+
+	return room
+}
+
 }
 
 func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
