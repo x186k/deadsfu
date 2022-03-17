@@ -112,10 +112,12 @@ type myFtlServer struct {
 // this struct, is currently IMMUTABLE, ideally, it stays that way
 type Room struct {
 	mu          sync.Mutex
-	roomname    string
-	ingressBusy bool
 	xBroker     *XBroker
 	tracks      *TxTracks
+	writerChan  chan *XPacket
+	subCount    int
+	roomname    string
+	ingressBusy bool
 }
 
 func (r *Room) PublisherTryLock() bool {
