@@ -150,7 +150,7 @@ var dbg = struct {
 	Switching           FastLogger
 	Goroutine           FastLogger
 	ReceiverLostPackets FastLogger
-	Roomcleaner         FastLogger
+	Rooms               FastLogger
 	Numgoroutine        FastLogger
 }{
 	Url:                 FastLogger{},
@@ -164,7 +164,7 @@ var dbg = struct {
 	Switching:           FastLogger{},
 	Goroutine:           FastLogger{},
 	ReceiverLostPackets: FastLogger{},
-	Roomcleaner:         FastLogger{},
+	Rooms:               FastLogger{},
 	Numgoroutine:        FastLogger{help: "periodically print goroutine count"},
 }
 
