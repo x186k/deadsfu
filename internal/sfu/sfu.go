@@ -741,9 +741,6 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	link := rooms.GetOrMake(roomname)
-
-	dbg.Url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
 	sdpCh := make(chan *webrtc.SessionDescription)
 	errCh := make(chan error)
@@ -752,15 +749,18 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		panic("internal-err-120")
 	}
 
-	if !link.PublisherTryLock() {
-		err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
-		log.Println(err.Error())
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	go func() {
-		defer link.PublisherUnlock()
+
+		link, ok := rooms.GetRoomIncRef(roomname, true)
+		defer rooms.DecRef(roomname, true)
+		if !ok {
+			err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
+			log.Println(err.Error())
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		dbg.Url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
 		err := pubHandlerCreatePeerconn(string(offer), link, sdpCh)
 		if err != nil {
