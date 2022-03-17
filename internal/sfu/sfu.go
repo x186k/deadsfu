@@ -169,13 +169,15 @@ func (r *Room) IsEmpty() bool {
 	return roomEmpty
 }
 
-func (r *Room) IsDone() bool {
+func (r *Room) Shutdown() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	roomEmpty := !r.ingressBusy && r.tracks.IsEmpty()
+	close(r.writerChan)
+	r.xBroker.Stop()
 
-	return roomEmpty
+	// unneeded, race causing
+	// r.tracks = nil
 }
 
 func (r *Room) Close() {
