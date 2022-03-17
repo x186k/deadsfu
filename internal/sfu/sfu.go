@@ -180,13 +180,11 @@ func (r *Room) Shutdown() {
 	// r.tracks = nil
 }
 
-func (r *Room) Close() {
+func (r *Room) String() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.xBroker.Stop()
-	r.tracks = nil
-
+	return fmt.Sprintf("room:%v now has a publisher:%v and subcount:%v", r.roomname, r.ingressBusy, r.subCount)
 }
 
 type MsgGetSourcesList struct {
