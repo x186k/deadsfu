@@ -2397,11 +2397,10 @@ func RoomListRequestHandler() {
 			if !ok {
 				panic("bad")
 			}
+			dbg.Rooms.Printf("/getRoomList cur-serial:%d req-serial:%d", serial, m.serial)
 			if m.serial == serial {
-				dbg.Switching.Println("/getSourceList same serial, saving")
 				x = append(x, m)
 			} else {
-				dbg.Switching.Println("/getSourceList not same serial, responding")
 				j := makeRoomListJson(serial)
 				sendback(j, m.jsonCh)
 			}
@@ -2413,6 +2412,9 @@ func RoomListRequestHandler() {
 			}
 
 			serial++
+
+			dbg.Rooms.Printf("room list changes new serial:%d", serial)
+
 			j := makeRoomListJson(serial)
 
 			for _, v := range x {
@@ -2424,8 +2426,8 @@ func RoomListRequestHandler() {
 
 func getRoomListHandler(rw http.ResponseWriter, r *http.Request) {
 
-	dbg.Switching.Println("getSourceListHandler() enter")
-	defer dbg.Switching.Println("getSourceListHandler() exit")
+	dbg.Rooms.Println("getRoomListHandler() enter")
+	defer dbg.Rooms.Println("getRoomListHandler() exit")
 
 	serial := r.URL.Query().Get("serial")
 
