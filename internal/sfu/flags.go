@@ -216,7 +216,7 @@ func processDebugFlag() {
 	for name := range flags {
 		if l, ok := loggers[name]; ok {
 			a := FastLogger{
-				Logger:  log.New(os.Stdout, name, logFlags),
+				Logger:  log.New(os.Stdout, "["+name+"] ", logFlags),
 				enabled: true,
 			}
 			l.Set(reflect.ValueOf(a))

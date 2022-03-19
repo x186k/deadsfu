@@ -270,19 +270,19 @@ type FastLogger struct {
 
 func (x *FastLogger) Print(args ...interface{}) {
 	if x.enabled {
-		_ = log.Output(2, fmt.Sprint(args...))
+		_ = x.Output(2, fmt.Sprint(args...))
 	}
 }
 
 func (x *FastLogger) Printf(format string, args ...interface{}) {
 	if x.enabled {
-		_ = log.Output(2, fmt.Sprintf(format, args...))
+		_ = x.Output(2, fmt.Sprintf(format, args...))
 	}
 }
 
 func (x *FastLogger) Println(args ...interface{}) {
 	if x.enabled {
-		_ = log.Output(2, fmt.Sprintln(args...))
+		_ = x.Output(2, fmt.Sprintln(args...))
 	}
 }
 
