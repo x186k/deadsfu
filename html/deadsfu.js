@@ -38,6 +38,7 @@ window.onload = async function () {
     //let roomname = window.location.pathname
     let roomname = searchParams.get('room')
     let mp4 = searchParams.get('mp4')
+    let nolongpoll = searchParams.get('nolongpoll')
     // no, DRY: the go code does this also
     // if (!roomname) {
     //     roomname = "mainroom"
@@ -105,7 +106,7 @@ window.onload = async function () {
             subuuid = uuidv4()
         }
         window.location.hash = '?subuuid=' + subuuid
-        startRoomListFetchLoop(headers, subuuid)
+        startRoomListFetchLoop(headers, subuuid, nolongpoll)
 
         let whapUrl = '/whap?room=' + roomname
 
@@ -235,10 +236,11 @@ window.switchRoom = switchRoom
 /**
  * @param {Headers} hdrs could contain 'Authorization'
  * @param {string} subuuid
+ * @param {string} nolongpoll
  */
-async function startRoomListFetchLoop(hdrs, subuuid) {
+async function startRoomListFetchLoop(hdrs, subuuid, nolongpoll) {
 
-    setTimeout(myCallback, 0, 'xx')  //no delay
+    setTimeout(myCallback, 0, -10)  //no delay
 
     /**
      *  @param {string} serial this number is used to block by server
@@ -251,7 +253,6 @@ async function startRoomListFetchLoop(hdrs, subuuid) {
             headers: hdrs,
             /** @type RequestCache */  cache: "no-store"
         }
-
 
         let resp = { status: -1 }
         try { // without try/catch, a thrown except from fetch exits our 'thread'
@@ -267,7 +268,18 @@ async function startRoomListFetchLoop(hdrs, subuuid) {
             //console.debug('json', json)
             //console.debug('jsono', obj)
             updateSourcesNav(hdrs, obj.rooms, subuuid)
-            setTimeout(myCallback, 0, obj.serial)
+
+            let serial = obj.serial
+            let sleep = 0
+            if (nolongpoll) {
+                // sfu will only block+long poll when serial's match
+                // this prevents sfu from blocking/long-polling
+                // but then we need to increase the sleep time
+                serial = '-5'
+                sleep = 3000
+            }
+
+            setTimeout(myCallback, sleep, serial)
         } else {
             // failure
             setTimeout(myCallback, 2000) // wait two sec before try again
