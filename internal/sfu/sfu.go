@@ -900,6 +900,12 @@ func (rm *RoomMap) DecRef(roomname string, pubSide bool) {
 
 		delete(rm.roomMap, roomname)
 
+		select {
+		case roomSetChangedCh <- struct{}{}:
+		default:
+			errlog.Println("cannot send on newRoomCh")
+		}
+
 	}
 
 }
