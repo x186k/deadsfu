@@ -115,6 +115,7 @@ type Room struct {
 	xBroker     *XBroker
 	tracks      *TxTracks
 	writerChan  chan *XPacket
+	doneClose   chan struct{}
 	subCount    int
 	roomname    string
 	ingressBusy bool
@@ -174,7 +175,12 @@ func (r *Room) Shutdown() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	close(r.writerChan)
+	close(r.doneClose)//fast async
+	close(r.writerChan)//fast async
+	
+	
+	//NO
+	// we now require the idleGenerator to close the broker input
 	r.xBroker.Stop()
 
 	// unneeded, race causing
@@ -855,17 +861,22 @@ func (rm *RoomMap) GetRoomIncRef(roomname string, pubSide bool) (*Room, bool) {
 func NewRoom(roomname string) *Room {
 
 	xbroker := NewXBroker()
+
 	go xbroker.Start()
-	wrch := xbroker.Subscribe()
 
+	writerInCh := xbroker.Subscribe()
 	room := &Room{
-		roomname:   roomname,
-		xBroker:    xbroker,
-		tracks:     NewTxTracks(),
-		writerChan: wrch,
+		mu:          sync.Mutex{},
+		xBroker:     xbroker,
+		tracks:      NewTxTracks(),
+		writerChan:  writerInCh,
+		doneClose:   make(chan struct{}),
+		subCount:    0,
+		roomname:    roomname,
+		ingressBusy: false,
 	}
-
-	go Writer(wrch, room.tracks, roomname) // last two vars are immutable, no race possible
+	go Writer(writerInCh, room.tracks, roomname) // last two vars are immutable, no race possible
+	go idleGeneratorGr(room.doneClose, idleMediaPackets, xbroker.inCh)
 
 	return room
 }
@@ -1586,9 +1597,7 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 	}
 }
 
-var _ = noSignalGeneratorGr
-
-func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- *XPacket) {
+func idleGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh chan<- *XPacket) {
 
 	iskf := make([]bool, len(idlePkts))
 
@@ -1637,7 +1646,7 @@ func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh
 			idleCh <- xp // downstreams shouldn't touch XPacket contents
 
 			// put termination check after send to better detect races
-			// (dont minimize race period, maximize it)
+			// (dont minimize race window, maximize it)
 			// ~4 ns
 			select {
 			case _, ok := <-doneSync:
@@ -1658,9 +1667,9 @@ func noSignalGeneratorGr(doneSync <-chan struct{}, idlePkts []rtp.Packet, idleCh
 	}
 }
 
-var _ = noSignalSwitchGr
+var _ = idleSwitchGr
 
-func noSignalSwitchGr(liveCh <-chan *XPacket, noSignalCh <-chan *XPacket, outCh chan<- *XPacket) {
+func idleSwitchGr(liveCh <-chan *XPacket, noSignalCh <-chan *XPacket, outCh chan<- *XPacket) {
 
 	var lastVideoRxTime time.Time = time.Now()
 	var sendingIdleVid bool = true

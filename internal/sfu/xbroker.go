@@ -1,8 +1,10 @@
 package sfu
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 //credit for inspiration to https://stackoverflow.com/a/49877632/86375
@@ -34,9 +36,12 @@ var TimerXPacket XPacket
 
 func NewXBroker() *XBroker {
 	return &XBroker{
-		inCh: make(chan *XPacket, XBrokerInputChannelDepth),
-		subs: make(map[chan *XPacket]struct{}),
-		gop:  make([]*XPacket, 0, 2000),
+		mu:        sync.Mutex{},
+		subs:      make(map[chan *XPacket]struct{}),
+		inCh:      make(chan *XPacket, XBrokerInputChannelDepth),
+		gop:       make([]*XPacket, 0, 2000),
+		droppedRx: 0,
+		droppedTx: 0,
 	}
 }
 
@@ -44,11 +49,43 @@ func (b *XBroker) Start() {
 
 	gotKF := false
 
+	var lastVideo int64 = nanotime()
+	var sendingIdleVid bool = true
+
 	for m := range b.inCh {
 		//b.capacityMaxRx = MaxInt(b.capacityMaxRx, cap(b.inCh)+1)
 
-		if m.Typ != Video && m.Typ != Audio {
-			panic("invalid xpkt type")
+		switch m.Typ {
+		case Audio:
+		case Video:
+
+			lastVideo = m.Arrival // faster than nanotime()
+
+			if sendingIdleVid && m.Keyframe {
+				sendingIdleVid = false
+				//log.Println("SWITCHING TO INPUT, NOW INPUT VIDEO PRESENT")
+			}
+
+			if sendingIdleVid {
+				continue
+			}
+		case IdleVideo:
+
+			rxActive := m.Arrival-lastVideo <= int64(time.Second) // use arrival, not nanotime(), its cheaper
+
+			if !rxActive && !sendingIdleVid && m.Keyframe {
+				sendingIdleVid = true
+				//log.Println("SWITCHING TO IDLE, NO INPUT VIDEO PRESENT")
+			}
+
+			if !sendingIdleVid {
+				continue
+			}
+
+			m.Typ = Video //racy??
+
+		default:
+			log.Fatal("invalid xpkt type")
 		}
 
 		// fast block
@@ -96,6 +133,8 @@ func (b *XBroker) Start() {
 }
 
 func (b *XBroker) Stop() {
+	//panic("this is done by idle generator")
+	//racy
 	close(b.inCh)
 }
 
