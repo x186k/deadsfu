@@ -1,6 +1,6 @@
 module github.com/x186k/deadsfu
 
-go 1.16
+go 1.18
 
 require (
 	github.com/caddyserver/certmagic v0.14.6-0.20210923203551-1bbe11e2914b
