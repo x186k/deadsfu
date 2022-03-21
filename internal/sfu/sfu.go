@@ -2277,8 +2277,6 @@ func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
 			sleep = 0
 		}
 
-		time.Sleep(time.Duration(sleep))
-
 		copy := xp.Pkt
 
 		switch xp.Typ {
@@ -2287,6 +2285,9 @@ func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
 		case Video:
 			copy.SSRC = tmpVidSSRC
 		}
+
+		time.Sleep(time.Duration(sleep))
+
 		// you cannot use m.now for the nano timestamp
 		// these packets have been delayed,
 		// and those old timestamps won't play well
