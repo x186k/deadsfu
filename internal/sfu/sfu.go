@@ -337,18 +337,15 @@ func validateEmbedFiles() {
 }
 
 func Init() {
-	pl(nanotime() / 1000000)
 	bi, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
 	checkFatal(err)
 	mrand.Seed(bi.Int64())
 	validateEmbedFiles()
 	idleMediaPackets = idleMediaLoader()
-	pl(nanotime() / 1000000)
 }
 
 func Main() {
 	var err error
-	pl(nanotime() / 1000000)
 
 	log.SetFlags(logFlags)
 	log.SetPrefix("[log] ")
