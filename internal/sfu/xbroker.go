@@ -33,7 +33,6 @@ type XBroker struct {
 }
 
 var TimerXPacket XPacket
-var xbrokerOverflow int32
 
 func NewXBroker() *XBroker {
 	return &XBroker{

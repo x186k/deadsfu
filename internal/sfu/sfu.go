@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
-	"sync/atomic"
 
 	"encoding/json"
 	"math"
@@ -112,13 +111,14 @@ type myFtlServer struct {
 // mostly the channel on which a /pub puts media for a /sub to send out
 // this struct, is currently IMMUTABLE, ideally, it stays that way
 type Room struct {
-	mu      sync.Mutex
-	xBroker *XBroker
-	tracks  *TxTracks
-
-	doneClose     chan struct{}
-	roomname      string
-	publisherLock bool
+	mu          sync.Mutex
+	xBroker     *XBroker
+	tracks      *TxTracks
+	writerChan  chan *XPacket
+	doneClose   chan struct{}
+	subCount    int
+	roomname    string
+	ingressBusy bool
 }
 
 func (r *Room) PublisherTryLock() bool {
@@ -126,11 +126,11 @@ func (r *Room) PublisherTryLock() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.publisherLock {
+	if r.ingressBusy {
 		dbg.Rooms.Printf("PublisherTryLock() room:%s already busy", r.roomname)
 		return false // room ingres is busy!
 	}
-	r.publisherLock = true
+	r.ingressBusy = true
 	//r.lastInUse = time.Now()
 
 	dbg.Rooms.Printf("PublisherTryLock() room:%s is now locked", r.roomname)
@@ -138,26 +138,60 @@ func (r *Room) PublisherTryLock() bool {
 	return true
 }
 
-func (r *Room) ShutdownIfEmpty() {
+func (r *Room) SubscriberIncRef() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.subCount++
+}
+
+func (r *Room) SubscriberDecRef() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.subCount--
+}
+
+// PublisherUnlock this will shutdown room if it has no pubs, no subs
+func (r *Room) PublisherUnlock() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	//empty := !r.ingressBusy && r.tracks.IsEmpty()
-	empty := !r.publisherLock && r.tracks.IsEmpty()
+	dbg.Rooms.Printf("PublisherUnlock() room:%s is now unlocked", r.roomname)
 
-	if empty {
-		close(r.doneClose)
-	}
+	r.ingressBusy = false
+	//r.lastInUse = time.Now()
+}
+
+func (r *Room) IsEmpty() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	//roomEmpty := !r.ingressBusy && r.tracks.IsEmpty()
+	roomEmpty := !r.ingressBusy && r.subCount == 0
+
+	return roomEmpty
+}
+
+func (r *Room) Shutdown() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	close(r.doneClose)//fast async
+	close(r.writerChan)//fast async
+	
+	
+	//NO
+	// we now require the idleGenerator to close the broker input
+	r.xBroker.Stop()
+
+	// unneeded, race causing
+	// r.tracks = nil
 }
 
 func (r *Room) String() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return fmt.Sprintf("room:%v publocked:%v tracksempty:%v",
-		r.roomname,
-		r.publisherLock,
-		r.tracks.IsEmpty())
+	return fmt.Sprintf("room:%v now has a publisher:%v and subcount:%v", r.roomname, r.ingressBusy, r.subCount)
 }
 
 type MsgGetSourcesList struct {
@@ -177,6 +211,14 @@ func NewRoomMap() *RoomMap {
 	return &RoomMap{
 		roomMap: make(map[string]*Room),
 	}
+}
+
+func (r *RoomMap) Get(name string) (*Room, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	room, ok := r.roomMap[name]
+	return room, ok
 }
 
 func (r *RoomMap) GetList() []string {
@@ -703,21 +745,36 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
-	roomname = fixRoomName(roomname)
 
-	
+	sdpCh := make(chan *webrtc.SessionDescription)
+	errCh := make(chan error)
 
 	if *dialUpstreamUrlFlag != "" {
 		panic("internal-err-120")
 	}
-	ansCh := make(chan msgNewPubAns)
-	
-	controlCh <- msgNewPub{
-		roomname:  roomname,
-		offer: string(offer),
-		ansCh:   ansCh,
-		xpch:  nil,
-	}  // XXX add select?
+
+	go func() {
+
+		link, ok := rooms.GetRoomIncRef(roomname, true)
+		defer rooms.DecRef(roomname, true)
+		if !ok {
+			err := fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
+			log.Println(err.Error())
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		dbg.Url.Println("pubHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
+
+		err := pubHandlerCreatePeerconn(string(offer), link, sdpCh)
+		if err != nil {
+			errlog.Println(err.Error())
+			select {
+			case errCh <- err:
+			default:
+			}
+		}
+	}()
 
 	select {
 	case <-time.NewTimer(time.Second * 10).C:
@@ -725,20 +782,19 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 
-	case a := <-ansCh:
-
-		if a.err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
+	case answersd := <-sdpCh:
 		rw.Header().Set("Content-Type", "application/sdp")
 		rw.WriteHeader(201)
-		_, err = rw.Write([]byte(a.sd.SDP))
+		_, err = rw.Write([]byte(answersd.SDP))
 		if err != nil {
 			log.Println(err.Error())
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
+
+	case err := <-errCh:
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+
+		//case <-time.NewTicker(24*time.Hour).C:
 	}
 
 }
@@ -754,28 +810,40 @@ func fixRoomName(name string) string {
 	return name
 }
 
-func (rm *RoomMap) GetRoom(roomname string) (r *Room) {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
+func getRoom(roomname string) (*Room, bool) {
 
 	roomname = fixRoomName(roomname)
 
-	if link, ok := rm.roomMap[roomname]; ok {
-		return link
+	link, ok := rooms.Get(roomname)
+	return link, ok
+}
+
+func (rm *RoomMap) GetRoomIncRef(roomname string, pubSide bool) (*Room, bool) {
+
+	roomname = fixRoomName(roomname)
+
+	//everything below here should be FAST
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	link, ok := rm.roomMap[roomname]
+	if !ok {
+
+		link = NewRoom(roomname)
+
+		rm.roomMap[roomname] = link
 	}
 
-	room := &Room{
-		mu:            sync.Mutex{},
-		xBroker:       NewXBroker(),
-		tracks:        NewTxTracks(),
-		doneClose:     make(chan struct{}),
-		roomname:      roomname,
-		publisherLock: false,
+	dbg.Rooms.Printf("GetRoomIncRef() start %s", link)
+	defer dbg.Rooms.Printf("GetRoomIncRef() return %s", link)
+
+	var gotlock bool
+	if pubSide {
+		gotlock = link.PublisherTryLock()
+	} else {
+		gotlock = true
+		link.SubscriberIncRef()
 	}
-
-	go room.roomGr()
-
-	rm.roomMap[roomname] = room
 
 	// will never block, but new room notifications could get lost
 	select {
@@ -784,53 +852,70 @@ func (rm *RoomMap) GetRoom(roomname string) (r *Room) {
 		errlog.Println("cannot send on newRoomCh")
 	}
 
+	return link, gotlock
+}
+
+func NewRoom(roomname string) *Room {
+
+	xbroker := NewXBroker()
+
+	go xbroker.Start()
+
+	writerInCh := xbroker.Subscribe()
+	room := &Room{
+		mu:          sync.Mutex{},
+		xBroker:     xbroker,
+		tracks:      NewTxTracks(),
+		writerChan:  writerInCh,
+		doneClose:   make(chan struct{}),
+		subCount:    0,
+		roomname:    roomname,
+		ingressBusy: false,
+	}
+	go Writer(writerInCh, room.tracks, roomname) // last two vars are immutable, no race possible
+	go idleGeneratorGr(room.doneClose, idleMediaPackets, xbroker.inCh)
+
 	return room
 }
 
-func (r *Room) roomGr() {
+func (rm *RoomMap) DecRef(roomname string, pubSide bool) {
 
-	writerInCh := r.xBroker.Subscribe()
+	roomname = fixRoomName(roomname)
 
-	go r.xBroker.Start()
+	//everything below here should be FAST
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
 
-	go Writer(writerInCh, r.tracks, r.roomname) // last two vars are immutable, no race possible
-
-	idledone := make(chan struct{})
-	go idleGeneratorGr(idledone, idleMediaPackets, r.xBroker.inCh)
-
-	_, ok := <-r.doneClose
-	if ok {
-		log.Fatal("msg not okay")
+	link, ok := rm.roomMap[roomname]
+	if !ok {
+		log.Fatal("DecRef missing room")
 	}
 
-	idledone <- struct{}{} // sync end idle generator
+	dbg.Rooms.Printf("DecRef() start %s", link)
+	defer dbg.Rooms.Printf("DecRef() return %s", link)
 
-	close(writerInCh)
-
-	r.xBroker.Stop()
-
-}
-
-func (r *Room) GetPubLock() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.publisherLock {
-		return false
+	if pubSide {
+		link.PublisherUnlock()
+	} else {
+		link.SubscriberDecRef()
 	}
-	r.publisherLock = true
-	return true
-}
-func (room *Room) ReleasePubLockShutdownIfEmpty() {
-	room.mu.Lock()
-	defer room.mu.Unlock()
 
-	if !room.publisherLock {
-		log.Fatal("bad ReleasePubLock")
+	if link.IsEmpty() {
+
+		dbg.Rooms.Printf("DecRef() shutting down %s", roomname)
+
+		link.Shutdown()
+
+		delete(rm.roomMap, roomname)
+
+		select {
+		case roomSetChangedCh <- struct{}{}:
+		default:
+			errlog.Println("cannot send on newRoomCh")
+		}
+
 	}
-	room.publisherLock = false
 
-	room.ShutdownIfEmpty()
 }
 
 func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
@@ -984,7 +1069,7 @@ func subHandlerGr(offersdp string,
 
 	dbg.Goroutine.Println("sub/"+link.roomname, unsafe.Pointer(link), "finally done!")
 
-	close(subGrCh) // the room can be signaled to be removed at receiver
+	close(subGrCh)
 
 	return nil
 }
@@ -1022,11 +1107,12 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 
 	go func() {
 
-		room := rooms.GetRoom(roomname)
+		link, _ := rooms.GetRoomIncRef(roomname, false)
+		defer rooms.DecRef(roomname, false)
 
-		dbg.Url.Println("subHandler", room.roomname, unsafe.Pointer(room), r.URL.String())
+		dbg.Url.Println("subHandler", link.roomname, unsafe.Pointer(link), r.URL.String())
 
-		err := subHandlerGr(string(offersdpbytes), room, sdpCh, subGrCh)
+		err := subHandlerGr(string(offersdpbytes), link, sdpCh, subGrCh)
 		if err != nil {
 			errlog.Println(err.Error())
 			select {
@@ -1407,7 +1493,7 @@ func OnTrack2(
 	peerConnection *webrtc.PeerConnection,
 	track *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
-	xpch chan<-*XPacket) {
+	link *Room) {
 
 	mimetype := track.Codec().MimeType
 	dbg.Main.Println("OnTrack codec:", mimetype)
@@ -1415,7 +1501,7 @@ func OnTrack2(
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		dbg.Main.Println("OnTrack audio", mimetype)
 
-		inboundTrackReader(track, track.Codec().ClockRate, Audio, xpch)
+		inboundTrackReader(track, track.Codec().ClockRate, Audio, link.xBroker)
 		//here on error
 		dbg.Main.Printf("audio reader %p exited", track)
 		return
@@ -1463,7 +1549,7 @@ func OnTrack2(
 	//	var lastts uint32
 	//this is the main rtp read/write loop
 	// one per track (OnTrack above)
-	inboundTrackReader(track, track.Codec().ClockRate, Video, xpch)
+	inboundTrackReader(track, track.Codec().ClockRate, Video, link.xBroker)
 	//here on error
 	dbg.Main.Printf("video reader %p exited", track)
 
@@ -1477,7 +1563,7 @@ func OnTrack2(
 // 	},
 // }
 
-func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, xpch chan<- *XPacket) {
+func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPacketType, xb *XBroker) {
 
 	for {
 		xp := new(XPacket)
@@ -1503,13 +1589,8 @@ func inboundTrackReader(rxTrack *webrtc.TrackRemote, clockrate uint32, typ XPack
 		xp.Arrival = nanotime()
 		xp.Keyframe = isvid && isH264Keyframe(r.Payload)
 
+		xb.Publish(xp)
 
-		select {
-		case xpch<-xp:
-		default:
-			atomic.AddInt32(&xbrokerOverflow, 1)
-			errlog.Println("xbroker-in drop count", xbrokerOverflow)
-		}
 	}
 }
 
@@ -1638,7 +1719,7 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 }
 
 // Blocks until PC is Closed
-func pubHandlerCreatePeerconn(m msgNewPub) error {
+func pubHandlerCreatePeerconn(offersdp string, link *Room, sdpCh chan *webrtc.SessionDescription) error {
 
 	dbg.Main.Println("createIngressPeerConnection")
 
@@ -1649,7 +1730,7 @@ func pubHandlerCreatePeerconn(m msgNewPub) error {
 	defer peerConnection.Close()
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		OnTrack2(peerConnection, track, receiver, m.xpch)
+		OnTrack2(peerConnection, track, receiver, link)
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
@@ -1672,7 +1753,7 @@ func pubHandlerCreatePeerconn(m msgNewPub) error {
 	// 	go processRTCP(rtpSender)
 	// }
 
-	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(m.offer)}
+	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
 	logSdpReport("publisher", offer)
 
 	err = peerConnection.SetRemoteDescription(offer)
@@ -1715,7 +1796,7 @@ func pubHandlerCreatePeerconn(m msgNewPub) error {
 // pcDone will get closed upon the failed, closed or disconnected state of the PC
 // connected will get closed upon the connected state of the PC
 // this does not block until the PC is finished, you can do that with pcDone
-func waitPeerconnClosed(debug string, x *Room, pc *webrtc.PeerConnection) (
+func waitPeerconnClosed(debug string, link *Room, pc *webrtc.PeerConnection) (
 	pcDone chan struct{},
 	connected chan struct{}) {
 
@@ -2161,13 +2242,7 @@ type XPacket struct {
 }
 
 // Replay will replay a GOP to a subscribers tracks
-// In an ideal world, we would have a synchronous termination method,
-// as I just feel better with sync termination.
-// But, to do sync termination of this GR, we need to do something gross:
-// Select on both a done and time.Timer for each packet through.
-// That's more expensive than I like!
-// SO WE WILL LIVE WITH ASYNC TERMINATION VIA CLOSING (AND/OR TRACK YANKING)
-//
+
 func Replay(inCh chan *XPacket, t *TxTracks, txt *TxTrackPair) {
 	dbg.Goroutine.Println(unsafe.Pointer(t), "Replay() started")
 	defer dbg.Goroutine.Println(unsafe.Pointer(t), "Replay() ended")
@@ -2245,28 +2320,29 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
 		xpCh := room.xBroker.SubscribeReplay()
 		go func() {
 			Replay(xpCh, room.tracks, txt)
-			room.xBroker.RemoveClose(xpCh) // 2 calls is okay: here & after switch request
+			room.xBroker.Unsubscribe(xpCh) // 2 calls is okay: here & after switch request
 		}()
 
-		req, open := <-subGrCh // request to change rooms
+		req, open := <-subGrCh
 
-		room.xBroker.RemoveClose(xpCh) // 2 calls is okay: here & after switch request
+		room.xBroker.Unsubscribe(xpCh) // 2 calls is okay: here & after switch request
 
 		room.tracks.Remove(txt) // remove from current room
-
-		room.ShutdownIfEmpty()
 
 		if !open {
 			return
 		}
 
-		// copy and change the address of txt. forces Replay() return. see note after function
+		// copy and change the address of txt. cause Replay() return. see note after function
 		tmptxt := *txt
 		txt = &tmptxt
 
-		room = rooms.GetRoom(req)
-
-		dbg.Rooms.Println("SubscriberGr() changed to room:", req)
+		if newroom, ok := getRoom(req); ok {
+			room = newroom
+			dbg.Goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() switched to different room")
+		} else {
+			dbg.Goroutine.Println(unsafe.Pointer(&subGrCh), "subGr() not switched to different room")
+		}
 
 	}
 
