@@ -79,7 +79,7 @@ func BenchmarkBrokerNoWrite(b *testing.B) {
 
 	}
 	b.StopTimer()
-	a.Unsubscribe(c)
+	a.RemoveClose(c)
 
 	<-d
 }
@@ -168,7 +168,7 @@ func benchmarkBrokerWithWriter(b *testing.B, numwrites int) {
 
 	}
 	b.StopTimer()
-	a.Unsubscribe(ch)
+	a.RemoveClose(ch)
 
 	time.Sleep(time.Millisecond * 5) // wait for drain
 

@@ -165,10 +165,10 @@ func (b *XBroker) SubscribeReplay() chan *XPacket {
 	return c
 }
 
-// Unsubscribe
+// RemoveClose
 // you may unsubscribe multiple times on the same channel
 // this functionality is needed for the Replay() func logic
-func (b *XBroker) Unsubscribe(c chan *XPacket) {
+func (b *XBroker) RemoveClose(c chan *XPacket) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
