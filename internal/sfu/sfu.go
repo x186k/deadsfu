@@ -175,10 +175,9 @@ func (r *Room) Shutdown() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	close(r.doneClose)//fast async
-	close(r.writerChan)//fast async
-	
-	
+	close(r.doneClose)  //fast async
+	close(r.writerChan) //fast async
+
 	//NO
 	// we now require the idleGenerator to close the broker input
 	r.xBroker.Stop()
@@ -2320,12 +2319,12 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, room *Room) {
 		xpCh := room.xBroker.SubscribeReplay()
 		go func() {
 			Replay(xpCh, room.tracks, txt)
-			room.xBroker.Unsubscribe(xpCh) // 2 calls is okay: here & after switch request
+			room.xBroker.RemoveClose(xpCh) // 2 calls is okay: here & after switch request
 		}()
 
 		req, open := <-subGrCh
 
-		room.xBroker.Unsubscribe(xpCh) // 2 calls is okay: here & after switch request
+		room.xBroker.RemoveClose(xpCh) // 2 calls is okay: here & after switch request
 
 		room.tracks.Remove(txt) // remove from current room
 
