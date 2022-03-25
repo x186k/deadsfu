@@ -140,6 +140,7 @@ func printHttpsHelp() {
 
 var dbg = struct {
 	Url                 FastLogger
+	Pub                 FastLogger
 	Media               FastLogger
 	Https               FastLogger
 	Ice                 FastLogger
@@ -176,6 +177,8 @@ func getDbgMap() map[string]reflect.Value {
 	for i := 0; i < v.Elem().NumField(); i++ {
 		name := typeOfS.Field(i).Name
 		//pl(name,v.Elem().Field(i).CanSet())
+
+		name = strings.ToLower(name)
 
 		loggers[name] = v.Elem().Field(i)
 	}
@@ -265,7 +268,7 @@ func parseFlags() {
 func oneTimeFlagsActions() {
 
 	if *pprofFlag {
-		go func() { // pprof 
+		go func() { // pprof
 			log.Fatal(http.ListenAndServe(":6060", nil))
 		}()
 	}
