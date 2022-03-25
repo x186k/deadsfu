@@ -126,7 +126,7 @@ type roomIndirect struct {
 	room *Room
 }
 
-func (r *Room) PublisherTryLock() bool {
+func (r *Room) PublisherTryLock() (ok bool) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1646,7 +1646,7 @@ func pubHandlerCreatePeerconn(offersdp string, roomname string) (*webrtc.Session
 
 	room := rooms.GetRoom(roomname)
 	ok := room.PublisherTryLock()
-	if ok {
+	if !ok {
 		return nil, fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
 	}
 
