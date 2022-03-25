@@ -405,7 +405,7 @@ func Main() {
 
 	if *ftlKey != "" {
 
-		go func() {
+		go func() { // ftl
 			config := &net.ListenConfig{}
 			ln, err := config.Listen(context.Background(), "tcp", ":8084")
 			if err != nil {
@@ -747,7 +747,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 		panic("internal-err-120")
 	}
 
-	go func() {
+	go func() { // pubhandler
 
 		dbg.Url.Println("pubHandler", roomname, r.URL.String())
 
@@ -990,7 +990,7 @@ func subHandlerGr(offersdp string,
 	pcDone, connected := waitPeerconnClosed("sub", roomname, peerConnection)
 
 	//we start a goroutine here to wait independantly for connected
-	go func() {
+	go func() { // subhandlergr
 		_, ok := <-connected
 
 		if ok {
@@ -1045,7 +1045,7 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 	sdpCh := make(chan *webrtc.SessionDescription) //
 	errCh := make(chan error)
 
-	go func() {
+	go func() { // subhandler
 
 		err := subHandlerGr(string(offersdpbytes), roomname, sdpCh, subGrCh)
 		if err != nil {
@@ -1459,7 +1459,7 @@ func OnTrack2(
 	dbg.Main.Println("OnTrack MediaStream.id [msid ident]:", track.StreamID())
 	dbg.Main.Println("OnTrack MediaStreamTrack.id [msid appdata]:", track.ID())
 
-	go func() {
+	go func() { // pli sender
 		var err error
 
 		for {
@@ -2270,8 +2270,8 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, roomname string) {
 
 		xpCh := room.xBroker.SubscribeReplay()
 		brkr := room.xBroker //fix race
-		trks := room.tracks //fix race
-		go func() {
+		trks := room.tracks  //fix race
+		go func() { // start Replay()
 			Replay(xpCh, trks, txt)
 			brkr.RemoveClose(xpCh) // 2 calls is okay: here & after switch request
 		}()

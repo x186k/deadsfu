@@ -265,7 +265,7 @@ func parseFlags() {
 func oneTimeFlagsActions() {
 
 	if *pprofFlag {
-		go func() {
+		go func() { // pprof 
 			log.Fatal(http.ListenAndServe(":6060", nil))
 		}()
 	}

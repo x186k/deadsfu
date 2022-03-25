@@ -82,11 +82,11 @@ func startHttpsListener(ctx context.Context, hostport string, mux *http.ServeMux
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
 
-	go func() {
+	go func() { // test tcp4 port
 		time.Sleep(time.Second)
 		reportOpenPort(hostport, "tcp4")
 	}()
-	go func() {
+	go func() { // test tcp6 port
 		time.Sleep(time.Second)
 		reportOpenPort(hostport, "tcp6")
 	}()
