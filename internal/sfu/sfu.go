@@ -750,6 +750,7 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errlog.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	sdpNlines := strings.Count(sd.SDP, "\r\n")
