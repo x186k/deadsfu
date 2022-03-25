@@ -740,46 +740,27 @@ func pubHandler(rw http.ResponseWriter, r *http.Request) {
 
 	roomname := r.URL.Query().Get("room") // "" is permitted, most common room name!
 
-	sdpCh := make(chan *webrtc.SessionDescription)
-	errCh := make(chan error)
-
 	if *dialUpstreamUrlFlag != "" {
 		panic("internal-err-120")
 	}
 
-	go func() { // pubhandler
+	dbg.Pub.Println("pubHandler()", roomname, r.URL.String())
 
-		dbg.Url.Println("pubHandler", roomname, r.URL.String())
+	sd, err := pubHandlerCreatePeerconn(string(offer), roomname)
+	if err != nil {
+		errlog.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+	}
 
-		err := pubHandlerCreatePeerconn(string(offer), roomname, sdpCh)
-		if err != nil {
-			errlog.Println(err.Error())
-			select {
-			case errCh <- err:
-			default:
-			}
-		}
-	}()
+	sdpNlines := strings.Count(sd.SDP, "\r\n")
+	dbg.Pub.Println("returning SDP, nlines", sdpNlines)
 
-	select {
-	case <-time.NewTimer(time.Second * 10).C:
-		err := fmt.Errorf("timeout setting up pub Peerconn for room %s", roomname)
+	rw.Header().Set("Content-Type", "application/sdp")
+	rw.WriteHeader(201)
+	_, err = rw.Write([]byte(sd.SDP))
+	if err != nil {
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
-
-	case answersd := <-sdpCh:
-		rw.Header().Set("Content-Type", "application/sdp")
-		rw.WriteHeader(201)
-		_, err = rw.Write([]byte(answersd.SDP))
-		if err != nil {
-			log.Println(err.Error())
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-		}
-
-	case err := <-errCh:
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-
-		//case <-time.NewTicker(24*time.Hour).C:
 	}
 
 }
@@ -1660,29 +1641,24 @@ func sendPLI(peerConnection *webrtc.PeerConnection, track *webrtc.TrackRemote) e
 }
 
 // Blocks until PC is Closed
-func pubHandlerCreatePeerconn(offersdp string, roomname string, sdpCh chan *webrtc.SessionDescription) error {
+func pubHandlerCreatePeerconn(offersdp string, roomname string) (*webrtc.SessionDescription, error) {
 
-	link := rooms.GetRoom(roomname)
-	ok := link.PublisherTryLock()
+	room := rooms.GetRoom(roomname)
+	ok := room.PublisherTryLock()
 	if ok {
-		defer link.PublisherUnlock()
-	} else {
-		return fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
+		return nil, fmt.Errorf("Rejected: The URL path [%s] already has a publisher", roomname)
 	}
 
-	dbg.Main.Println("createIngressPeerConnection")
-
-	peerConnection, err := newPeerConnection()
+	pc, err := newPeerConnection()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer peerConnection.Close()
 
-	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		OnTrack2(peerConnection, track, receiver, link)
+	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		OnTrack2(pc, track, receiver, room)
 	})
 
-	peerConnection.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
+	pc.OnICEConnectionStateChange(func(icecs webrtc.ICEConnectionState) {
 		dbg.Main.Println("ingress ICE Connection State has changed", icecs.String())
 	})
 
@@ -1705,41 +1681,44 @@ func pubHandlerCreatePeerconn(offersdp string, roomname string, sdpCh chan *webr
 	offer := webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offersdp)}
 	logSdpReport("publisher", offer)
 
-	err = peerConnection.SetRemoteDescription(offer)
+	err = pc.SetRemoteDescription(offer)
 	if err != nil {
-		return fmt.Errorf("pc.SetRemoteDescription() fail %w", err)
+		return nil, fmt.Errorf("pc.SetRemoteDescription() fail %w", err)
 	}
 
 	// Create answer
-	sessdesc, err := peerConnection.CreateAnswer(nil)
+	sessdesc, err := pc.CreateAnswer(nil)
 	if err != nil {
-		return fmt.Errorf("pc.CreateAnswer() fail %w", err)
+		return nil, fmt.Errorf("pc.CreateAnswer() fail %w", err)
 	}
 
 	// Sets the LocalDescription, and starts our UDP listeners
-	err = peerConnection.SetLocalDescription(sessdesc)
+	err = pc.SetLocalDescription(sessdesc)
 	if err != nil {
-		return fmt.Errorf("pc.SetLocalDescription() fail %w", err)
+		return nil, fmt.Errorf("pc.SetLocalDescription() fail %w", err)
 	}
 
 	// without this, there will be zero! a=candidates in sdp
-	<-webrtc.GatheringCompletePromise(peerConnection)
+	<-webrtc.GatheringCompletePromise(pc)
 
-	logSdpReport("listen-ingress-answer", *peerConnection.LocalDescription())
+	logSdpReport("listen-ingress-answer", *pc.LocalDescription())
 
-	select {
-	case sdpCh <- peerConnection.LocalDescription():
-	default:
-		errlog.Println("send fail: sdp to publisher")
-		return nil
-	}
+	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+		dbg.Pub.Println("/"+roomname, "ConnectionState", cs.String())
 
-	// Get the LocalDescription and take it to base64 so we can paste in browser
+		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+		case webrtc.PeerConnectionStateClosed:
+			fallthrough
+		case webrtc.PeerConnectionStateFailed:
+			fallthrough
+		case webrtc.PeerConnectionStateDisconnected:
+			defer room.PublisherUnlock()
+			pc.Close() // Sean, must close to release resources. important
+		}
+	})
 
-	pcdone, _ := waitPeerconnClosed("pub", roomname, peerConnection)
-	<-pcdone
-
-	return nil
+	return pc.LocalDescription(), nil
 }
 
 // pcDone will get closed upon the failed, closed or disconnected state of the PC
@@ -2271,7 +2250,7 @@ func SubscriberGr(subGrCh <-chan string, txt *TxTrackPair, roomname string) {
 		xpCh := room.xBroker.SubscribeReplay()
 		brkr := room.xBroker //fix race
 		trks := room.tracks  //fix race
-		go func() { // start Replay()
+		go func() {          // start Replay()
 			Replay(xpCh, trks, txt)
 			brkr.RemoveClose(xpCh) // 2 calls is okay: here & after switch request
 		}()

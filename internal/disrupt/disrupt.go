@@ -26,7 +26,6 @@ func NewDisrupt[T any](n int) *Disrupt[T] {
 		log.Fatal("require positive power of two")
 	}
 
-
 	buf := make([]T, n)
 
 	return &Disrupt[T]{
