@@ -141,6 +141,8 @@ func printHttpsHelp() {
 var dbg = struct {
 	Url                 FastLogger
 	Pub                 FastLogger
+	Sub                 FastLogger
+	Dial                FastLogger
 	Media               FastLogger
 	Https               FastLogger
 	Ice                 FastLogger

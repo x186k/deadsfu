@@ -858,15 +858,11 @@ func handlePreflight(req *http.Request, w http.ResponseWriter) bool {
 }
 
 // subHandlerGr will block until the PC is done
-func subHandlerGr(offersdp string,
-	roomname string,
-	sdpCh chan *webrtc.SessionDescription,
-	subGrCh chan string) error {
+func subHandlerGr(offersdp string, roomname string, subGrCh <-chan string) (*webrtc.SessionDescription, error) {
 	peerConnection, err := newPeerConnection()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer peerConnection.Close()
 
 	logTransceivers("new-pc", peerConnection)
 
@@ -885,29 +881,29 @@ func subHandlerGr(offersdp string,
 
 	logSdpReport("sub-offer", offer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = peerConnection.SetRemoteDescription(offer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	logTransceivers("offer-added", peerConnection)
 
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: audioMimeType}, "audio", mediaStreamId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rtpSender, err := peerConnection.AddTrack(audioTrack)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	go processRTCP(rtpSender)
 
 	videoTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: videoMimeType}, "video", mediaStreamId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if false {
@@ -915,45 +911,26 @@ func subHandlerGr(offersdp string,
 		sendonly := webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}
 		_, err := peerConnection.AddTransceiverFromTrack(videoTrack, sendonly)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	rtpSender2, err := peerConnection.AddTrack(videoTrack)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	go processRTCP(rtpSender2)
 
 	// this will never fire, because the subscriber only receives.
-	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { panic("never") })
+	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		log.Fatal("never")
+	})
 
 	logTransceivers("subHandler-tracksadded", peerConnection)
 
 	// Create answer
 	sessdesc, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
-		return err
-	}
-
-	// Sets the LocalDescription, and starts our UDP listeners, starts ICE
-	err = peerConnection.SetLocalDescription(sessdesc)
-	if err != nil {
-		return err
-	}
-
-	// without this, there will be zero! a=candidates in sdp
-	<-webrtc.GatheringCompletePromise(peerConnection)
-
-	// Get the LocalDescription and take it to base64 so we can paste in browser
-	ansrtcsd := peerConnection.LocalDescription()
-
-	logSdpReport("sub-answer", *ansrtcsd)
-
-	select {
-	case sdpCh <- peerConnection.LocalDescription():
-	default:
-		errlog.Println("send fail: sdp to publisher")
-		return nil
+		return nil, err
 	}
 
 	vid := TxTrack{
@@ -969,31 +946,36 @@ func subHandlerGr(offersdp string,
 
 	txset := &TxTrackPair{aud, vid}
 
-	pcDone, connected := waitPeerconnClosed("sub", roomname, peerConnection)
-
-	//we start a goroutine here to wait independantly for connected
-	go func() { // subhandlergr
-		_, ok := <-connected
-
-		if ok {
-			dbg.Goroutine.Println("sub/"+roomname, "connwait: launching writer")
-
-			SubscriberGr(subGrCh, txset, roomname)
-
-		} else {
-			dbg.Goroutine.Println("sub/"+roomname, "connwait: connect fail")
+	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+		dbg.Sub.Println("/"+roomname, "ConnectionState", cs.String())
+		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+			go SubscriberGr(subGrCh, txset, roomname)
+		case webrtc.PeerConnectionStateClosed:
+			fallthrough
+		case webrtc.PeerConnectionStateFailed:
+			fallthrough
+		case webrtc.PeerConnectionStateDisconnected:
+			peerConnection.Close()
 		}
-	}()
+	})
 
-	dbg.Goroutine.Println("sub/"+roomname, "waiting for done")
+	// Sets the LocalDescription, and starts our UDP listeners, starts ICE
+	err = peerConnection.SetLocalDescription(sessdesc)
+	if err != nil {
+		return nil, err
+	}
 
-	<-pcDone
+	// without this, there will be zero! a=candidates in sdp
+	<-webrtc.GatheringCompletePromise(peerConnection)
 
-	dbg.Goroutine.Println("sub/"+roomname, "finally done!")
+	// Get the LocalDescription and take it to base64 so we can paste in browser
+	ansrtcsd := peerConnection.LocalDescription()
 
-	close(subGrCh)
+	logSdpReport("sub-answer", *ansrtcsd)
 
-	return nil
+	return peerConnection.LocalDescription(), nil
+
 }
 
 // Blocks until PC is Closed
@@ -1024,41 +1006,19 @@ func subHandler(rw http.ResponseWriter, r *http.Request) {
 		subMapMutex.Unlock()
 	}
 
-	sdpCh := make(chan *webrtc.SessionDescription) //
-	errCh := make(chan error)
+	ans, err := subHandlerGr(string(offersdpbytes), roomname, subGrCh)
+	if err != nil {
+		errlog.Println(err.Error())
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	go func() { // subhandler
-
-		err := subHandlerGr(string(offersdpbytes), roomname, sdpCh, subGrCh)
-		if err != nil {
-			errlog.Println(err.Error())
-			select {
-			case errCh <- err:
-			default:
-			}
-		}
-
-	}()
-
-	select {
-	case <-time.NewTimer(time.Second * 10).C:
-		err := fmt.Errorf("timeout setting up sub Peerconn for room %s", roomname)
+	rw.Header().Set("Content-Type", "application/sdp")
+	rw.WriteHeader(201)
+	_, err = rw.Write([]byte(ans.SDP))
+	if err != nil {
 		log.Println(err.Error())
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
-
-	case sd := <-sdpCh:
-		rw.Header().Set("Content-Type", "application/sdp")
-		rw.WriteHeader(201)
-		_, err = rw.Write([]byte(sd.SDP))
-		if err != nil {
-			log.Println(err.Error())
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-		}
-
-	case err := <-errCh:
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-
-		//case <-time.NewTicker(24*time.Hour).C:
 	}
 
 }
@@ -1330,7 +1290,18 @@ func dialUpstream(roomname string) error {
 		return err
 	}
 
-	waitPeerconnClosed("dial", roomname, peerConnection)
+	peerConnection.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
+		dbg.Dial.Println("/"+roomname, "ConnectionState", cs.String())
+		switch cs {
+		case webrtc.PeerConnectionStateConnected:
+		case webrtc.PeerConnectionStateClosed:
+			fallthrough
+		case webrtc.PeerConnectionStateFailed:
+			fallthrough
+		case webrtc.PeerConnectionStateDisconnected:
+			peerConnection.Close()
+		}
+	})
 
 	return nil
 
@@ -1720,58 +1691,6 @@ func pubHandlerCreatePeerconn(offersdp string, roomname string) (*webrtc.Session
 	})
 
 	return pc.LocalDescription(), nil
-}
-
-// pcDone will get closed upon the failed, closed or disconnected state of the PC
-// connected will get closed upon the connected state of the PC
-// this does not block until the PC is finished, you can do that with pcDone
-func waitPeerconnClosed(debug string, roomname string, pc *webrtc.PeerConnection) (
-	pcDone chan struct{},
-	connected chan struct{}) {
-
-	pcDone = make(chan struct{})
-	connected = make(chan struct{}, 1) // size of one important! otherwise race cond!
-
-	onceCloseDone := sync.Once{}
-	onceCloseConnected := sync.Once{}
-	onceClosePc := sync.Once{}
-
-	fCloseDone := func() { close(pcDone) }
-	fCloseConnected := func() { close(connected) }
-	fClosePc := func() { pc.Close() }
-
-	pc.OnConnectionStateChange(func(cs webrtc.PeerConnectionState) {
-		dbg.PeerConn.Println(debug+"/"+roomname, "ConnectionState", cs.String())
-
-		switch cs {
-		case webrtc.PeerConnectionStateConnected:
-
-			select {
-			case connected <- struct{}{}:
-			default:
-			}
-			onceCloseConnected.Do(fCloseConnected)
-
-		case webrtc.PeerConnectionStateClosed:
-			fallthrough
-		case webrtc.PeerConnectionStateFailed:
-			fallthrough
-		case webrtc.PeerConnectionStateDisconnected:
-
-			// IMPORTANT
-			// per 12/27/21 Conversation with Sean, the PC going to a closed
-			// state is NOT the last step, we need to Close() the PC when we want it
-			// to release resources, and have WriteRTP start failing
-			//12/27/21 this doesn't seem to start io.ErrPipeClosed on WriteRTP,
-			// but this is important none the less.
-			// get nil value when closed
-			onceClosePc.Do(fClosePc)
-			onceCloseConnected.Do(fCloseConnected)
-			onceCloseDone.Do(fCloseDone)
-		}
-	})
-
-	return
 }
 
 // SpliceRTP
