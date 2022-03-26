@@ -4,6 +4,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 type nolock struct{}
@@ -41,7 +42,17 @@ func (d *Disrupt[T]) Put(v T) {
 	i := atomic.LoadInt64(&d.next)
 	//	ix := i % d.len64
 	ix := i & d.mask64
+
+	if RaceEnabled {
+		RaceAcquire(unsafe.Pointer(d))
+	}
+
 	d.buf[ix] = v
+
+	if RaceEnabled {
+		RaceRelease(unsafe.Pointer(d))
+	}
+
 	i++
 	atomic.StoreInt64(&d.next, i)
 
@@ -67,15 +78,27 @@ func (d *Disrupt[T]) Get(k int64) (T, int64, bool) {
 		//d.cond.Signal() // wake any other waiters, when not using broadcast in Put
 	}
 
+	if RaceEnabled {
+		RaceAcquire(unsafe.Pointer(d))
+	}
+
 	val := d.buf[ix]
 
+	if RaceEnabled {
+		RaceRelease(unsafe.Pointer(d))
+	}
+
 	i := atomic.LoadInt64(&d.next)
+
+	ok := true
 	if k <= (i - d.len64) { // XXX should I be more conservative? len64-1/2 ?
-		return zeroval, i, false // XXX can be improved, discard only 1/2 ?
+		val = zeroval
+		k = i - 1
+		ok = false // XXX can be improved, discard only 1/2 ?
 	}
 
 	k++
 
-	return val, k, true
+	return val, k, ok
 
 }

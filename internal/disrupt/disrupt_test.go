@@ -1,6 +1,7 @@
 package disrupt
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -39,11 +40,11 @@ func BenchmarkDisrupt(b *testing.B) {
 
 	w.Add(1)
 
-	a := NewDisrupt[int64](4096 * 8 * 8)
+	a := NewDisrupt[int64](int(math.Pow(2, 24)))
 
 	go func() {
 
-		time.Sleep(100)
+		time.Sleep(time.Millisecond)
 
 		for i := int64(0); i < int64(b.N); i++ {
 			a.Put(i)
@@ -55,10 +56,10 @@ func BenchmarkDisrupt(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := int64(0); i < int64(b.N); i++ {
-		v, k, ok := a.Get(i)
-		if int64(v) != i || k != i+1 || !ok {
-			b.Fatal("bad vals", i, v, k, ok)
+	for ix := int64(0); ix < int64(b.N); ix++ {
+		val, nextix, ok := a.Get(ix)
+		if int64(val) != ix || nextix != ix+1 || !ok {
+			b.Fatalf("bad vals  ix:%v val:%v nextix:%v ok:%v", ix, val, nextix, ok)
 		}
 	}
 
@@ -77,44 +78,6 @@ func Benchmark1500Copy(b *testing.B) {
 	}
 }
 
-func XBenchmarkDisrupt1500(b *testing.B) {
-
-	w := sync.WaitGroup{}
-
-	w.Add(1)
-
-	a := NewDisrupt[[1500]byte](4096 * 8 * 8 * 8)
-
-	go func() {
-
-		time.Sleep(100)
-
-		var z [1500]byte
-
-		for i := int64(0); i < int64(b.N); i++ {
-			a.Put(z)
-		}
-
-		w.Done()
-
-	}()
-
-	b.ResetTimer()
-
-	for i := int64(0); i < int64(b.N); i++ {
-		v, k, ok := a.Get(i)
-		_ = v
-		if k != i+1 || !ok {
-			b.Fatal("bad vals", i, k, ok)
-		}
-	}
-
-	b.StopTimer()
-
-	w.Wait()
-
-}
-
 func TestDisrupt(t *testing.T) {
 
 	w := sync.WaitGroup{}
@@ -123,7 +86,7 @@ func TestDisrupt(t *testing.T) {
 
 	N := int(1e7)
 
-	a := NewDisrupt[int64](2048)
+	a := NewDisrupt[int64](int(math.Pow(2, 12)))
 
 	go func() {
 
@@ -158,7 +121,7 @@ func TestPutGet1(t *testing.T) {
 	w := sync.WaitGroup{}
 
 	w.Add(1)
-	a := NewDisrupt[int](100)
+	a := NewDisrupt[int](256)
 
 	go func() {
 
