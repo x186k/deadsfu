@@ -85,8 +85,6 @@ func (d *Disrupt[T]) Put(v T) {
 
 func (d *Disrupt[T]) Get(k int64) (value T, next int64, more bool) {
 
-	var zeroval T
-
 	//ix := k % d.len64
 
 again:
@@ -100,6 +98,7 @@ again:
 	for j := atomic.LoadInt64(&d.next); k >= j; j = atomic.LoadInt64(&d.next) {
 		if j < 0 { //closed?
 			if k >= -j { // no values left
+				var zeroval T
 				return zeroval, k, false
 			}
 			break
