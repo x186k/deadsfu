@@ -2,12 +2,14 @@ package disrupt
 
 import (
 	"math"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var A, B int64
@@ -44,11 +46,13 @@ func BenchmarkDisrupt(b *testing.B) {
 
 	go func() {
 
+		runtime.LockOSThread()
 		time.Sleep(time.Millisecond)
 
 		for i := int64(0); i < int64(b.N); i++ {
 			a.Put(i)
 		}
+		a.Close()
 
 		w.Done()
 
@@ -56,6 +60,7 @@ func BenchmarkDisrupt(b *testing.B) {
 
 	b.ResetTimer()
 
+	runtime.LockOSThread()
 	for ix := int64(0); ix < int64(b.N); ix++ {
 		val, nextix, ok := a.Get(ix)
 		if int64(val) != ix || nextix != ix+1 || !ok {
@@ -64,6 +69,12 @@ func BenchmarkDisrupt(b *testing.B) {
 	}
 
 	b.StopTimer()
+
+	var zero int64
+	v, ix, isopen := a.Get(int64(b.N))
+	require.Equal(b, zero, v)
+	require.Equal(b, int64(b.N), ix)
+	require.Equal(b, false, isopen)
 
 	w.Wait()
 
@@ -93,24 +104,32 @@ func TestDisrupt(t *testing.T) {
 		time.Sleep(time.Microsecond)
 
 		for i := int64(0); i < int64(N); i++ {
-			time.Sleep(1)
 			a.Put(i)
+			runtime.Gosched()
 		}
+
+		a.Close()
 
 		w.Done()
 
 	}()
 
 	for i := int64(0); i < int64(N); i++ {
-		v, k, ok := a.Get(i)
-		if int64(v) != i || k != i+1 || !ok {
-			// assert.FailNow(t, i, v)
-			// assert.Equal(t, i+1,k)
-			// assert.Equal(t, true, ok)
-
-			t.Fatalf("bad vals v/%v expect/%v, k/%v exp/%v,  ok/%v", v, i, k, i+1, ok)
+		v, k, isopen := a.Get(i)
+		if int64(v) != i || k != i+1 || !isopen {
+			require.Equal(t, i, v)
+			require.Equal(t, i+1, k)
+			require.Equal(t, true, isopen)
 		}
 	}
+
+	v, k, isopen := a.Get(int64(N))
+
+	var zero int64
+
+	require.Equal(t, zero, v)
+	require.Equal(t, int64(N), k)
+	require.Equal(t, false, isopen)
 
 	w.Wait()
 
